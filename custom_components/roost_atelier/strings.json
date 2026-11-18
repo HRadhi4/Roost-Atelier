@@ -1,0 +1,11 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Roost Atelier",
+        "description": "Adds the Atelier to the sidebar, where you build your home in 3D, and the Roost Atelier card for your dashboards."
+      }
+    },
+    "abort": { "single_instance_allowed": "Roost Atelier is already added." }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "domain": "roost_atelier",
+  "name": "Roost Atelier",
+  "codeowners": ["@HRadhi4"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "after_dependencies": ["ai_task", "media_source"],
+  "documentation": "https://github.com/HRadhi4/Roost-Atelier",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/HRadhi4/Roost-Atelier/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

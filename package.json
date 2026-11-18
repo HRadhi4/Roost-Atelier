@@ -1,0 +1,24 @@
+{
+  "name": "roost-atelier",
+  "version": "0.1.0",
+  "description": "Build your home in realistic 3D and watch it live on Home Assistant dashboards.",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node tests/model.test.mjs && node tests/recon.test.mjs"
+  },
+  "author": "HRadhi4",
+  "license": "SEE LICENSE IN LICENSE",
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  },
+  "dependencies": {
+    "dxf-parser": "^1.1.2",
+    "n8ao": "^2.1.0",
+    "pdfjs-dist": "^4.10.38",
+    "three": "^0.187.0",
+    "three-gpu-pathtracer": "^0.0.28",
+    "three-mesh-bvh": "^0.9.18"
+  },
+  "private": true,
+  "type": "module"
+}

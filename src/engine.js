@@ -1,0 +1,572 @@
+// The 3D home: builds the model from the plan, lights it like the real thing, and keeps it smooth.
+// It only draws when something changes (or moves), lowers its sharpness while you drag, and can refine
+// into a photo-real image when left alone (photo mode).
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { N8AOPass } from "n8ao";
+import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES } from "./model.js";
+import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "./materials.js";
+import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
+import { deviceKind, lightLook, stateOf } from "./devices.js";
+
+const CUT = 1.15;
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+export function pickQuality(renderer) {
+  const gl = renderer.getContext(), dbg = gl.getExtension("WEBGL_debug_renderer_info");
+  const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "";
+  const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 4;
+  if (/SwiftShader|llvmpipe|Mali-(4|T)|Adreno \(TM\) [345]\d\d/i.test(gpu) || cores <= 4 || mem <= 2) return "low";
+  if (/Mali|Adreno|PowerVR|Apple GPU/i.test(gpu) || /Android|iPad|iPhone/i.test(navigator.userAgent)) return "medium";
+  return "high";
+}
+
+export class AtelierEngine {
+  constructor(host, opts = {}) {
+    this.host = host;
+    this.opts = { quality: "auto", walls: "cut", view: "3d", hotspots: true, editing: false, ...opts };
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: false });
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.localClippingEnabled = true;
+    this.renderer.domElement.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline:none";
+    host.appendChild(this.renderer.domElement);
+    this.quality = this.opts.quality === "auto" ? pickQuality(this.renderer) : this.opts.quality;
+
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(32, 1, 0.05, 400);
+    this.camera.position.set(14, 16, 18);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.09, screenSpacePanning: true, maxPolarAngle: Math.PI * 0.47, minDistance: 2, maxDistance: 80, zoomToCursor: true });
+    this.controls.addEventListener("change", () => this.request(true));
+    this.controls.addEventListener("start", () => { this.userMoved = true; this.interacting(true); });
+    this.controls.addEventListener("end", () => this.interacting(false));
+
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    this.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environment = this.envTex;
+    pm.dispose();
+
+    this.hemi = new THREE.HemisphereLight("#ffffff", "#b8ad9c", 0.6);
+    this.sun = new THREE.DirectionalLight("#fff2dc", 2.4);
+    this.sun.castShadow = true;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.02;
+    this.scene.add(this.hemi, this.sun, this.sun.target);
+
+    this.root = new THREE.Group(); this.scene.add(this.root);
+    this.cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), CUT);
+    this.devices = new Map(); this.anims = new Set(); this.hot = [];
+    this.states = {}; this.dirty = true; this.shadowsDirty = true; this.alive = true; this.visible = true;
+    this.listeners = {};
+    this.setupComposer();
+    this.resizeObs = new ResizeObserver(() => this.resize()); this.resizeObs.observe(host);
+    this.resize();
+    this.renderer.domElement.addEventListener("pointerdown", (e) => this.pointerDown(e));
+    this.renderer.domElement.addEventListener("pointerup", (e) => this.pointerUp(e));
+    this.renderer.domElement.addEventListener("pointermove", (e) => this.walkLook(e));
+    this._t = performance.now();
+    this.loop = this.loop.bind(this);
+    requestAnimationFrame(this.loop);
+  }
+
+  on(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
+  emit(ev, data) { for (const fn of this.listeners[ev] || []) fn(data); }
+
+  // ---------------------------------------------------------------- quality and drawing
+  baseRatio() { return Math.min(window.devicePixelRatio || 1, { low: 1, medium: 1.5, high: 2 }[this.quality]); }
+  setupComposer() {
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    if (this.quality !== "low") {
+      this.ao = new N8AOPass(this.scene, this.camera, 2, 2);
+      Object.assign(this.ao.configuration, { aoRadius: 0.6, distanceFalloff: 0.6, intensity: 2.2, halfRes: this.quality === "medium", denoiseSamples: this.quality === "medium" ? 4 : 8, screenSpaceRadius: false });
+      this.ao.setQualityMode(this.quality === "medium" ? "Low" : "Medium");
+      this.composer.addPass(this.ao);
+    }
+    if (this.quality === "high") { this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.25, 0.4, 0.92); this.composer.addPass(this.bloom); }
+    this.composer.addPass(new OutputPass());
+  }
+  resize() {
+    const w = this.host.clientWidth || 300, h = this.host.clientHeight || 200;
+    this.size = [w, h];
+    const r = this.lowRes ? this.baseRatio() * 0.6 : this.baseRatio();
+    this.renderer.setPixelRatio(r); this.renderer.setSize(w, h, false);
+    this.composer.setPixelRatio(r); this.composer.setSize(w, h);
+    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    // keep the whole home in view until someone moves the camera themselves
+    if (!this.userMoved && this.plan && !this.tween && !this.busy && this.view !== "walk") this.frame(this.view || "3d", true);
+    this.request(true);
+  }
+  interacting(on) {
+    this.busy = on; this.photo?.stop();
+    clearTimeout(this._idle);
+    if (on) { if (!this.lowRes) { this.lowRes = true; this.resize(); } }
+    else this._idle = setTimeout(() => { this.lowRes = false; this.resize(); if (this.opts.photo) this.startPhoto(); }, 250);
+  }
+  request(camMoved) { this.dirty = true; if (camMoved) { this.camMoved = true; this.photo?.stop(); } }
+  loop() {
+    if (!this.alive) return;
+    requestAnimationFrame(this.loop);
+    const now = performance.now(), dt = Math.min(0.05, (now - this._t) / 1000); this._t = now;
+    if (!this.visible) return;
+    if (this.tween) this.stepTween(dt);
+    const damping = this.controls.enabled && this.controls.update();
+    if (this.anims.size) { for (const a of [...this.anims]) if (a(dt) === false) this.anims.delete(a); this.dirty = true; }
+    if (this.photo?.active) { this.photo.step(); return; }
+    if (!this.dirty && !damping) return;
+    this.dirty = false;
+    if (this.shadowsDirty) { this.renderer.shadowMap.needsUpdate = true; this.shadowsDirty = false; }
+    this.composer.render();
+    if (this.camMoved || this.anims.size) { this.camMoved = false; this.projectHotspots(); }
+  }
+  setVisible(v) { this.visible = v; if (v) this.request(true); }
+
+  // ---------------------------------------------------------------- building the home
+  setPlan(plan, floorIndex = 0) {
+    this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
+    const floor = plan.floors[floorIndex] || plan.floors[0];
+    this.floor = floor;
+    this.clear();
+    const H = floor.height || 2.8;
+    this.H = H;
+    this.rooms = new THREE.Group(); this.wallsG = new THREE.Group(); this.items = new THREE.Group(); this.devG = new THREE.Group(); this.ceilings = new THREE.Group();
+    this.root.add(this.rooms, this.wallsG, this.items, this.devG, this.ceilings);
+    for (const r of floor.rooms) this.addRoom(r, H);
+    for (const w of walls(floor)) this.addWall(w, floor, H);
+    for (const it of floor.items) this.addItem(it, H);
+    for (const d of floor.devices) this.addDevice(d, H);
+    this.addGround(floor);
+    this.applyWalls();
+    this.fitSun();
+    if (!this._framed) { this.frame(this.opts.view || "3d", true); this._framed = true; }
+    this.updateDevices(true);
+    this.shadowsDirty = true; this.request(true);
+    this.emit("built");
+  }
+  clear() {
+    for (const c of [...this.root.children]) { this.root.remove(c); c.traverse?.((o) => { if (o.geometry && !o.geometry.parameters?.shared) o.geometry.dispose?.(); }); }
+    for (const d of this.devices.values()) d.light && this.scene.remove(d.light);
+    this.devices.clear(); this.anims.clear(); this.hot = [];
+  }
+  addRoom(r, H) {
+    const shape = new THREE.Shape(r.pts.map(([x, y]) => new THREE.Vector2(x, -y)));
+    const geo = new THREE.ShapeGeometry(shape); geo.rotateX(-Math.PI / 2);
+    const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
+    const m = new THREE.Mesh(geo, floorMaterial(r.floor || type.floor));
+    m.receiveShadow = true; m.userData.room = r.id; m.name = "floor";
+    this.rooms.add(m);
+    if (!type.outdoor) {
+      const cm = solid("#F7F5F1", { rough: 0.95 }); cm.side = THREE.BackSide;
+      const c = new THREE.Mesh(geo, cm); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
+      this.ceilings.add(c);
+    }
+  }
+  sideRoom(w, side, floor) {
+    const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
+    const mx = (w.a[0] + w.b[0]) / 2 + nx * side * 0.2, my = (w.a[1] + w.b[1]) / 2 + ny * side * 0.2;
+    return floor.rooms.find((r) => inside([mx, my], r.pts));
+  }
+  addWall(w, floor, H) {
+    const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], len = Math.hypot(dx, dy), ang = Math.atan2(dy, dx), t = w.thick;
+    if (w.parapet) { this.wallBox(w, 0, len, 0, 1.0, solid("#E9E4DA", { rough: 0.9 }), solid("#E9E4DA", { rough: 0.9 }), ang, t * 0.6, true); return; }
+    const left = this.sideRoom(w, 1, floor), right = this.sideRoom(w, -1, floor);
+    const ext = solid("#E7DFD2", { rough: 0.95 });
+    const matL = left && !ROOM_TYPES[left.type]?.outdoor ? wallMaterial(left.wall || "warm-white") : ext;
+    const matR = right && !ROOM_TYPES[right.type]?.outdoor ? wallMaterial(right.wall || "warm-white") : ext;
+    const ops = openingsOn(w, floor.openings);
+    let pos = 0;
+    for (const { op, t0, t1 } of ops) {
+      if (t0 > pos) this.wallBox(w, pos, t0, 0, H, matL, matR, ang, t);
+      const top = op.sill + op.height;
+      if (op.sill > 0) this.wallBox(w, t0, t1, 0, op.sill, matL, matR, ang, t);
+      if (top < H) this.wallBox(w, t0, t1, top, H, matL, matR, ang, t);
+      this.addOpening(op, w, t0, t1, ang, t, floor);
+      pos = t1;
+    }
+    if (pos < len) this.wallBox(w, pos, len, 0, H, matL, matR, ang, t);
+  }
+  wallBox(w, s0, s1, y0, y1, matL, matR, ang, t, low = false) {
+    const len = s1 - s0; if (len < 0.01 || y1 - y0 < 0.01) return;
+    const atEnd0 = s0 < 0.001, atEnd1 = Math.abs(s1 - Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])) < 0.001;
+    const ext0 = atEnd0 ? t / 2 : 0, ext1 = atEnd1 ? t / 2 : 0;
+    const geo = new THREE.BoxGeometry(len + ext0 + ext1, y1 - y0, t);
+    const capTop = solid("#2A2F45", { rough: 0.85 });
+    // BoxGeometry faces: +x, -x, +y, -y, +z, -z. +z faces the left side of a→b in plan (y down) after rotation.
+    // faces: +x, -x, +y (top), -y, +z (left side of a->b), -z (right side)
+    const m = new THREE.Mesh(geo, [matL, matR, capTop, matL, matL, matR]);
+    const cx = (s0 - ext0 + s1 + ext1) / 2, ux = Math.cos(ang), uy = Math.sin(ang);
+    m.position.set(w.a[0] + ux * cx, (y0 + y1) / 2, w.a[1] + uy * cx);
+    m.rotation.y = -ang;
+    m.castShadow = true; m.receiveShadow = true; m.userData.wall = true; m.userData.y1 = y1; m.userData.y0 = y0; m.userData.low = low;
+    this.wallsG.add(m);
+    return m;
+  }
+  addOpening(op, w, t0, t1, ang, t, floor) {
+    const ux = Math.cos(ang), uy = Math.sin(ang), mid = (t0 + t1) / 2, cx = w.a[0] + ux * mid, cz = w.a[1] + uy * mid, width = t1 - t0;
+    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = -ang; g.userData.opening = op.id;
+    const frameM = op.type === "window" || op.type === "slider" ? metal("#2B2D33", 0.4) : solid("#F3F1EC", { rough: 0.6 });
+    const fw = 0.05;
+    const top = op.sill + op.height;
+    if (op.type !== "arch") {
+      for (const s of [-1, 1]) { const f = new THREE.Mesh(new THREE.BoxGeometry(fw, op.height, t + 0.02), frameM); f.position.set(s * (width / 2 - fw / 2), op.sill + op.height / 2, 0); f.castShadow = true; g.add(f); }
+      const head = new THREE.Mesh(new THREE.BoxGeometry(width, fw, t + 0.02), frameM); head.position.set(0, top - fw / 2, 0); g.add(head);
+    }
+    if (op.type === "window") {
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(width + 0.06, 0.03, t + 0.08), solid("#EDEAE4", { rough: 0.3 })); sill.position.set(0, op.sill - 0.015, 0); g.add(sill);
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(width - fw * 2, op.height - fw * 2), glass()); pane.position.set(0, op.sill + op.height / 2, 0); pane.userData.glass = true; g.add(pane);
+      const mull = new THREE.Mesh(new THREE.BoxGeometry(0.03, op.height - fw * 2, 0.04), frameM); mull.position.set(0, op.sill + op.height / 2, 0); if (width > 1.2) g.add(mull);
+    } else if (op.type === "slider") {
+      for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.02), glass()); p.position.set(s * width / 4, op.sill + op.height / 2, s * 0.02); p.name = s < 0 ? "slideL" : "slideR"; g.add(p); const fr = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.025), frameM); fr.scale.set(1, 1, 1); }
+    } else if (op.type === "door") {
+      const leaves = op.double ? [[-1, width / 2], [1, width / 2]] : [[op.swing >= 0 ? -1 : 1, width]];
+      const mat = op.main ? wood("walnut") : solid("#F7F5F1", { rough: 0.5 });
+      for (const [side, lw] of leaves) {
+        const hinge = new THREE.Group(); hinge.position.set(side * (width / 2 - fw), 0, 0); hinge.name = "leaf"; hinge.userData.side = side; hinge.userData.swing = op.swing >= 0 ? 1 : -1;
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(lw - fw * (op.double ? 1 : 2), op.height - fw, 0.04), mat); leaf.position.set(-side * (lw - fw * (op.double ? 1 : 2)) / 2, (op.height - fw) / 2, 0); leaf.castShadow = true; leaf.receiveShadow = true;
+        hinge.add(leaf);
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.05), metal("#C9A35A", 0.3)); handle.position.set(-side * (lw - 0.14), 1.0, 0.04); hinge.add(handle);
+        g.add(hinge);
+      }
+    }
+    // each opening gets its own materials so it can be cut at waist height with the walls
+    g.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.userData.cuttable = true; } });
+    this.wallsG.add(g);
+  }
+  addItem(it, H) {
+    const g = buildItem(it), d = dims(it);
+    const y = d.mount === "ceiling" ? H : d.mount === "wall" ? d.z : 0;
+    g.position.set(it.x, y, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
+    g.traverse((o) => { if (o.isMesh) o.userData.item = it.id; });
+    Object.assign(g.userData, { item: it.id, w: d.w, d: d.d, h: d.h, color: it.color });
+    this.items.add(g);
+  }
+  // move one piece without rebuilding the whole home (smooth dragging)
+  moveItem(it) {
+    const g = this.items?.children.find((c) => c.userData.item === it.id); if (!g) return false;
+    const d = dims(it); if (d.w !== g.userData.w || d.d !== g.userData.d || d.h !== g.userData.h || it.color !== g.userData.color) return false;
+    const y = d.mount === "ceiling" ? this.H : d.mount === "wall" ? d.z : 0;
+    g.position.set(it.x, y, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
+    this.shadowsDirty = true; this.request(false); return true;
+  }
+  addGround(floor) {
+    const b = planBounds(floor), w = b.x1 - b.x0 + 40, d = b.y1 - b.y0 + 40;
+    const geo = new THREE.PlaneGeometry(w, d); geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, -0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true;
+    this.root.add(m);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(b.x1 - b.x0 + 0.4, 0.12, b.y1 - b.y0 + 0.4), solid("#D6D0C6", { rough: 0.9 }));
+    slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; this.root.add(slab);
+    this.bounds = b;
+  }
+  applyWalls() {
+    const mode = this.view === "walk" ? "full" : (this.plan?.settings?.walls || this.opts.walls);
+    this.wallsG.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.userData.wall && mode === "cut" && o.userData.y0 >= CUT) { o.visible = false; return; }
+      o.visible = true;
+      if (o.userData.wall && mode === "cut" && o.userData.y1 > CUT) {
+        // walls are cut at waist height so you can see into every room; the cut shows as a dark top
+        if (!o.userData.cutGeo) {
+          const p = o.geometry.parameters, h = CUT - o.userData.y0;
+          o.userData.fullGeo = o.geometry; o.userData.fullY = o.position.y;
+          o.userData.cutGeo = new THREE.BoxGeometry(p.width, h, p.depth);
+        }
+        o.geometry = o.userData.cutGeo; o.position.y = o.userData.y0 + (CUT - o.userData.y0) / 2;
+      } else if (o.userData.fullGeo) { o.geometry = o.userData.fullGeo; o.position.y = o.userData.fullY; }
+      if (o.userData.cuttable) o.material.clippingPlanes = mode === "cut" ? [this.cutPlane] : null;
+    });
+    this.ceilings.visible = this.view === "walk";
+    for (const d of this.devices.values()) if (d.mount === "ceiling" && d.obj) d.obj.visible = this.view === "walk" || mode !== "cut" || d.look === "pendant" || d.look === "chandelier";
+    this.shadowsDirty = true; this.request(true);
+  }
+
+  // ---------------------------------------------------------------- devices
+  addDevice(dv, H) {
+    const kind = dv.kind || deviceKind(dv.entity), rec = { dv, kind, mount: "floor" };
+    const g = new THREE.Group(); g.userData.device = dv.id; rec.obj = g;
+    if (kind === "light") {
+      const look = dv.look || lightLook(dv);
+      rec.look = look;
+      const mk = DEVICE_LOOKS[look] || DEVICE_LOOKS.flush;
+      g.add(mk({}));
+      if (look === "floor") { g.position.set(dv.x, 0, dv.y); rec.lightPos = new THREE.Vector3(dv.x, 1.45, dv.y); }
+      else { g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; rec.lightPos = new THREE.Vector3(dv.x, look === "pendant" || look === "chandelier" ? H - 0.85 : H - 0.15, dv.y); }
+      const l = new THREE.PointLight("#ffd29a", 0, 9, 2);
+      l.position.copy(rec.lightPos); rec.light = l; this.scene.add(l);
+    } else if (kind === "ac") {
+      g.add(DEVICE_LOOKS.ac({})); g.position.set(dv.x, H - 0.45, dv.y); g.rotation.y = ((dv.rot || 0) * Math.PI) / 180; rec.mount = "wall";
+      rec.air = this.airStream(g);
+    } else if (kind === "fan") { g.add(DEVICE_LOOKS.fan({})); g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; }
+    else if (kind === "person") { g.add(DEVICE_LOOKS.person({ color: dv.color })); g.position.set(dv.x, 0, dv.y); }
+    else if (kind === "speaker") { g.add(DEVICE_LOOKS.speaker({})); g.position.set(dv.x, dv.z ?? 0.8, dv.y); }
+    else if (kind === "vacuum") { g.add(DEVICE_LOOKS.vacuum({})); g.position.set(dv.x, 0, dv.y); }
+    else if (kind === "curtain") rec.window = this.attachCurtain(dv, H);
+    else if (kind === "door" || kind === "lock") rec.door = this.findOpening(dv, ["door"]);
+    else if (kind === "tv") rec.screen = this.findScreen(dv);
+    else { g.position.set(dv.x, 1.2, dv.y); }
+    this.devG.add(g);
+    this.devices.set(dv.id, rec);
+  }
+  findOpening(dv, types) {
+    let best = null, bd = 1.2;
+    this.wallsG.traverse((o) => { if (!o.userData.opening) return; const op = this.floor.openings.find((p) => p.id === o.userData.opening); if (!op || !types.includes(op.type)) return; const d = Math.hypot(op.x - dv.x, op.y - dv.y); if (d < bd) { bd = d; best = o; } });
+    return best;
+  }
+  findScreen(dv) {
+    let best = null, bd = 1.5;
+    this.items.traverse((o) => { if (o.name === "screen") { const p = o.getWorldPosition(new THREE.Vector3()); const d = Math.hypot(p.x - dv.x, p.z - dv.y); if (d < bd) { bd = d; best = o; } } });
+    if (best) { best.material = best.material.clone(); best.material.emissive = new THREE.Color("#ffffff"); best.material.emissiveMap = this.tvTexture(); best.material.emissiveIntensity = 0; }
+    return best;
+  }
+  tvTexture() {
+    if (this._tv) return this._tv;
+    const c = document.createElement("canvas"); c.width = 256; c.height = 144; this._tvc = c;
+    this._tv = new THREE.CanvasTexture(c); this._tv.colorSpace = THREE.SRGBColorSpace; this.paintTv(0); return this._tv;
+  }
+  paintTv(t) {
+    const x = this._tvc.getContext("2d"), g = x.createLinearGradient(0, 0, 256, 144);
+    const h = (t * 12) % 360;
+    g.addColorStop(0, `hsl(${h + 330},70%,45%)`); g.addColorStop(0.5, `hsl(${h + 260},70%,40%)`); g.addColorStop(1, `hsl(${h + 200},75%,45%)`);
+    x.fillStyle = g; x.fillRect(0, 0, 256, 144); x.fillStyle = "rgba(255,255,255,.15)"; x.beginPath(); x.arc(70 + Math.sin(t) * 20, 60, 40, 0, Math.PI * 2); x.fill();
+    this._tv.needsUpdate = true;
+  }
+  attachCurtain(dv, H) {
+    const win = this.findOpening(dv, ["window", "slider"]); if (!win) return null;
+    const op = this.floor.openings.find((p) => p.id === win.userData.opening);
+    const width = op.width + 0.4, drop = Math.min(H - 0.08, op.sill + op.height + 0.25);
+    const panels = [];
+    const mat = fabric(dv.color || "#E6DCCB").clone(); mat.side = THREE.DoubleSide; mat.transparent = true; mat.opacity = 0.96;
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, width + 0.1, 8), metal("#2B2D33")); rail.rotation.z = Math.PI / 2; rail.position.set(0, drop + 0.04, 0.16); rail.material = rail.material.clone(); rail.userData.cuttable = true; win.add(rail);
+    for (const s of [-1, 1]) {
+      const geo = new THREE.PlaneGeometry(width / 2, drop, 40, 1), pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin((pos.getX(i) / (width / 2)) * Math.PI * 9) * 0.03);
+      geo.computeVertexNormals(); geo.translate(s * width / 4, drop / 2, 0);
+      const m = new THREE.Mesh(geo, mat); m.position.set(0, 0, 0.16); m.castShadow = true; m.userData.side = s; m.userData.cuttable = true;
+      win.add(m); panels.push(m);
+    }
+    return { panels, width, open: 1, target: 1 };
+  }
+  airStream(g) {
+    const n = 60, geo = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), seeds = new Float32Array(n);
+    for (let i = 0; i < n; i++) seeds[i] = Math.random();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ color: "#9fdcff", size: 0.06, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+    const pts = new THREE.Points(geo, mat); pts.visible = false; pts.frustumCulled = false; g.add(pts);
+    return { pts, seeds, t: 0 };
+  }
+  setStates(states) {
+    this.states = states || {}; this.updateDevices(false);
+    // a light changed while the photo was being made: start the photo again with the new light
+    if (this.photo?.active) { this.photo.stop(); clearTimeout(this._pt); this._pt = setTimeout(() => this.startPhoto(), 900); }
+  }
+  updateDevices(first) {
+    let lightsChanged = false;
+    const lightsOn = [];
+    for (const rec of this.devices.values()) {
+      const s = stateOf(rec, this.states, this.opts.editing);
+      const key = JSON.stringify(s);
+      if (!first && key === rec.key) { if (rec.kind === "light" && s.on) lightsOn.push([rec, s]); continue; }
+      rec.key = key;
+      if (rec.kind === "light") {
+        lightsChanged = true;
+        if (s.on) lightsOn.push([rec, s]);
+        this.fadeLight(rec, s);
+      } else if (rec.kind === "curtain" && rec.window) {
+        rec.window.target = s.open; this.animate(`c${rec.dv.id}`, (dt) => { const w = rec.window; w.open += Math.sign(w.target - w.open) * Math.min(Math.abs(w.target - w.open), dt * 0.6); for (const p of w.panels) { const sc = 0.18 + 0.82 * (1 - w.open); p.scale.x = sc; p.position.x = p.userData.side * (w.width / 4) * (1 - sc) * 1.05; } this.shadowsDirty = true; return Math.abs(w.target - w.open) > 0.001; });
+      } else if ((rec.kind === "door" || rec.kind === "lock") && rec.door) {
+        const target = s.open ? 1.4 : 0;
+        this.animate(`d${rec.dv.id}`, (dt) => { let done = true; rec.door.traverse((o) => { if (o.name !== "leaf") return; const tgt = target * o.userData.side * o.userData.swing; const cur = o.rotation.y; const nx = cur + Math.sign(tgt - cur) * Math.min(Math.abs(tgt - cur), dt * 2.2); o.rotation.y = nx; if (Math.abs(tgt - nx) > 0.001) done = false; }); this.shadowsDirty = true; return !done; });
+      } else if (rec.kind === "ac") {
+        rec.air.pts.visible = s.on;
+        const led = rec.obj.getObjectByName("glow"); if (led) led.material.emissiveIntensity = s.on ? 4 : 0;
+        if (s.on) this.animate(`a${rec.dv.id}`, (dt) => this.stepAir(rec, dt)); else this.anims.delete(this._anim?.[`a${rec.dv.id}`]);
+        const louver = rec.obj.getObjectByName("louver"); if (louver) louver.rotation.x = s.on ? 0.7 : 0;
+      } else if (rec.kind === "tv" && rec.screen) {
+        rec.screen.material.emissiveIntensity = s.on ? 1.6 : 0;
+        if (s.on) this.animate(`t${rec.dv.id}`, (dt) => { this._tvT = (this._tvT || 0) + dt * 0.3; if (((this._tvF = (this._tvF || 0) + 1) % 6) === 0) this.paintTv(this._tvT); return this.states && rec.screen.material.emissiveIntensity > 0; });
+      } else if (rec.kind === "fan") {
+        const spin = rec.obj.getObjectByName("spin");
+        if (s.on && spin) this.animate(`f${rec.dv.id}`, (dt) => { spin.rotation.y += dt * 6 * (s.speed || 0.7); return rec.key === key; });
+      } else if (rec.kind === "person") { rec.obj.visible = s.on; this.shadowsDirty = true; }
+    }
+    if (lightsChanged || first) this.assignShadows(lightsOn);
+    this.updateHot();
+    this.request(false);
+  }
+  fadeLight(rec, s) {
+    const target = s.on ? s.intensity : 0, col = new THREE.Color(s.color || "#ffd29a");
+    rec.light.color.copy(col);
+    const glows = []; rec.obj.traverse((o) => { if (o.name === "glow") glows.push(o); });
+    this.animate(`l${rec.dv.id}`, (dt) => {
+      const cur = rec.light.intensity, nx = cur + (target - cur) * Math.min(1, dt * 7);
+      rec.light.intensity = Math.abs(nx - target) < 0.05 ? target : nx;
+      const f = target ? rec.light.intensity / target : rec.light.intensity / (rec.lastI || 1);
+      for (const gw of glows) { gw.material.emissive.copy(col); gw.material.emissiveIntensity = s.on ? 2.5 * Math.max(0.15, f) : 0; }
+      if (rec.light.intensity === target) { rec.lastI = target || rec.lastI; return false; }
+      return true;
+    });
+    this.shadowsDirty = true;
+  }
+  assignShadows(on) {
+    const max = { low: 0, medium: 2, high: 4 }[this.quality], size = { low: 256, medium: 512, high: 1024 }[this.quality];
+    on.sort((a, b) => b[1].intensity - a[1].intensity);
+    for (const rec of this.devices.values()) if (rec.light) rec.light.castShadow = false;
+    on.slice(0, max).forEach(([rec]) => { rec.light.castShadow = true; rec.light.shadow.mapSize.set(size, size); rec.light.shadow.bias = -0.002; rec.light.shadow.radius = 4; rec.light.shadow.camera.near = 0.1; });
+    this.shadowsDirty = true;
+  }
+  stepAir(rec, dt) {
+    const a = rec.air; a.t += dt; const p = a.pts.geometry.attributes.position;
+    for (let i = 0; i < a.seeds.length; i++) {
+      const k = (a.seeds[i] + a.t * 0.35) % 1;
+      p.setXYZ(i, (a.seeds[i] - 0.5) * 0.85, -0.05 - k * 1.1 - Math.sin(k * 3 + i) * 0.04, 0.1 + k * 1.5);
+    }
+    p.needsUpdate = true; a.pts.material.opacity = 0.5;
+    return rec.air.pts.visible;
+  }
+  animate(id, fn) { this._anim ||= {}; if (this._anim[id]) this.anims.delete(this._anim[id]); this._anim[id] = fn; this.anims.add(fn); this.request(false); }
+
+  // ---------------------------------------------------------------- sun and sky
+  setSun(sunState) { this.sunState = sunState; this.fitSun(); }
+  fitSun() {
+    const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, r = Math.max(b.x1 - b.x0, b.y1 - b.y0);
+    const s = this.sunState, north = ((this.plan?.north || 0) * Math.PI) / 180;
+    let el = s ? Number(s.attributes?.elevation ?? 35) : 35, az = s ? Number(s.attributes?.azimuth ?? 200) : 200;
+    if (this.opts.forceTime === "night") el = -10; else if (this.opts.forceTime === "day") { el = 40; az = 210; }
+    const day = Math.max(0, Math.min(1, (el + 4) / 14));
+    const e = (Math.max(el, 4) * Math.PI) / 180, a = (az * Math.PI) / 180 + north;
+    this.sun.position.set(cx + Math.sin(a) * Math.cos(e) * r * 2, Math.sin(e) * r * 2, cz - Math.cos(a) * Math.cos(e) * r * 2);
+    this.sun.target.position.set(cx, 0, cz);
+    const sc = this.sun.shadow.camera; Object.assign(sc, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: r * 5 }); sc.updateProjectionMatrix();
+    const ms = { low: 1024, medium: 2048, high: 4096 }[this.quality]; if (this.sun.shadow.mapSize.x !== ms) { this.sun.shadow.mapSize.set(ms, ms); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
+    this.sun.intensity = 2.6 * day; this.sun.color.set(el < 12 ? "#ffcf9e" : "#fff4e2");
+    this.hemi.intensity = 0.12 + 0.75 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
+    this.scene.environmentIntensity = 0.12 + 0.55 * day;
+    this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
+    this.isDay = day > 0.3;
+    this.emit("sky", { day });
+    this.shadowsDirty = true; this.request(false);
+  }
+
+  // ---------------------------------------------------------------- views
+  center() { const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }; return new THREE.Vector3((b.x0 + b.x1) / 2, 0, (b.y0 + b.y1) / 2); }
+  frame(view, instant = false) {
+    this.view = view; const c = this.center(), b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }, r = Math.max(b.x1 - b.x0, (b.y1 - b.y0) * this.camera.aspect * 0.8, 6);
+    let pos, target = c.clone(), fov = 32;
+    if (view === "top") { const half = Math.tan((30 * Math.PI) / 360); pos = new THREE.Vector3(c.x, Math.max((b.x1 - b.x0) / this.camera.aspect, b.y1 - b.y0) * 1.12 / (2 * half), c.z + 0.01); fov = 30; }
+    else if (view === "walk") {
+      const room = this.walkRoom || this.floor.rooms.find((x) => x.type === "living") || this.floor.rooms[0];
+      const [x, y] = centroid(room.pts), bb = room.pts;
+      const far = bb.reduce((m, p) => (Math.hypot(p[0] - x, p[1] - y) > Math.hypot(m[0] - x, m[1] - y) ? p : m), bb[0]);
+      pos = new THREE.Vector3(x + (far[0] - x) * 0.7, 1.55, y + (far[1] - y) * 0.7); target = new THREE.Vector3(x - (far[0] - x) * 0.4, 1.2, y - (far[1] - y) * 0.4); fov = 62;
+      this.walkRoomId = room.id;
+    } else {
+      // far enough that the whole home fits, seen from the south-east at about 45°
+      const R = 0.5 * Math.hypot(b.x1 - b.x0, b.y1 - b.y0) + 0.5, v = (fov * Math.PI) / 360, hh = Math.atan(Math.tan(v) * this.camera.aspect);
+      const dist = (R / Math.sin(Math.min(v, hh))) * (this.camera.aspect < 1 ? 0.95 : 0.8);
+      pos = new THREE.Vector3(c.x + dist * 0.38, dist * 0.72, c.z + dist * 0.62);
+    }
+    this.controls.enabled = view !== "walk";
+    this.controls.maxPolarAngle = view === "top" ? 0.15 : Math.PI * 0.47;
+    this.controls.minPolarAngle = 0;
+    this.controls.enableRotate = view !== "top";
+    this.tweenTo(pos, target, fov, instant ? 0 : 0.9);
+    this.applyWalls();
+    this.emit("view", view);
+  }
+  tweenTo(pos, target, fov, dur = 0.9) {
+    if (!dur) { this.camera.position.copy(pos); this.controls.target.copy(target); this.camera.fov = fov; this.camera.updateProjectionMatrix(); this.camera.lookAt(target); this.request(true); return; }
+    this.tween = { t: 0, dur, p0: this.camera.position.clone(), p1: pos, t0: this.controls.target.clone(), t1: target, f0: this.camera.fov, f1: fov };
+  }
+  stepTween(dt) {
+    const tw = this.tween; tw.t = Math.min(1, tw.t + dt / tw.dur); const k = ease(tw.t);
+    this.camera.position.lerpVectors(tw.p0, tw.p1, k); this.controls.target.lerpVectors(tw.t0, tw.t1, k);
+    this.camera.fov = tw.f0 + (tw.f1 - tw.f0) * k; this.camera.updateProjectionMatrix(); this.camera.lookAt(this.controls.target);
+    this.request(true);
+    if (tw.t >= 1) this.tween = null;
+  }
+  home() { this.userMoved = false; this.frame(this.view === "walk" ? "3d" : this.view || "3d"); }
+  walkTo(roomId) { this.walkRoom = this.floor.rooms.find((r) => r.id === roomId); this.frame("walk"); }
+  walkLook(e) {
+    if (this.view !== "walk" || !this._drag) return;
+    const dx = e.clientX - this._drag.x, dy = e.clientY - this._drag.y; this._drag.x = e.clientX; this._drag.y = e.clientY; this._drag.moved += Math.abs(dx) + Math.abs(dy);
+    const dir = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+    const sph = new THREE.Spherical().setFromVector3(dir); sph.theta -= dx * 0.005; sph.phi = Math.max(0.6, Math.min(2.4, sph.phi - dy * 0.004));
+    this.controls.target.copy(this.camera.position).add(new THREE.Vector3().setFromSpherical(sph)); this.camera.lookAt(this.controls.target);
+    if (!this.lowRes) this.interacting(true);
+    this.request(true);
+  }
+
+  // ---------------------------------------------------------------- tapping things
+  pointerDown(e) { this._drag = { x: e.clientX, y: e.clientY, moved: 0, t: performance.now() }; this._holdT = setTimeout(() => { if (this._drag && this._drag.moved < 8) { const hit = this.pick(e); if (hit) { this._held = true; this.emit("hold", hit); } } }, 550); }
+  pointerUp(e) {
+    clearTimeout(this._holdT);
+    const d = this._drag; this._drag = null;
+    if (this.view === "walk" && d && d.moved > 6) this.interacting(false);
+    if (this._held) { this._held = false; return; }
+    if (!d || d.moved > 8 || performance.now() - d.t > 500) return;
+    const hit = this.pick(e);
+    if (hit) this.emit("tap", hit);
+    if (this.view === "walk" && hit?.room && !hit.device) {
+      const p = hit.point, dir = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+      const to = new THREE.Vector3(p.x, 1.55, p.z); this.tweenTo(to, to.clone().add(dir), this.camera.fov, 0.7);
+    }
+  }
+  pick(e) {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster(); ray.setFromCamera(v, this.camera);
+    const hits = ray.intersectObjects([this.devG, this.wallsG, this.items, this.rooms], true).filter((h) => { let o = h.object; while (o) { if (!o.visible) return false; o = o.parent; } return true; });
+    for (const h of hits) {
+      let o = h.object; while (o && !o.userData.device && !o.userData.item && !o.userData.room && !o.userData.opening) o = o.parent;
+      if (!o) continue;
+      if (o.userData.device) return { device: o.userData.device, point: h.point };
+      if (o.userData.opening) { const rec = [...this.devices.values()].find((x) => x.door === o || x.window?.panels?.[0]?.parent === o); if (rec) return { device: rec.dv.id, point: h.point }; continue; }
+      if (o.userData.item) { const sc = [...this.devices.values()].find((x) => x.screen && x.screen.parent?.parent === o.parent?.parent); if (sc) return { device: sc.dv.id, point: h.point }; return { item: o.userData.item, point: h.point }; }
+      if (o.userData.room) return { room: o.userData.room, point: h.point };
+    }
+    return null;
+  }
+  updateHot() {
+    this.hot = [];
+    for (const rec of this.devices.values()) {
+      const dv = rec.dv;
+      const y = rec.kind === "light" ? (rec.mount === "ceiling" ? Math.min(CUT + 0.6, this.H - 0.3) : 1.6) : rec.kind === "ac" ? Math.min(CUT + 0.5, this.H - 0.45) : rec.kind === "curtain" ? 1.6 : rec.kind === "tv" ? 1.4 : rec.kind === "door" || rec.kind === "lock" ? 1.2 : rec.kind === "person" ? 1.9 : 1.0;
+      this.hot.push({ id: dv.id, kind: rec.kind, entity: dv.entity, name: dv.name, pos: new THREE.Vector3(dv.x, this.view === "walk" && rec.kind === "light" ? this.H - 0.3 : y, dv.y), state: stateOf(rec, this.states, this.opts.editing) });
+    }
+    this.projectHotspots();
+  }
+  projectHotspots() {
+    if (!this.opts.hotspots) return;
+    const [w, h] = this.size, out = [], v = new THREE.Vector3(), camDir = new THREE.Vector3(); this.camera.getWorldDirection(camDir);
+    for (const hs of this.hot) {
+      v.copy(hs.pos).project(this.camera);
+      const toP = hs.pos.clone().sub(this.camera.position);
+      const vis = v.z < 1 && toP.dot(camDir) > 0 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && (this.view !== "walk" || this.roomOf(hs.pos) === this.walkRoomId || toP.length() < 4);
+      out.push({ ...hs, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h, visible: vis });
+    }
+    this.emit("hotspots", out);
+  }
+  roomOf(p) { return this.floor.rooms.find((r) => inside([p.x, p.z], r.pts))?.id; }
+
+  // ---------------------------------------------------------------- photo mode
+  async startPhoto() {
+    if (this.busy || this.tween || !this.opts.photo) return;
+    if (!this.photo) { const { PhotoMode } = await import("./photo.js"); this.photo = new PhotoMode(this); }
+    this.photo.start();
+  }
+  setPhoto(on) { this.opts.photo = on; if (on) this.startPhoto(); else this.photo?.stop(); this.request(true); }
+  snapshot() { this.composer.render(); return this.renderer.domElement.toDataURL("image/jpeg", 0.92); }
+
+  dispose() {
+    this.alive = false; this.resizeObs.disconnect(); this.photo?.dispose(); this.controls.dispose(); this.composer.dispose?.();
+    this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer.domElement.remove();
+  }
+}

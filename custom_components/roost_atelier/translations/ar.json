@@ -1,0 +1,11 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Roost Atelier",
+        "description": "يضيف الأتيليه إلى الشريط الجانبي لبناء منزلك ثلاثي الأبعاد، وبطاقة Roost Atelier للوحات التحكم."
+      }
+    },
+    "abort": { "single_instance_allowed": "تمت إضافة Roost Atelier مسبقاً." }
+  }
+}
