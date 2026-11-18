@@ -1,6 +1,6 @@
 // Photo mode: when you stop touching the home, light is traced bounce by bounce until the picture
 // looks like a studio render. Any touch drops back to the live view straight away.
-import { WebGLPathTracer } from "three-gpu-pathtracer";
+import { WebGLPathTracer, GradientEquirectTexture } from "three-gpu-pathtracer";
 
 export class PhotoMode {
   constructor(engine) {
@@ -22,8 +22,13 @@ export class PhotoMode {
     const hidden = [];
     e.scene.traverse((o) => { if (o.visible && (o.isPoints || o.material?.isShadowMaterial)) { o.visible = false; hidden.push(o); } });
     this.hidden = hidden;
+    // the tracer needs a plain sky picture for its light from outside
+    if (!this.sky) { this.sky = new GradientEquirectTexture(64); }
+    const day = e.isDay;
+    this.sky.topColor.set(day ? "#cfe0ff" : "#1a2050"); this.sky.bottomColor.set(day ? "#f2ebe0" : "#0b0d17"); this.sky.update();
+    this.prevEnv = e.scene.environment; e.scene.environment = this.sky;
     if (this.version !== e.version) { this.pt.setScene(e.scene, e.camera); this.version = e.version; }
-    else { this.pt.updateCamera(); this.pt.updateLights(); this.pt.updateMaterials(); }
+    else { this.pt.updateCamera(); this.pt.updateLights(); this.pt.updateMaterials(); this.pt.updateEnvironment(); }
     this.pt.reset();
     this.active = true; this.done = false;
     e.emit("photo", { progress: 0 });
@@ -39,6 +44,7 @@ export class PhotoMode {
     if (!this.active) return;
     this.active = false;
     for (const o of this.hidden || []) o.visible = true;
+    if (this.prevEnv) { this.e.scene.environment = this.prevEnv; this.prevEnv = null; }
     this.e.emit("photo", { progress: -1 });
     this.e.request(false);
   }

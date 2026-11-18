@@ -193,7 +193,7 @@ function guessTypes(rs) {
 const BLOCKS = [[/sofa|couch|كنب/i, "sofa"], [/bed.*(king|queen|double)|double.*bed|سرير/i, "bed_double"], [/bed/i, "bed_single"], [/arm.?chair/i, "armchair"], [/dining.*table|table.*dining/i, "dining_table"], [/chair|كرسي/i, "dining_chair"],
   [/coffee|centre.?table|center.?table/i, "coffee_table"], [/table|طاولة/i, "dining_table"], [/wc|toilet|closet|مرحاض/i, "toilet"], [/basin|sink|lav|مغسل/i, "basin"], [/bath.?tub|tub|بانيو/i, "bathtub"], [/shower|دش/i, "shower"],
   [/fridge|refrig|ثلاج/i, "fridge"], [/wardrobe|closet|دولاب|خزان/i, "wardrobe"], [/desk|مكتب/i, "desk"], [/tv|television|تلفز/i, "tv_unit"], [/plant|tree|نبات|شجر/i, "plant"], [/washer|washing|غسال/i, "washing_machine"], [/stove|cooker|hob|oven|counter|kitchen|مطبخ/i, "kitchen_base"], [/rug|carpet|سجاد/i, "rug"]];
-export function fromDxf(text) {
+export function fromDxf(text, { gap = 1.0 } = {}) {
   return import("dxf-parser").then(({ default: DxfParser }) => {
     const dxf = new DxfParser().parseSync(text);
     const units = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1 }[dxf.header?.$INSUNITS];
@@ -222,7 +222,7 @@ export function fromDxf(text) {
     for (const [a, b] of ws) g.line(Xf(a), Xf(b), RES * 1.5);
     // CAD walls are two thin lines: fill between close parallel lines so they read as solid walls
     fillPairs(g, ws.map(([a, b]) => [Xf(a), Xf(b)]));
-    const res = rooms(g);
+    const res = rooms(g, { gap });
     // door swings
     for (const a of arcs) {
       const r = a.r * k; if (r < 0.55 || r > 1.3) continue;
@@ -260,7 +260,7 @@ function fillPairs(g, segs) {
 }
 
 // Images (and PDF pages drawn as images): dark thick strokes are walls.
-export function fromImage(img, { metresPerPx } = {}) {
+export function fromImage(img, { metresPerPx, gap = 1.0 } = {}) {
   const W0 = img.width, H0 = img.height, c = document.createElement("canvas");
   // first pass at up to 1600 px to measure the walls
   const s0 = Math.min(1, 1600 / Math.max(W0, H0)); c.width = Math.round(W0 * s0); c.height = Math.round(H0 * s0);
@@ -276,7 +276,7 @@ export function fromImage(img, { metresPerPx } = {}) {
   x = c2.getContext("2d", { willReadFrequently: true }); x.fillStyle = "#fff"; x.fillRect(0, 0, c2.width, c2.height); x.imageSmoothingQuality = "high"; x.drawImage(c, 0, 0, c.width * k, c.height * k);
   d = x.getImageData(0, 0, g.nx, g.ny).data;
   for (let i = 0; i < g.w.length; i++) g.w[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11 < 150 ? 1 : 0;
-  const res = rooms(g, { thick: thickPx * m });
+  const res = rooms(g, { thick: thickPx * m, gap });
   return { ...res, items: [], metresPerPx: m * s0, size: [round(W0 * m * s0, 2), round(H0 * m * s0, 2)] };
 }
 function rawThick(dark, w, h) {

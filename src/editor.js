@@ -55,6 +55,7 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .zoom{position:absolute;bottom:12px;inset-inline-start:12px;display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--border)}
 .three{position:relative;border-inline-start:1px solid var(--border);min-width:0}
 aside{grid-row:2;border-inline-start:1px solid var(--border);background:var(--panel);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px;z-index:2}
+aside>*{flex:none}
 aside h2{all:unset;font:600 15px "Space Grotesk",Inter,sans-serif;display:flex;align-items:center;gap:8px}
 aside h3{all:unset;font:600 11px Inter,sans-serif;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -108,7 +109,7 @@ export class AtelierEditor {
     root.innerHTML = `<style>${CSS}</style><div class="ed" dir="${rtl ? "rtl" : "ltr"}" data-layout="split">
       <header><div class="title"><button class="homes" title="${t("Homes")}"><ha-icon icon="mdi:home-outline"></ha-icon><h1></h1><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>
         <button data-a="undo" title="${t("Undo")}"><ha-icon icon="mdi:undo"></ha-icon></button><button data-a="redo" title="${t("Redo")}"><ha-icon icon="mdi:redo"></ha-icon></button>
-        <span class="status"></span>
+        <div class="seg floors"></div><span class="status"></span>
         <div class="seg layout"><button data-l="plan" title="Plan"><ha-icon icon="mdi:floor-plan"></ha-icon></button><button data-l="split" title="Split"><ha-icon icon="mdi:view-split-vertical"></ha-icon></button><button data-l="three" title="${t("3D")}"><ha-icon icon="mdi:cube-outline"></ha-icon></button></div>
         <button data-a="settings" title="${t("Settings")}"><ha-icon icon="mdi:tune-variant"></ha-icon></button></header>
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
@@ -150,10 +151,10 @@ export class AtelierEditor {
   }
   async open(id) { const p = await ws(this._hass, { type: "roost_atelier/plan", plan_id: id }); this.load(validate(p)); }
   load(plan, unsaved = false) {
-    this.plan = plan; this.floor = plan.floors[0]; this.sel = null; this.undoStack = []; this.redoStack = []; this._fitted = false; this._userView = false;
+    this.plan = plan; this.fi = 0; this.floor = plan.floors[0]; this.sel = null; this.undoStack = []; this.redoStack = []; this._fitted = false; this._userView = false;
     this.root.querySelector("h1").textContent = plan.name;
     if (plan.id) localStorage.setItem("roost-atelier-last", plan.id);
-    this.view.setPlan(plan); this.view.engine._framed = false; this.view.engine.frame("3d", true);
+    this.drawFloors(); this.view.setPlan(plan, 0); this.view.engine._framed = false; this.view.engine.frame("3d", true);
     this.fit(); this.draw(); this.inspector(); this.setStatus(unsaved ? "" : t("Saved"));
     if (unsaved) this.save();
   }
@@ -162,11 +163,11 @@ export class AtelierEditor {
   snapshot() { this.undoStack.push(JSON.stringify(this.plan)); if (this.undoStack.length > 80) this.undoStack.shift(); this.redoStack = []; }
   undo() { if (!this.undoStack.length) return; this.redoStack.push(JSON.stringify(this.plan)); this.restore(this.undoStack.pop()); }
   redo() { if (!this.redoStack.length) return; this.undoStack.push(JSON.stringify(this.plan)); this.restore(this.redoStack.pop()); }
-  restore(json) { const id = this.plan.id; this.plan = JSON.parse(json); this.plan.id = id; this.floor = this.plan.floors[0]; if (this.sel && !this.find(this.sel)) this.sel = null; this.changed(true); this.inspector(); }
+  restore(json) { const id = this.plan.id; this.plan = JSON.parse(json); this.plan.id = id; this.fi = Math.min(this.fi, this.plan.floors.length - 1); this.floor = this.plan.floors[this.fi]; if (this.sel && !this.find(this.sel)) this.sel = null; this.changed(true); this.inspector(); }
   changed(rebuild = true, light = false) {
     this.draw();
     if (light && this.sel?.t === "item") { const it = this.find(this.sel); if (it && this.view.engine.moveItem(it)) rebuild = false; }
-    if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan); }; if (this._dragging && now - (this._lastRb || 0) < 450) this._rb = setTimeout(go, 450); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
+    if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan, this.fi); }; if (this._dragging && now - (this._lastRb || 0) < 450) this._rb = setTimeout(go, 450); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
     this.setStatus(t("Saving")); clearTimeout(this._sv); this._sv = setTimeout(() => this.save(), 1200);
     this.root.querySelector('[data-a="undo"]').toggleAttribute("disabled", !this.undoStack.length);
     this.root.querySelector('[data-a="redo"]').toggleAttribute("disabled", !this.redoStack.length);
@@ -185,6 +186,26 @@ export class AtelierEditor {
   find(s) { if (!s) return null; const f = this.floor; return (s.t === "room" ? f.rooms : s.t === "op" ? f.openings : s.t === "item" ? f.items : f.devices).find((x) => x.id === s.id); }
   select(s) { this.sel = s; if (this.tool !== "select" && s) { this.tool = "select"; this.drawNav(); } this.draw(); this.inspector(); }
   remove(s) { this.snapshot(); const f = this.floor, k = s.t === "room" ? "rooms" : s.t === "op" ? "openings" : s.t === "item" ? "items" : "devices"; f[k] = f[k].filter((x) => x.id !== s.id); this.sel = null; this.changed(); this.inspector(); }
+
+  // ------------------------------------------------------------ floors
+  drawFloors() {
+    const el = this.root.querySelector(".floors"), fl = this.plan.floors;
+    el.innerHTML = fl.map((f, i) => `<button data-fl="${i}" class="${i === this.fi ? "on" : ""}" title="${esc(f.name)}">${i === 0 ? "G" : i}</button>`).join("") + `<button data-fl="add" title="${t("Add level")}"><ha-icon icon="mdi:plus"></ha-icon></button>`;
+    el.querySelectorAll("[data-fl]").forEach((b) => (b.onclick = () => (b.dataset.fl === "add" ? this.addFloor() : this.useFloor(+b.dataset.fl))));
+  }
+  useFloor(i) { this.fi = i; this.floor = this.plan.floors[i]; this.sel = null; this.view.setPlan(this.plan, i); this._userView = false; this.fit(); this.drawFloors(); this.inspector(); }
+  addFloor() {
+    this.snapshot();
+    const top = this.plan.floors[this.plan.floors.length - 1];
+    // the new floor starts with the same outline as the one below, ready to divide
+    const rooms = top.rooms.filter((r) => !ROOM_TYPES[r.type]?.outdoor).map((r) => ({ id: uid("r"), type: r.type === "majlis" || r.type === "entrance" ? "living" : r.type, name: "", pts: clone(r.pts), floor: r.floor, wall: r.wall }));
+    this.plan.floors.push({ id: uid("f"), name: `Floor ${this.plan.floors.length}`, height: top.height, elevation: (top.elevation || 0) + top.height + 0.3, rooms, openings: [], items: [], devices: [], walls: [] });
+    this.changed(false); this.useFloor(this.plan.floors.length - 1);
+  }
+  removeFloor() {
+    if (this.plan.floors.length < 2) return;
+    this.confirm(`${t("Delete")} “${this.floor.name}”?`, () => { this.snapshot(); this.plan.floors.splice(this.fi, 1); this.changed(false); this.useFloor(Math.max(0, this.fi - 1)); });
+  }
 
   // ------------------------------------------------------------ the left rail
   drawNav() {
@@ -569,8 +590,11 @@ export class AtelierEditor {
       <label class="sl"><span>${t("North")}</span><b data-out="north">${p.north || 0}°</b><input type="range" data-north min="0" max="359" step="1" value="${p.north || 0}"></label>
       <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
+      <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     const set = (fn, rebuild = true) => { this.snapshot(); fn(); this.changed(rebuild); };
+    a.querySelector("[data-fname]").addEventListener("change", (e) => set(() => { f.name = e.target.value || f.name; this.drawFloors(); }, false));
+    a.querySelector("[data-delfloor]")?.addEventListener("click", () => this.removeFloor());
     a.querySelector("[data-name]").addEventListener("change", (e) => set(() => { p.name = e.target.value || p.name; this.root.querySelector("h1").textContent = p.name; }, false));
     a.querySelectorAll("[data-walls]").forEach((b) => (b.onclick = () => { set(() => (st.walls = b.dataset.walls)); this.homePanel(); }));
     a.querySelector("[data-fh]").addEventListener("change", (e) => set(() => (f.height = +e.target.value)));

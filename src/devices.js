@@ -45,22 +45,24 @@ export function stateOf(rec, states, editing) {
   if (kind === "curtain") {
     if (!st) return { open: 1, label: "" };
     const open = a.current_position != null ? a.current_position / 100 : st.state === "open" || st.state === "opening" ? 1 : 0;
-    return { open, label: a.current_position != null ? `${a.current_position}%` : st.state };
+    const label = open <= 0.01 ? "Closed" : open >= 0.99 ? "Open" : `${Math.round(open * 100)}%`;
+    return { open, label };
   }
   if (kind === "door" || kind === "lock") {
     if (!st) return { open: false, label: "" };
     const open = ["on", "open", "opening", "unlocked"].includes(st.state) && !(kind === "lock" && st.state === "unlocked" && !dv.swingOnUnlock);
-    return { open: kind === "lock" ? st.state === "open" : open, locked: st.state === "locked", label: st.state };
+    const label = { locked: "Locked", unlocked: "Unlocked", open: "Open", opening: "Open", closed: "Closed", on: "Open", off: "Closed", jammed: "Jammed", locking: "Locked", unlocking: "Unlocked" }[st.state] || st.state;
+    return { open: kind === "lock" ? st.state === "open" : open, locked: st.state === "locked", label };
   }
   if (kind === "ac") {
     if (!st) return { on: false, label: "" };
     const on = !OFF.includes(st.state);
     return { on, label: on ? (a.temperature != null ? `${a.temperature}°` : "On") : "Off", current: a.current_temperature };
   }
-  if (kind === "tv" || kind === "speaker") { if (!st) return { on: false, label: "" }; const on = !OFF.includes(st.state); return { on, label: on ? a.media_title || "On" : "Off" }; }
+  if (kind === "tv" || kind === "speaker") { if (!st) return { on: false, label: "" }; const on = !OFF.includes(st.state); return { on, label: on ? "On" : "Off", title: a.media_title }; }
   if (kind === "fan") { if (!st) return { on: false, label: "" }; const on = st.state === "on"; return { on, speed: (a.percentage ?? 70) / 100, label: on ? `${a.percentage ?? ""}%` : "Off" }; }
   if (kind === "person") { if (!st) return { on: editing, label: "" }; return { on: st.state === "home", label: st.state === "home" ? "Home" : "Away" }; }
-  if (kind === "vacuum") { if (!st) return { on: false, label: "" }; return { on: st.state === "cleaning", label: st.state }; }
+  if (kind === "vacuum") { if (!st) return { on: false, label: "" }; return { on: st.state === "cleaning", label: st.state === "cleaning" ? "On" : "Off" }; }
   if (!st) return { label: "" };
   return { label: `${st.state}${a.unit_of_measurement ? " " + a.unit_of_measurement : ""}`, on: st.state === "on" };
 }

@@ -30,22 +30,26 @@ async function planFile(ed, out, file) {
   try {
     const ext = file.name.split(".").pop().toLowerCase();
     let src, result;
-    if (ext === "dxf") result = await fromDxf(await file.text());
+    const opts = { gap: 1.0 };
+    if (ext === "dxf") { const text = await file.text(); result = await fromDxf(text, opts); return show(ed, out, result, null, (o) => fromDxf(text, o), opts); }
     else {
       src = ext === "pdf" ? await pdfToImage(await file.arrayBuffer(), WORKER) : await loadImage(file);
       await new Promise((r) => setTimeout(r, 20));
-      result = fromImage(src);
+      result = fromImage(src, opts);
     }
-    show(ed, out, result, src);
+    show(ed, out, result, src, async (o) => fromImage(src, o), opts);
   } catch (err) { out.innerHTML = `<span class="tip">Could not read this file: ${esc(err.message || err)}</span>`; console.warn(err); }
 }
-function show(ed, out, r, src) {
+function show(ed, out, r, src, redo, opts) {
   const width = r.size?.[0];
+  const again = async (o) => { Object.assign(opts, o); out.querySelector("[data-use]").setAttribute("disabled", ""); show(ed, out, await redo(opts), src, redo, opts); };
   out.innerHTML = `<div class="row between"><span>${t("Rooms")}</span><b>${r.rooms.length}</b></div><div class="row between"><span>${t("Doors")} / ${t("Window")}</span><b>${r.openings.length}</b></div>${r.items?.length ? `<div class="row between"><span>${t("Furniture")}</span><b>${r.items.length}</b></div>` : ""}
     ${src ? `<label class="sl"><span>Drawing width</span><b data-o>${width} m</b><input type="range" data-scale min="${round(width * 0.4, 1)}" max="${round(width * 2.5, 1)}" step="0.1" value="${width}"></label><span class="tip">Move until the rooms have their real size (a door is about 0.9 m).</span>` : ""}
+    <div class="field"><span class="tip">Widest doorway between rooms</span><div class="seg"><button data-gap="1" class="${opts.gap < 1.4 ? "on" : ""}">Normal doors</button><button data-gap="1.9" class="${opts.gap >= 1.4 ? "on" : ""}">Wide double doors</button></div></div>
     <div class="row"><button class="primary" data-use><ha-icon icon="mdi:check"></ha-icon>Use this plan</button></div>`;
   out.querySelector("[data-scale]")?.addEventListener("input", (e) => (out.querySelector("[data-o]").textContent = `${e.target.value} m`));
-  out.querySelector("[data-scale]")?.addEventListener("change", (e) => { const mpp = +e.target.value / src.width; show(ed, out, fromImage(src, { metresPerPx: mpp }), src); });
+  out.querySelector("[data-scale]")?.addEventListener("change", (e) => again({ metresPerPx: +e.target.value / src.width }));
+  out.querySelectorAll("[data-gap]").forEach((b) => (b.onclick = () => again({ gap: +b.dataset.gap })));
   out.querySelector("[data-use]").onclick = () => {
     ed.snapshot();
     // move the drawing so it starts at 0,0
@@ -55,7 +59,7 @@ function show(ed, out, r, src) {
     r.openings.forEach(sh); (r.items || []).forEach(sh);
     // the outside door nearest the bottom is the main door
     ed.floor.rooms = r.rooms; ed.floor.openings = r.openings; ed.floor.items = r.items || []; ed.floor.devices = [];
-    ed.sel = null; ed.changed(); ed.fit(); ed.view.engine._framed = false; ed.view.setPlan(ed.plan); ed.view.engine.frame("3d", true); ed.setTool("check");
+    ed.sel = null; ed.changed(); ed.fit(); ed.view.engine._framed = false; ed.view.setPlan(ed.plan, ed.fi); ed.view.engine.frame("3d", true); ed.setTool("check");
   };
 }
 function loadImage(file) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("Not an image")); i.src = URL.createObjectURL(file); }); }

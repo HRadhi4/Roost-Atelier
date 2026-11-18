@@ -104,7 +104,7 @@ export class AtelierView {
       const icon = h.kind === "curtain" ? (on ? "mdi:curtains" : "mdi:curtains-closed") : h.kind === "door" ? (on ? "mdi:door-open" : "mdi:door-closed") : h.kind === "lock" ? (h.state.locked ? "mdi:lock" : "mdi:lock-open-variant") : h.kind === "light" ? (on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline") : KINDS[h.kind]?.icon || "mdi:circle";
       const ic = el.querySelector("ha-icon"); if (ic.getAttribute("icon") !== icon) ic.setAttribute("icon", icon);
       el.firstElementChild.setAttribute("aria-label", h.name || "");
-      const lbl = h.entity && !this._hass?.states[h.entity] ? t("Device not found") : h.state.label || "";
+      const lbl = h.entity && this._hass && !this._hass.states[h.entity] ? t("Device not found") : t(h.state.label || "");
       const sp = el.querySelector("span"); if (sp.textContent !== lbl) sp.textContent = lbl;
     }
     for (const [id, el] of this.hsMap) if (!seen.has(id)) { el.remove(); this.hsMap.delete(id); }

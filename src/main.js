@@ -61,6 +61,7 @@ class RoostAtelierCardEditor extends HTMLElement {
     this.form.hass = this._hass; this.form.data = this._config;
     this.form.schema = [
       { name: "plan", label: t("Home"), selector: { select: { mode: "dropdown", options: [{ value: "", label: "First home" }, ...plans.map((p) => ({ value: p.id, label: p.name }))] } } },
+      { name: "floor", label: "Level (0 = ground)", selector: { number: { min: 0, max: 9, step: 1, mode: "box" } } },
       { name: "view", label: "View", selector: { select: { mode: "box", options: [{ value: "3d", label: t("3D") }, { value: "top", label: t("Top") }, { value: "walk", label: t("Walk") }] } } },
       { name: "height", label: t("Height"), selector: { number: { min: 240, max: 1200, step: 20, mode: "slider", unit_of_measurement: "px" } } },
       { name: "toolbar", label: "View buttons", selector: { boolean: {} } },

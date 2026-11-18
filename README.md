@@ -6,6 +6,8 @@
 [![Validate](https://github.com/HRadhi4/Roost-Atelier/actions/workflows/validate.yml/badge.svg)](https://github.com/HRadhi4/Roost-Atelier/actions/workflows/validate.yml)
 ![Licence](https://img.shields.io/badge/licence-free%20for%20personal%20use-8B6CFF)
 
+<p align="center"><img src="docs/media/live.gif" width="560" alt="Lights, curtains, the AC and the TV coming on in the 3D home as they are switched in Home Assistant"></p>
+
 Roost Atelier is a home designer that lives inside Home Assistant. You draw the rooms with your finger, drop in furniture and devices, and you get a lifelike 3D model of your home. Put that model on any dashboard and it comes alive: lamps glow and light the floor, curtains slide, doors swing open, the AC blows air, the TV plays, and the sun moves across the rooms at the real time of day.
 
 You don't need to know any design software or write code.
@@ -22,6 +24,7 @@ It is part of the **Roost** family, alongside [Roost Cards](https://github.com/H
 - **Furnish** from a library of about 40 pieces: sofas, beds, dining sets, majlis seating, kitchens, bathrooms, plants and lamps. Drag a piece near a wall and it turns to face the room and sits flat against the wall, the way a designer would place it.
 - **Pick finishes** with one tap: wood, herringbone, porcelain, marble, terrazzo and carpet floors, nine wall paints, and fabric colours.
 - **Check the home**: the Atelier points out rooms with no door, bedrooms with no window, furniture blocking a door, and devices that aren't linked yet. Many of these it can fix in one tap.
+- **Several levels**: tap **+** next to **G** at the top to add a level. It starts with the outline of the level below. On a dashboard, each card shows one level.
 - **Undo and redo** everything. Your work saves automatically.
 
 ### Import
@@ -62,13 +65,38 @@ Copy `custom_components/roost_atelier` into your `config/custom_components` fold
 
 ---
 
-## Your first home in five minutes
+## Tutorial: your first home in five minutes
 
-1. Open **Atelier** in the sidebar.
-2. Start from a ready-made home (apartment, villa with majlis, or studio), or start blank, or import a drawing.
-3. Pull the walls until the rooms match your home. Tap a room to choose its type, floor and wall colour.
-4. Open **Furniture** and drag pieces in. Open **Devices** and drag in your lights, ACs, curtains and TV, then link each one to its Home Assistant entity.
-5. Tap **Check the home**, then add the card to a dashboard.
+<p align="center"><img src="docs/media/build.gif" width="720" alt="Selecting the kitchen in the Atelier and pulling its wall wider, with the 3D model following"></p>
+
+**1. Start.** Open **Atelier** in the sidebar. Tap the home name at the top and choose where to start: a ready-made home (apartment, villa with majlis, or studio), a blank page, or **From CAD or PDF**.
+
+**2. Shape the rooms.** Tap a room once to select it. Then:
+- drag the white squares in the middle of each wall to move that wall;
+- drag the purple circles to move a corner;
+- drag inside the selected room to move the whole room, with everything in it.
+Walls snap to their neighbours, and the length of every wall is shown as you go. With the **Rooms** tool you can drag out a new room anywhere.
+
+**3. Name and finish.** With a room selected, pick its type (bedroom, majlis, kitchen…), its floor and its wall paint on the right.
+
+**4. Doors and windows.** Pick **Door**, **Window**, **Slider** or **Arch** on the left, then tap a wall. Drag it along the wall, and use the sliders to change its size. **Flip** changes the way a door opens; **Main** marks the front door.
+
+**5. Furniture.** Open **Furniture**, choose a category and drag a piece onto the plan (or tap it to drop it in the selected room). Near a wall, a piece turns and sits against the wall by itself. Drag the round handle to turn it; use the sliders for its size and the swatches for its colour.
+
+**6. Devices.** Open **Devices** and drag in lights, ACs, curtains, TVs, doors and people. Tap one and choose its entity from the list. Until it's linked it shows a demo state, so you can see how it will look.
+
+**7. Check.** Tap **Check the home** (the badge at the bottom of the left rail). Fix anything it finds, many with one tap.
+
+**8. Put it on a dashboard.** Edit a dashboard, add a card, and search for **Roost Atelier**.
+
+### Importing a drawing
+Open **Import**, choose a DXF, PDF, JPG or PNG, and wait a moment. Check the number of rooms found:
+- If the rooms look too big or too small, move **Drawing width** until a door is about 0.9 m wide.
+- If two rooms joined through a wide double door, choose **Wide double doors**.
+Tap **Use this plan**, then name the rooms and run **Check the home**.
+
+### Furniture from a photo
+You need an AI Task set up in Home Assistant. Select a room, open **Import**, choose **From a photo**, and pick or take a photo of the room. Untick anything you don't want, then tap **Add**.
 
 ## The card
 

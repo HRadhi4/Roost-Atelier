@@ -12,7 +12,7 @@ const AR = {
   "Tap and drag on the plan to draw a room.": "المس واسحب على المخطط لرسم غرفة.",
   "Tap a wall to add it.": "المس جداراً لإضافته.",
   "Drag a piece onto the plan.": "اسحب قطعة إلى المخطط.",
-  Offline: "غير متصل", "Device not found": "الجهاز غير موجود", "No homes yet": "لا توجد منازل بعد", Open: "مفتوح", Closed: "مغلق", On: "يعمل", Off: "متوقف", Away: "خارج المنزل",
+  Offline: "غير متصل", Level: "الطابق", "Add level": "إضافة طابق", Locked: "مقفل", Unlocked: "غير مقفل", Jammed: "عالق", "Device not found": "الجهاز غير موجود", "No homes yet": "لا توجد منازل بعد", Open: "مفتوح", Closed: "مغلق", On: "يعمل", Off: "متوقف", Away: "خارج المنزل",
   "Living room": "غرفة المعيشة", Dining: "الطعام", Kitchen: "المطبخ", Bedroom: "غرفة النوم", Bathroom: "الحمام", Hall: "الممر", Entrance: "المدخل", Office: "المكتب",
   Laundry: "الغسيل", Balcony: "الشرفة", Garden: "الحديقة", Majlis: "المجلس", Living: "المعيشة", Decor: "الديكور", Lights: "الإضاءة", Outdoor: "خارجي",
   "Check the home": "فحص المنزل", "Looks good": "كل شيء سليم", Recognise: "تعرّف", Add: "إضافة", Cancel: "إلغاء", Close: "إغلاق", Rename: "إعادة تسمية", Search: "بحث",

@@ -479,6 +479,7 @@ export class AtelierEngine {
     this.controls.enableRotate = view !== "top";
     this.tweenTo(pos, target, fov, instant ? 0 : 0.9);
     this.applyWalls();
+    if (this.devices.size) this.updateHot();
     this.emit("view", view);
   }
   tweenTo(pos, target, fov, dur = 0.9) {
@@ -538,7 +539,7 @@ export class AtelierEngine {
     this.hot = [];
     for (const rec of this.devices.values()) {
       const dv = rec.dv;
-      const y = rec.kind === "light" ? (rec.mount === "ceiling" ? Math.min(CUT + 0.6, this.H - 0.3) : 1.6) : rec.kind === "ac" ? Math.min(CUT + 0.5, this.H - 0.45) : rec.kind === "curtain" ? 1.6 : rec.kind === "tv" ? 1.4 : rec.kind === "door" || rec.kind === "lock" ? 1.2 : rec.kind === "person" ? 1.9 : 1.0;
+      const y = rec.kind === "light" ? (rec.mount === "ceiling" ? Math.min(CUT + 0.6, this.H - 0.3) : 1.6) : rec.kind === "ac" ? (this.view === "walk" ? this.H - 0.62 : Math.min(CUT + 0.5, this.H - 0.45)) : rec.kind === "curtain" ? 1.6 : rec.kind === "tv" ? 1.4 : rec.kind === "door" || rec.kind === "lock" ? 1.2 : rec.kind === "person" ? 1.9 : 1.0;
       this.hot.push({ id: dv.id, kind: rec.kind, entity: dv.entity, name: dv.name, pos: new THREE.Vector3(dv.x, this.view === "walk" && rec.kind === "light" ? this.H - 0.3 : y, dv.y), state: stateOf(rec, this.states, this.opts.editing) });
     }
     this.projectHotspots();
