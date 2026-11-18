@@ -1,10 +1,20 @@
 {
   "domain": "roost_atelier",
   "name": "Roost Atelier",
-  "codeowners": ["@HRadhi4"],
+  "after_dependencies": [
+    "ai_task",
+    "media_source"
+  ],
+  "codeowners": [
+    "@HRadhi4"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
-  "after_dependencies": ["ai_task", "media_source"],
+  "dependencies": [
+    "http",
+    "frontend",
+    "panel_custom",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/HRadhi4/Roost-Atelier",
   "integration_type": "service",
   "iot_class": "calculated",
