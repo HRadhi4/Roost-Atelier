@@ -72,7 +72,10 @@ export function prepare(engine) {
   let n = 0;
   for (const r of recv) { r.base = n; n += r.geo.attributes.position.count; }
   const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), alb = new Float32Array(n * 3);
-  const tris = [];
+  // the blocking triangles, counted first so they go straight into one array (no growing lists)
+  let triTotal = 0;
+  for (const r of recv) if (r.occlude) triTotal += r.geo.index ? r.geo.index.count : r.geo.attributes.position.count;
+  const tris = new Uint32Array(triTotal); let tn = 0;
   const v = new THREE.Vector3(), nm = new THREE.Matrix3();
   const rooms = engine.floor.rooms.filter((x) => x.pts?.length >= 3);
   for (const r of recv) {
@@ -91,25 +94,28 @@ export function prepare(engine) {
     const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.length : cnt, materialIndex: 0 }];
     for (const grp of groups) {
       const a = albedoOf(mats[grp.materialIndex] || mats[0]);
-      for (let t = grp.start; t < grp.start + grp.count; t++) { const vi = idx ? idx[t] : t; alb.set(a, (r.base + vi) * 3); }
+      const a0 = a[0], a1 = a[1], a2 = a[2], end = Math.min(grp.start + grp.count, idx ? idx.length : cnt);
+      for (let t = grp.start; t < end; t++) { const j = (r.base + (idx ? idx[t] : t)) * 3; alb[j] = a0; alb[j + 1] = a1; alb[j + 2] = a2; }
     }
-    if (r.occlude) for (let t = 0; t < triCount; t++) tris.push(r.base + (idx ? idx[t * 3] : t * 3), r.base + (idx ? idx[t * 3 + 1] : t * 3 + 1), r.base + (idx ? idx[t * 3 + 2] : t * 3 + 2));
+    if (r.occlude) { const total = triCount * 3; for (let t = 0; t < total; t++) tris[tn++] = r.base + (idx ? idx[t] : t); }
   }
   // group points into probes
-  const rep = new Int32Array(n), keyOf = new Map(), pp = [], pn = [], pa = [], pc = [];
+  const rep = new Int32Array(n), keyOf = new Map(), pp = new Float64Array(n * 3), pn = new Float64Array(n * 3), pa = new Float64Array(n * 3), pc = new Int32Array(n);
+  let probes = 0;
   for (let k = 0; k < n; k++) {
     const key = probeKey(pos, nrm, k);
     let q = keyOf.get(key);
-    if (q === undefined) { q = pc.length; keyOf.set(key, q); pc.push(0); pp.push(0, 0, 0); pn.push(0, 0, 0); pa.push(0, 0, 0); }
+    if (q === undefined) { q = probes++; keyOf.set(key, q); }
     rep[k] = q; pc[q]++;
     for (let c = 0; c < 3; c++) { pp[q * 3 + c] += pos[k * 3 + c]; pn[q * 3 + c] += nrm[k * 3 + c]; pa[q * 3 + c] += alb[k * 3 + c]; }
   }
-  const m = pc.length, ppos = new Float32Array(m * 3), pnrm = new Float32Array(m * 3), palb = new Float32Array(m * 3), room = new Int32Array(m).fill(-1);
+  const roomBox = rooms.map((r) => r.pts.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity]));
+  const m = probes, ppos = new Float32Array(m * 3), pnrm = new Float32Array(m * 3), palb = new Float32Array(m * 3), room = new Int32Array(m).fill(-1);
   for (let q = 0; q < m; q++) {
     const l = Math.hypot(pn[q * 3], pn[q * 3 + 1], pn[q * 3 + 2]) || 1;
     for (let c = 0; c < 3; c++) { ppos[q * 3 + c] = pp[q * 3 + c] / pc[q]; pnrm[q * 3 + c] = pn[q * 3 + c] / l; palb[q * 3 + c] = pa[q * 3 + c] / pc[q]; }
     // which room each probe belongs to (for per-room brightness)
-    const x = ppos[q * 3], z = ppos[q * 3 + 2]; for (let i = 0; i < rooms.length; i++) if (insidePoly(x, z, rooms[i].pts)) { room[q] = i; break; }
+    const x = ppos[q * 3], z = ppos[q * 3 + 2]; for (let i = 0; i < rooms.length; i++) { const bb = roomBox[i]; if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3]) continue; if (insidePoly(x, z, rooms[i].pts)) { room[q] = i; break; } }
   }
   // the stored light is looked up by probe number
   for (const r of recv) { const ids = r.geo.attributes.bakeId.array; for (let i = 0; i < ids.length; i++) ids[i] = rep[ids[i]]; r.geo.attributes.bakeId.needsUpdate = true; }
@@ -131,7 +137,7 @@ export function prepare(engine) {
     windows.push({ id: op.id, c: [g.position.x, op.sill + op.height / 2, g.position.z], u: u.toArray(), n: nn.toArray(), hw: g.userData.width / 2, hh: op.height / 2 });
   });
   // geometry (all points, for blocking light) and probes (where light is measured)
-  return { recv, n: m, verts: n, pos: ppos, nrm: pnrm, alb: palb, room, rep, vpos: pos, index: new Uint32Array(tris), lights, windows, rooms: rooms.map((r) => r.id) };
+  return { recv, n: m, verts: n, pos: ppos, nrm: pnrm, alb: palb, room, rep, vpos: pos, index: tris, lights, windows, rooms: rooms.map((r) => r.id) };
 }
 // which probe a point belongs to: same cell of 6 cm and facing about the same way. A number (fast); the same
 // grouping and order as the text labels used before, so stored light stays valid.

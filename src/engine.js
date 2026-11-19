@@ -234,6 +234,8 @@ export class AtelierEngine {
     for (const it of floor.items) this.addItem(it, H);
     for (const d of floor.devices) this.addDevice(d, H);
     this.addGround(floor);
+    for (const [k, g] of this._shapes || []) if (!this._shapesNext?.has(k)) g.dispose();
+    this._shapes = this._shapesNext || new Map(); this._shapesNext = null;
     if (plan.settings?.levels && plan.floors.length > 1) this.addLevelsBelow(plan, floorIndex);
     this.applyWalls();
     this.fitSun();
@@ -254,7 +256,7 @@ export class AtelierEngine {
   collect(obj, gone) {
     const mats = (m) => (Array.isArray(m) ? m : m ? [m] : []);
     obj.traverse?.((o) => {
-      if (o.geometry && !o.geometry.parameters?.shared) o.geometry.dispose?.();
+      if (o.geometry && !o.geometry.parameters?.shared && !o.geometry.userData?.kept) o.geometry.dispose?.();
       for (const k of ["fullGeo", "cutGeo"]) if (o.userData?.[k] && o.userData[k] !== o.geometry) o.userData[k].dispose();
       for (const m of [...mats(o.material), ...mats(o.userData?.liveMaterial)]) if (!m.userData?.shared && !m.userData?.sharedBaked && !m.userData?.keep) gone.add(m);
     });
@@ -281,14 +283,22 @@ export class AtelierEngine {
     g.traverse((o) => { o.userData.noBake = true; });
     this.root.add(g);
   }
+  // floor and ceiling shapes are kept between rebuilds: an unchanged room reuses its own (cutting them is slow)
+  shape(pts, flip) {
+    const k = (flip ? "c" : "f") + JSON.stringify(pts);
+    let g = this._shapes?.get(k);
+    if (!g) { g = fineShape(pts, flip); g.userData.kept = true; }
+    (this._shapesNext ||= new Map()).set(k, g);
+    return g;
+  }
   addRoom(r, H) {
-    const geo = fineShape(r.pts, false);
+    const geo = this.shape(r.pts, false);
     const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
     const m = new THREE.Mesh(geo, floorMaterial(r.floor || type.floor));
     m.receiveShadow = true; m.userData.room = r.id; m.name = "floor";
     this.rooms.add(m);
     if (!type.outdoor) {
-      const c = new THREE.Mesh(fineShape(r.pts, true), solid("#F7F5F1", { rough: 0.95 })); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
+      const c = new THREE.Mesh(this.shape(r.pts, true), solid("#F7F5F1", { rough: 0.95 })); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
       this.ceilings.add(c);
     }
   }
@@ -945,6 +955,7 @@ export class AtelierEngine {
     window.removeEventListener("keydown", this._kd); window.removeEventListener("keyup", this._ku); window.removeEventListener("blur", this._blur); window.removeEventListener("pointerdown", this._pd, true);
     for (const rec of this._refl?.values() || []) { rec.env?.dispose(); rec.rt.dispose(); } this._refl?.clear(); this._pmrem?.dispose();
     for (const s of Object.values(this._skies || {})) s.equirect?.dispose(); this._tv?.dispose();
+    for (const g of this._shapes?.values() || []) g.dispose(); this._shapes = null;
     this.alive = false; this.resizeObs.disconnect(); this.photo?.dispose(); this.controls.dispose(); this.composer.dispose?.();
     this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer.domElement.remove();
   }

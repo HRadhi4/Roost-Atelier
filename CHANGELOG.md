@@ -2,6 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.8.1 — 2026-11-19
+- **Edits redraw faster:** rooms that did not change keep their floor and ceiling shapes, and preparing the home for its stored light makes far fewer temporary lists.
+
 ## 0.8.0 — 2026-11-19
 - **Presence radar:** add a *Presence radar* device (Athom, LD2450 and similar), pick its *target 1 x* sensor and turn it to face the room. Each person it sees walks in the right spot in 3D and shows as a dot on the plan; the plan also shows where the radar looks. *Flip left and right* fixes a sensor mounted the other way.
 - **Wall lengths on the plan** (the ruler button hides them) and a **printable plan** (printer button): a clean plan on white paper with room names, areas and a scale bar.
