@@ -2,6 +2,7 @@
 // into each room, makes a realistic photo (light tracing + local AI clean-up) and keeps it in Home Assistant.
 // Any touch stops it straight away; it carries on later.
 import { ROOM_TYPES } from "./model.js";
+import { t } from "./i18n.js";
 
 export class RoomPhotographer {
   constructor(editor) {
@@ -11,7 +12,7 @@ export class RoomPhotographer {
   }
   // the home changed or was baked again: photos need remaking
   reset() { this.done.clear(); this.cancel(); }
-  schedule(delay = 25000) {
+  schedule(delay = 120000) {
     clearTimeout(this._t);
     this._t = setTimeout(() => this.run(), delay);
   }
@@ -20,8 +21,8 @@ export class RoomPhotographer {
     if (!this.busy) return;
     this.aborted = true; this.busy = false;
     const e = this.ed.view.engine; e.setPhoto(false); e.opts.hotspots = true; e.userMoved = false; e.frame(this._view || "3d");
-    this.ed.view.root.querySelector(".hot").style.display = "";
-    this.schedule(60000);
+    this.ed.view.root.querySelector(".hot").style.display = ""; this.uncover();
+    this.schedule(180000);
   }
   async run() {
     const ed = this.ed, e = ed.view.engine;
@@ -36,6 +37,9 @@ export class RoomPhotographer {
     if (!rooms.length) return;
     this.busy = true; this.aborted = false; this._view = e.view;
     ed.view.root.querySelector(".hot").style.display = "none";
+    // the photos are made behind a still picture of the view, so the screen doesn't flicker while they build up
+    this.uncover(); this.cover = document.createElement("div"); this.cover.className = "pcover";
+    this.cover.innerHTML = `<img src="${e.snapshot()}" alt=""><span>${t("Making room photos · touch to stop")}</span>`; e.host.appendChild(this.cover);
     for (const r of rooms) {
       if (this.aborted) return;
       e.walkRoom = r; e.frame("walk", true); e.opts.hotspots = false;
@@ -49,7 +53,8 @@ export class RoomPhotographer {
       } catch { /* offline: try again later */ }
     }
     this.busy = false;
-    e.setPhoto(false); e.opts.hotspots = true; ed.view.root.querySelector(".hot").style.display = ""; e.frame(this._view || "3d");
+    e.setPhoto(false); e.opts.hotspots = true; ed.view.root.querySelector(".hot").style.display = ""; e.frame(this._view || "3d"); this.uncover();
   }
+  uncover() { this.cover?.remove(); this.cover = null; }
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

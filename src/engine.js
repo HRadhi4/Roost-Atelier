@@ -108,6 +108,8 @@ export class AtelierEngine {
     this.devices = new Map(); this.anims = new Set(); this.hot = [];
     this.states = {}; this.dirty = true; this.shadowsDirty = true; this.alive = true; this.visible = true;
     this.listeners = {};
+    // if the light can't be worked out here, go back to the simple light
+    this.on("bake", ({ state }) => { if ((state === "failed" || state === "waiting") && this.rebaking) { this.rebaking = false; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; for (const r of this.devices.values()) this.lightIntensity(r); this.fitSun(); } });
     this.bakeMgr = new BakeManager(this); this.clearSky = 1; this.location = opts.location || null;
     this.setupComposer();
     this.resizeObs = new ResizeObserver(() => this.resize()); this.resizeObs.observe(host);
@@ -203,7 +205,10 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
     this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
-    this.baked = false; this.bakeMgr.active = false; this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // after a change the light is worked out again; meanwhile the same real-world units and exposure are kept,
+    // so the picture doesn't jump to a brighter, flatter look
+    this.rebaking = this.baked || this.rebaking;
+    this.baked = false; this.bakeMgr.active = false; this.renderer.toneMapping = this.rebaking ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping;
     const floor = plan.floors[floorIndex] || plan.floors[0];
     this.floor = floor;
     this.clear();
@@ -496,13 +501,14 @@ export class AtelierEngine {
   // live: the old simple lights; baked: the real candela (only for the shine, the light itself is baked)
   lightIntensity(rec) {
     const s = rec.s || {}; if (!rec.light) return;
-    if (this.baked) { rec.light.distance = 0; rec.light.decay = 2; rec.light.intensity = ((s.lm || 0) / (4 * Math.PI)) * rec.f * 0.5; }
+    if (this.baked || this.rebaking) { rec.light.distance = 0; rec.light.decay = 2; rec.light.intensity = ((s.lm || 0) / (4 * Math.PI)) * rec.f * 0.5; }
     else { rec.light.distance = 9; rec.light.intensity = (s.intensity || 0) * rec.f; }
   }
   // the overview cuts the walls and hides the ceilings: there the sun comes from the bake (which had them)
   cutView() { return this.view !== "walk" && (this.plan?.settings?.walls || this.opts.walls) === "cut"; }
   // called when stored light was put on the home
   onBaked() {
+    this.rebaking = false;
     for (const rec of this.devices.values()) if (rec.light) { this.lightIntensity(rec); rec.light.castShadow = false; }
     this.hemi.intensity = 0; this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.fitSun(); this.shadowsDirty = true; this.request(false);
@@ -583,12 +589,13 @@ export class AtelierEngine {
     for (const rec of this.devices.values()) if (rec.kind === "light") rec.ctx = { night: el < 0 };
     if (this._night !== (el < 0)) { const first = this._night === undefined; this._night = el < 0; if (!first && this.devices.size) this.updateDevices(false); }
     if (this.baked) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); this.hemi.intensity = 0; }
-    this.hemi.intensity = 0.12 + 0.75 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
+    if (this.rebaking) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); }
+    this.hemi.intensity = this.rebaking ? 0 : 0.12 + 0.75 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
     const kind = el > 14 ? "day" : el > -5 ? "sunset" : "night";
     // the outdoor panoramas are much brighter than a room, so they are toned down indoors
-    if (!this.baked) this.scene.environmentIntensity = 0.12 + 0.55 * day;
+    if (!this.baked && !this.rebaking) this.scene.environmentIntensity = 0.12 + 0.55 * day;
     this.useSky(kind);
-    if (!this.baked) this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
+    if (!this.baked && !this.rebaking) this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
     this.isDay = day > 0.3;
     this.emit("sky", { day });
     this.shadowsDirty = true; this.request(false);

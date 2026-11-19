@@ -69,6 +69,10 @@ aside h3{all:unset;font:600 11px Inter,sans-serif;color:var(--muted);text-transf
 input[type=text],select{all:unset;box-sizing:border-box;height:40px;padding:0 12px;border-radius:12px;background:var(--inset);color:var(--text);border:1px solid var(--border);width:100%}
 input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .sl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
+.sl input[type=range]{grid-column:1/-1}
+.nv{display:flex;align-items:center;gap:4px}.nv i{font-style:normal;font-weight:500;color:var(--muted,#9AA3D9)}
+.nv input{width:64px;height:28px;padding:0 6px;border-radius:8px;border:1px solid var(--border);background:var(--inset);color:inherit;font:inherit;font-weight:700;text-align:end;-moz-appearance:textfield}
+.nv input::-webkit-inner-spin-button,.nv input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .sl b{font:600 13px "Space Grotesk",Inter,sans-serif;min-width:52px;text-align:end}
 .sl input{grid-column:1/-1}
 .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
@@ -80,8 +84,8 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
 .lib .tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:14px;background:var(--inset);cursor:grab;touch-action:none;font-size:11px;text-align:center}
 .lib .tile svg{width:56px;height:40px}
-.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
-.tabs button{height:32px;border-radius:10px;background:var(--inset);font-size:12px;white-space:nowrap}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:2px}
+.tabs button{flex:0 0 auto;padding:0 12px;height:32px;border-radius:10px;background:var(--inset);font-size:12px;white-space:nowrap}
 .tabs button.on{background:linear-gradient(135deg,var(--acc1),var(--acc2))}
 .tip{color:var(--muted);font-size:12px}
 .card{padding:12px;border-radius:16px;background:var(--inset);display:flex;flex-direction:column;gap:8px}
@@ -511,7 +515,8 @@ export class AtelierEditor {
     if (["door", "window", "slider", "arch"].includes(this.tool)) { a.innerHTML = `<h2>${t(TOOLS.find((x) => x[0] === this.tool)[2])}</h2><p class="tip">${t("Tap a wall to add it.")}</p>`; return; }
     if (!obj) return this.homePanel(mode === "settings");
     const head = (icon, title) => `<div class="row between"><h2><ha-icon icon="${icon}"></ha-icon>${esc(title)}</h2><button data-close title="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
-    const slider = (key, label, min, max, step, val, unit = " m") => `<label class="sl"><span>${t(label)}</span><b data-out="${key}">${round(val, 2)}${unit}</b><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></label>`;
+    // every slider also takes a typed number
+    const slider = (key, label, min, max, step, val, unit = " m") => `<div class="sl"><span>${t(label)}</span><b class="nv"><input type="number" inputmode="decimal" data-num="${key}" min="${min}" step="${step}" value="${round(val, 2)}"><i>${unit.trim()}</i></b><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
     let h = "";
     if (s.t === "room") {
       const b = bounds(obj.pts), isRect = obj.pts.length === 4, type = ROOM_TYPES[obj.type] || ROOM_TYPES.other;
@@ -564,7 +569,14 @@ export class AtelierEditor {
     a.querySelector("[data-del]")?.addEventListener("click", () => this.remove(s));
     a.querySelectorAll("input[type=text][data-k]").forEach((i) => i.addEventListener("input", () => set(() => (obj[i.dataset.k] = i.value), false)));
     a.querySelectorAll("select[data-k]").forEach((i) => i.addEventListener("change", () => set(() => { obj[i.dataset.k] = i.value; if (i.value && !obj.name) obj.name = this._hass.states[i.value]?.attributes.friendly_name || ""; })));
+    a.querySelectorAll("input[data-num]").forEach((n) => n.addEventListener("change", () => {
+      const r = a.querySelector(`input[type=range][data-k="${n.dataset.num}"]`), v = parseFloat(n.value);
+      if (!r || !isFinite(v)) { n.value = r?.value ?? n.value; return; }
+      const val = Math.max(parseFloat(r.min), v); if (val > parseFloat(r.max)) r.max = String(val);
+      r.value = String(val); r.dispatchEvent(new Event("input")); n.value = String(round(parseFloat(r.value), 2));
+    }));
     a.querySelectorAll("input[type=range]").forEach((i) => i.addEventListener("input", () => {
+      const num = a.querySelector(`input[data-num="${i.dataset.k}"]`); if (num && num !== a.getRootNode().activeElement) num.value = String(round(parseFloat(i.value), 2));
       const k = i.dataset.k, v = parseFloat(i.value), out = a.querySelector(`[data-out="${k}"]`); if (out) out.textContent = `${round(v, 2)}${{ power: "×", lumens: " lm", kelvin: " K", gain: "×" }[k] ?? " m"}`;
       set(() => {
         if (k === "rw" || k === "rd") { const b = bounds(obj.pts); for (const p of obj.pts) { if (k === "rw" && Math.abs(p[0] - b.x1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][0] = round(b.x0 + v, 3); p[0] = round(b.x0 + v, 3); } if (k === "rd" && Math.abs(p[1] - b.y1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][1] = round(b.y0 + v, 3); p[1] = round(b.y0 + v, 3); } } }

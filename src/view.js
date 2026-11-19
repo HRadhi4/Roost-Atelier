@@ -6,6 +6,7 @@ import { t, isRtl } from "./i18n.js";
 const COLORS = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
 
 export const VIEW_CSS = `
+.pcover{position:absolute;inset:0;z-index:4;pointer-events:none}.pcover img{width:100%;height:100%;object-fit:cover;display:block}.pcover span{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:6px 12px;border-radius:12px;background:rgba(11,13,23,.7);color:#fff;font:500 12px Inter,sans-serif;white-space:nowrap}
 .av{position:relative;width:100%;height:100%;overflow:hidden;border-radius:inherit;background:radial-gradient(120% 90% at 50% 10%,var(--av-sky1,#1a2050),var(--av-sky2,#0B0D17));transition:background .6s}
 .av.day{--av-sky1:#f4efe6;--av-sky2:#dfe6f2}
 .av canvas{position:absolute;inset:0}
