@@ -8,3 +8,4 @@ dev/env/
 dev/*.bundle.js
 dev/ai/
 dev/bake-worker.js
+tests/browser/samples.bundle.js

@@ -2,6 +2,12 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.7.0 — 2026-11-19
+- **Editing feels lighter.** Each change used to freeze the page for about half a second while the stored light was matched to the home again; that step is now about three times faster (same light, nothing to recalculate).
+- **No rebuild when nothing changed:** a save from another screen that does not touch this level, or the same home loaded again, no longer rebuilds the 3D home.
+- **More memory given back:** doors, windows, curtains, lamps and the TV screen made their own copies of materials on every rebuild and never freed them.
+- **Automatic browser checks:** every change to the code now opens the dashboard card and the Atelier page in a real browser and checks that the home is drawn, edits are saved, a failed save is tried again, and a change from another screen asks before overwriting.
+
 ## 0.6.0 — 2026-11-19
 - **Opens faster.** The worked-out light of a home (about 7 MB) was downloaded every time a dashboard or the Atelier opened; screens now keep their copy until the light changes. The Atelier's own files are kept by the browser too.
 - **Sky pictures only for photos.** The 1.5 MB sky pictures were downloaded for normal viewing even though only photos use them; now they load only when a photo is made.

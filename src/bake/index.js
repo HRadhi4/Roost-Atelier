@@ -39,7 +39,8 @@ function patchedBegin() {
   PATCHED_BEGIN = B;
   return PATCHED_BEGIN;
 }
-const bakedCache = new Map();
+// keyed weakly: materials made for one rebuild are forgotten with it
+const bakedCache = new WeakMap();
 function bakedMaterial(m, own) {
   if (!own && bakedCache.has(m)) return bakedCache.get(m);
   const b = m.clone();
@@ -61,7 +62,7 @@ varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_verte
       .replace("#include <lights_fragment_maps>", "#include <lights_fragment_maps>\niblIrradiance = vBaked;");
   };
   b.customProgramCacheKey = () => "roost-baked";
-  if (!own) bakedCache.set(m, b);
+  if (!own) { bakedCache.set(m, b); if (m.userData?.shared) b.userData.sharedBaked = true; }
   return b;
 }
 
@@ -255,7 +256,7 @@ export class BakeManager {
       if (own) {
         // one material per room, reused every time the light is applied (it used to pile up)
         const key = `${r.mesh.userData.room}|${mats.uuid}`;
-        let mm = this._own.get(key); if (!mm) { mm = bakedMaterial(mats, true); this._own.set(key, mm); }
+        let mm = this._own.get(key); if (!mm) { mm = bakedMaterial(mats, true); mm.userData.keep = true; this._own.set(key, mm); }
         mm._used = true; r.mesh.material = mm;
       } else r.mesh.material = Array.isArray(mats) ? mats.map((x) => bakedMaterial(x)) : bakedMaterial(mats, false);
     }

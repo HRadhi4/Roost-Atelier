@@ -81,8 +81,8 @@ export function prepare(engine) {
     const ids = new Float32Array(cnt);
     for (let i = 0; i < cnt; i++) {
       const k = r.base + i; ids[i] = k;
-      v.fromBufferAttribute(P, i).applyMatrix4(r.matrix); pos.set([v.x, v.y, v.z], k * 3);
-      if (N) { v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nrm.set([v.x, v.y, v.z], k * 3); }
+      v.fromBufferAttribute(P, i).applyMatrix4(r.matrix); pos[k * 3] = v.x; pos[k * 3 + 1] = v.y; pos[k * 3 + 2] = v.z;
+      if (N) { v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nrm[k * 3] = v.x; nrm[k * 3 + 1] = v.y; nrm[k * 3 + 2] = v.z; }
     }
     g.setAttribute("bakeId", new THREE.BufferAttribute(ids, 1));
     // colour of each point from the material of its triangles
@@ -98,7 +98,7 @@ export function prepare(engine) {
   // group points into probes
   const rep = new Int32Array(n), keyOf = new Map(), pp = [], pn = [], pa = [], pc = [];
   for (let k = 0; k < n; k++) {
-    const key = `${Math.round(pos[k * 3] / PROBE)},${Math.round(pos[k * 3 + 1] / PROBE)},${Math.round(pos[k * 3 + 2] / PROBE)}|${Math.round(nrm[k * 3] * 2)},${Math.round(nrm[k * 3 + 1] * 2)},${Math.round(nrm[k * 3 + 2] * 2)}`;
+    const key = probeKey(pos, nrm, k);
     let q = keyOf.get(key);
     if (q === undefined) { q = pc.length; keyOf.set(key, q); pc.push(0); pp.push(0, 0, 0); pn.push(0, 0, 0); pa.push(0, 0, 0); }
     rep[k] = q; pc[q]++;
@@ -132,6 +132,15 @@ export function prepare(engine) {
   });
   // geometry (all points, for blocking light) and probes (where light is measured)
   return { recv, n: m, verts: n, pos: ppos, nrm: pnrm, alb: palb, room, rep, vpos: pos, index: new Uint32Array(tris), lights, windows, rooms: rooms.map((r) => r.id) };
+}
+// which probe a point belongs to: same cell of 6 cm and facing about the same way. A number (fast); the same
+// grouping and order as the text labels used before, so stored light stays valid.
+export function probeKey(pos, nrm, k) {
+  const gx = Math.round(pos[k * 3] / PROBE), gy = Math.round(pos[k * 3 + 1] / PROBE), gz = Math.round(pos[k * 3 + 2] / PROBE);
+  const a = Math.round(nrm[k * 3] * 2), b = Math.round(nrm[k * 3 + 1] * 2), c = Math.round(nrm[k * 3 + 2] * 2);
+  if (Math.abs(gx) < 2048 && Math.abs(gy) < 2048 && Math.abs(gz) < 2048 && Math.abs(a) <= 2 && Math.abs(b) <= 2 && Math.abs(c) <= 2)
+    return (((gx + 2048) * 4096 + (gy + 2048)) * 4096 + (gz + 2048)) * 125 + (a + 2) * 25 + (b + 2) * 5 + (c + 2);
+  return `${gx},${gy},${gz}|${a},${b},${c}`;
 }
 function insidePoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; }
 

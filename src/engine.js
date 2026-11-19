@@ -212,6 +212,10 @@ export class AtelierEngine {
 
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
+    // the same home again (a save that changed nothing here, another level edited): nothing to rebuild
+    const sig = JSON.stringify([plan.id, floorIndex, plan.floors[floorIndex] || plan.floors[0], plan.settings, plan.north]);
+    if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; return; }
+    this._sig = sig;
     this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
     // after a change the light is worked out again; meanwhile the same real-world units and exposure are kept,
     // so the picture doesn't jump to a brighter, flatter look
@@ -239,10 +243,23 @@ export class AtelierEngine {
     this.bakeMgr.onBuilt();
   }
   clear() {
-    for (const c of [...this.root.children]) { this.root.remove(c); c.traverse?.((o) => { if (o.geometry && !o.geometry.parameters?.shared) o.geometry.dispose?.(); }); }
+    // shapes and the materials made only for this build are freed; shared materials stay for the next build
+    const gone = new Set();
+    for (const c of [...this.root.children]) { this.root.remove(c); this.collect(c, gone); }
+    this.free(gone);
     for (const d of this.devices.values()) { if (d.light) { this.scene.remove(d.light); if (d.light.target) this.scene.remove(d.light.target); } }
     this.devices.clear(); this.anims.clear(); this.hot = [];
   }
+  collect(obj, gone) {
+    const mats = (m) => (Array.isArray(m) ? m : m ? [m] : []);
+    obj.traverse?.((o) => {
+      if (o.geometry && !o.geometry.parameters?.shared) o.geometry.dispose?.();
+      for (const k of ["fullGeo", "cutGeo"]) if (o.userData?.[k] && o.userData[k] !== o.geometry) o.userData[k].dispose();
+      for (const m of [...mats(o.material), ...mats(o.userData?.liveMaterial)]) if (!m.userData?.shared && !m.userData?.sharedBaked && !m.userData?.keep) gone.add(m);
+    });
+    return gone;
+  }
+  free(gone) { for (const m of gone) { if (m.emissiveMap === this._tv) m.emissiveMap = null; m.envMap = null; m.dispose(); } }
   addRoom(r, H) {
     const geo = fineShape(r.pts, false);
     const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
@@ -339,7 +356,7 @@ export class AtelierEngine {
   // change one piece (size, colour, a new piece) without rebuilding the whole home
   replaceItem(it) {
     if (!this.items || !this.floor?.items.includes(it)) return false;
-    const old = this.items.children.find((c) => c.userData.item === it.id); if (old) this.items.remove(old);
+    const old = this.items.children.find((c) => c.userData.item === it.id); if (old) { this.items.remove(old); this.free(this.collect(old, new Set())); }
     this.addItem(it, this.H);
     for (const o of this.floor.items) if (o !== it) this.moveItem(o);
     // the light is worked out again once you stop changing things

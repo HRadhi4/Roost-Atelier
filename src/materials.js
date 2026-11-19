@@ -166,7 +166,7 @@ export function floorMaterial(name) {
   });
   m.normalScale.set(0.6, 0.6);
   m.userData.tile = def[2];
-  matCache.set(k, m);
+  m.userData.shared = true; matCache.set(k, m);
   return m;
 }
 export function wallMaterial(name) {
@@ -177,7 +177,7 @@ export function wallMaterial(name) {
   const m = new THREE.MeshStandardMaterial({ color: col, map: tex(p.map, true, 2), normalMap: tex(p.normal, false, 2), roughness: 0.92, envMapIntensity: 0.4 });
   m.normalScale.set(0.15, 0.15);
   m.userData.tile = 2;
-  matCache.set(k, m);
+  m.userData.shared = true; matCache.set(k, m);
   return m;
 }
 export function fabric(color = "#8E8C92") {
@@ -187,7 +187,7 @@ export function fabric(color = "#8E8C92") {
   const m = new THREE.MeshPhysicalMaterial({ color, map: tex(p.map, true, 0.15), normalMap: tex(p.normal, false, 0.15), roughness: 0.95, sheen: 0.6, sheenRoughness: 0.8, sheenColor: new THREE.Color(color).lerp(new THREE.Color("#ffffff"), 0.4) });
   m.normalScale.set(0.35, 0.35);
   m.userData.tile = 0.15;
-  matCache.set(k, m);
+  m.userData.shared = true; matCache.set(k, m);
   return m;
 }
 export function wood(kind = "oak", color) {
@@ -197,7 +197,7 @@ export function wood(kind = "oak", color) {
   const p = painted(`woodgrain:${base}`, planks(base, 0.08, { plank: 2 }));
   const m = new THREE.MeshPhysicalMaterial({ color: color || "#ffffff", map: tex(p.map, true, 1.2), roughnessMap: tex(p.rough, false, 1.2), roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.3 });
   m.userData.tile = 1.2;
-  matCache.set(k, m);
+  m.userData.shared = true; matCache.set(k, m);
   return m;
 }
 export function solid(color, { rough = 0.5, metal = 0, clear = 0, emissive, emissiveIntensity = 0, transmission = 0, opacity = 1, side } = {}) {
@@ -207,7 +207,7 @@ export function solid(color, { rough = 0.5, metal = 0, clear = 0, emissive, emis
   if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = emissiveIntensity; }
   if (transmission) { m.transmission = transmission; m.thickness = 0.01; m.ior = 1.5; }
   if (side) m.side = side;
-  matCache.set(k, m);
+  m.userData.shared = true; matCache.set(k, m);
   return m;
 }
 export const glass = () => solid("#DDEBF2", { rough: 0.04, transmission: 0.95, opacity: 0.35, side: THREE.DoubleSide });

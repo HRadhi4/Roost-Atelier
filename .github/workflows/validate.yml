@@ -31,3 +31,9 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm test
       - run: npm run build
+      # open the card and the Atelier page in a real browser and check they work
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: python tests/browser/run.py

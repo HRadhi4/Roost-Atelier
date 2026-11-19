@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;height:100%;background:#0B0D17}#card{width:800px;height:420px;display:block}</style></head>
+<body><div id="slot"></div>
+<script type="module">
+// A pretend Home Assistant: just enough for the card and the Atelier page.
+import { SAMPLES } from "./samples.bundle.js";
+const plan = { ...SAMPLES[0].make(), id: "home1", updated: 1000 };
+const log = (window.calls = []);
+window.store = { plan, versions: [], deleted: [] };
+window.fail = { save: 0, conflict: false };
+const subs = [];
+const connection = {
+  async sendMessagePromise(m) {
+    log.push(m.type);
+    if (m.type === "roost_atelier/plans") return [{ id: store.plan.id, name: store.plan.name, updated: store.plan.updated, floors: 1 }];
+    if (m.type === "roost_atelier/plan") return JSON.parse(JSON.stringify(store.plan));
+    if (m.type === "roost_atelier/save") {
+      if (fail.save > 0) { fail.save--; throw { code: "unknown_error", message: "Home Assistant is restarting" }; }
+      if (fail.conflict) { fail.conflict = false; throw { code: "conflict", message: "changed elsewhere" }; }
+      if (m.base != null && m.base !== store.plan.updated && !m.force) throw { code: "conflict", message: "changed elsewhere" };
+      store.versions.unshift(store.plan); store.plan = { ...m.plan, id: "home1", updated: store.plan.updated + 1 };
+      for (const s of subs) s({ plan_id: "home1", updated: store.plan.updated });
+      return { id: "home1", updated: store.plan.updated };
+    }
+    if (m.type === "roost_atelier/versions") return store.versions.map((p) => ({ updated: p.updated, name: p.name, floors: 1, rooms: 1, items: 1 }));
+    if (m.type === "roost_atelier/deleted") return [];
+    if (m.type === "roost_atelier/photos") return [];
+    return [];
+  },
+  async subscribeMessage(cb, m) { log.push("sub:" + m.type); subs.push(cb); return () => subs.splice(subs.indexOf(cb), 1); },
+};
+window.hass = {
+  connection, states: {}, user: { is_admin: true }, language: "en", locale: { language: "en" }, themes: { darkMode: true },
+  config: { latitude: 26.2, longitude: 50.6, time_zone: "Asia/Bahrain" },
+  fetchWithAuth: async () => new Response(null, { status: 404 }), callService: async () => {},
+};
+await import("/custom_components/roost_atelier/frontend/roost-atelier.js");
+window.ready = true;
+</script></body></html>
