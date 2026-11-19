@@ -22,6 +22,7 @@ export class Studio {
     const e = this.e, token = ++this.token;
     if (!shots.length || !e.baked) return;
     this.running = true;
+    await e.ensureSky();
     const ai = await aiAvailable().catch(() => false);
     const q = e.quality, [W, H] = this.size || (q === "high" ? [1600, 1000] : q === "medium" ? [1280, 800] : [960, 600]);
     const canvas = document.createElement("canvas");

@@ -25,8 +25,16 @@ class RoostAtelierCard extends HTMLElement {
     if (this._view) this._view.hass = h;
     if (first) this.boot();
   }
-  connectedCallback() { this.boot(); this._view?.engine.setVisible(true); }
-  disconnectedCallback() { this._view?.engine.setVisible(false); }
+  connectedCallback() { clearTimeout(this._drop); this.boot(); this._view?.engine.setVisible(true); }
+  disconnectedCallback() {
+    this._view?.engine.setVisible(false);
+    // left the page: give the graphics memory back after a minute (coming back sooner keeps it instant)
+    clearTimeout(this._drop); this._drop = setTimeout(() => this.shutdown(), 60000);
+  }
+  shutdown() {
+    this._unsub?.(); this._unsub = null;
+    this._view?.dispose(); this._view = null; this._booted = false;
+  }
   async boot() {
     if (this._booted || !this._hass || !this._config || !this.isConnected) return;
     this._booted = true;
@@ -42,8 +50,16 @@ class RoostAtelierCard extends HTMLElement {
       this._view = new AtelierView(this.card, { toolbar: this._config.toolbar, hotspots: this._config.hotspots, view: this._config.view, photo: this._config.photo, quality: this._config.quality, onMoreInfo: (e) => fire(this, "hass-more-info", { entityId: e }) });
       this._view.setPlan(plan, this._config.floor || 0);
       this._view.hass = this._hass;
-      this._planId = id;
-      this._unsub = await this._hass.connection.subscribeMessage((m) => { if (m.plan_id === this._planId) getPlan(this._hass, id).then((p) => this._view?.setPlan(p, this._config.floor || 0)); }, { type: "roost_atelier/subscribe" });
+      this._planId = id; this._updated = plan.updated;
+      // the browser took the 3D away (too many open views or a driver hiccup): build it again
+      this._view.engine.on("lost", () => setTimeout(() => { this.shutdown(); this.boot(); }, 1500));
+      this._unsub?.();
+      this._unsub = await this._hass.connection.subscribeMessage((m) => {
+        if (m.plan_id !== this._planId || (m.updated && m.updated === this._updated)) return;
+        // many saves in a row while someone edits: redraw once they pause
+        clearTimeout(this._refresh);
+        this._refresh = setTimeout(() => getPlan(this._hass, id).then((p) => { this._updated = p.updated; this._view?.setPlan(p, this._config.floor || 0); }), 1500);
+      }, { type: "roost_atelier/subscribe" });
     } catch (err) {
       this.card.innerHTML = `<div class="av"><div class="empty">${t("Offline")}</div></div>`; this._booted = false;
       console.warn("Roost Atelier:", err);

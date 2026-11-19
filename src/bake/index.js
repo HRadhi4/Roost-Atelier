@@ -86,7 +86,7 @@ function decode(buf) {
 }
 
 // ---------------------------------------------------------------- running the bake
-function workerUrl() { return new URL("./bake-worker.js", import.meta.url); }
+function workerUrl() { return new URL(`./bake-worker.js?v=${__VERSION__}`, import.meta.url); }
 export async function runBake(prep, { sunDirs, onProgress, signal }) {
   const { n, pos, nrm, alb, index, lights, windows, rep, vpos } = prep, L = lights.length + windows.length + 1 + sunDirs.length;
   const cores = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)), W = Math.max(1, Math.min(cores, Math.ceil(n / 4000)));
@@ -179,7 +179,7 @@ function stats(prep, E, L) {
 
 // ---------------------------------------------------------------- the manager on each engine
 export class BakeManager {
-  constructor(engine) { this.e = engine; this.state = "none"; this.U = U; }
+  constructor(engine) { this.e = engine; this.state = "none"; this.U = U; this._own = new Map(); }
   key() { const e = this.e; return `${e.plan?.id || "local"}_${e.floorIndex || 0}`; }
   hashNow() {
     const e = this.e, d = new Date();
@@ -252,8 +252,14 @@ export class BakeManager {
       const mats = r.mesh.userData.liveMaterial;
       // each room's floor gets its own material, so it can carry that room's own reflections
       const own = r.mesh.name === "floor" && !!r.mesh.userData.room;
-      r.mesh.material = Array.isArray(mats) ? mats.map((x) => bakedMaterial(x)) : bakedMaterial(mats, own);
+      if (own) {
+        // one material per room, reused every time the light is applied (it used to pile up)
+        const key = `${r.mesh.userData.room}|${mats.uuid}`;
+        let mm = this._own.get(key); if (!mm) { mm = bakedMaterial(mats, true); this._own.set(key, mm); }
+        mm._used = true; r.mesh.material = mm;
+      } else r.mesh.material = Array.isArray(mats) ? mats.map((x) => bakedMaterial(x)) : bakedMaterial(mats, false);
     }
+    for (const [k, mm] of this._own) { if (!mm._used) { mm.envMap = null; mm.dispose(); this._own.delete(k); } else mm._used = false; }
     this.layerIndex = meta.layers;
     this.active = true; e.baked = true;
     e.onBaked?.();
@@ -300,6 +306,7 @@ export class BakeManager {
     for (const r of this.prep?.recv || []) if (r.mesh.userData.liveMaterial) r.mesh.material = r.mesh.userData.liveMaterial;
     this.active = false; this.e.baked = false;
   }
-  dispose() { this.abort?.abort(); clearTimeout(this._t); this.tex?.dispose(); }
+  dispose() {
+    for (const mm of this._own.values()) { mm.envMap = null; mm.dispose(); } this._own.clear(); this.tex?.dispose(); this.abort?.abort(); clearTimeout(this._t); this.tex?.dispose(); }
 }
 function midMonth() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 15); }

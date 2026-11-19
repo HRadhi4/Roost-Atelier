@@ -81,10 +81,17 @@ class BakeView(HomeAssistantView):
         if not BAKE_KEY.match(key):
             return web.Response(status=400)
         path = self._path(hass, key)
-        if not await hass.async_add_executor_job(path.is_file):
+        try:
+            st = await hass.async_add_executor_job(path.stat)
+        except OSError:
             return web.Response(status=404)
+        # the light is several MB: a screen that already has this exact file is told to keep it
+        tag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+        head = {"Cache-Control": "private, no-cache", "ETag": tag}
+        if request.headers.get("If-None-Match") == tag:
+            return web.Response(status=304, headers=head)
         data = await hass.async_add_executor_job(path.read_bytes)
-        return web.Response(body=data, content_type="application/octet-stream", headers={"Content-Encoding": "gzip", "Cache-Control": "no-cache"})
+        return web.Response(body=data, content_type="application/octet-stream", headers={**head, "Content-Encoding": "gzip"})
 
     async def post(self, request: web.Request, key: str) -> web.Response:
         hass = request.app[KEY_HASS]
@@ -126,7 +133,7 @@ class PhotoView(HomeAssistantView):
         path = folder(hass) / "photos" / f"{key}.jpg"
         if not await hass.async_add_executor_job(path.is_file):
             return web.Response(status=404)
-        return web.FileResponse(path, headers={"Cache-Control": "no-cache"})
+        return web.FileResponse(path, headers={"Cache-Control": "private, no-cache"})
 
     async def post(self, request: web.Request, key: str) -> web.Response:
         hass = request.app[KEY_HASS]
@@ -157,3 +164,42 @@ def list_photos(hass, prefix: str) -> list[dict]:
     for p in sorted(base.glob(f"{prefix}*.jpg")):
         out.append({"key": p.stem, "updated": p.stat().st_mtime})
     return out
+
+
+def cleanup(hass, used: set[str], plan_ids: set[str]) -> dict[str, int]:
+    """Remove what no home needs any more: uploads nothing points at (older than a day), and the light
+    and photos of homes that are gone. Returns how many files were removed and how much space came back."""
+    import time
+
+    base = folder(hass)
+    if not base.is_dir():
+        return {"files": 0, "bytes": 0}
+    removed, freed, day_ago = 0, 0, time.time() - 86400
+
+    def drop(p: Path) -> None:
+        nonlocal removed, freed
+        try:
+            size = p.stat().st_size
+            p.unlink()
+            removed += 1
+            freed += size
+        except OSError:
+            pass
+
+    for p in base.iterdir():
+        if p.is_file() and NAME.match(p.name) and p.name not in used and p.stat().st_mtime < day_ago:
+            drop(p)
+    for sub, suffix in (("light", ".rab.gz"), ("photos", ".jpg")):
+        d = base / sub
+        if not d.is_dir():
+            continue
+        for p in d.iterdir():
+            if not p.is_file():
+                continue
+            if p.suffix == ".tmp":
+                drop(p)
+                continue
+            owner = p.name[: -len(suffix)].split("_", 1)[0] if p.name.endswith(suffix) else ""
+            if owner and owner != "local" and owner not in plan_ids:
+                drop(p)
+    return {"files": removed, "bytes": freed}

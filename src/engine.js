@@ -82,6 +82,8 @@ export class AtelierEngine {
     this.renderer.localClippingEnabled = true;
     this.renderer.domElement.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline:none";
     host.appendChild(this.renderer.domElement);
+    // the browser can take the graphics away (too many 3D views, a driver hiccup): say so, so the view can be rebuilt
+    this.renderer.domElement.addEventListener("webglcontextlost", (e) => { e.preventDefault(); this.lost = true; this.emit("lost"); });
     this.quality = this.opts.quality === "auto" ? pickQuality(this.renderer) : this.opts.quality;
 
     this.scene = new THREE.Scene();
@@ -186,7 +188,8 @@ export class AtelierEngine {
     const damping = this.controls.enabled && this.controls.update();
     if (this.anims.size) { for (const a of [...this.anims]) if (a(dt) === false) this.anims.delete(a); this.dirty = true; }
     if (this.view === "walk" && this.keys.size) this.stepWalk(dt);
-    if (this.baked) { this.bakeWeights(dt); }
+    // the light mix only changes when something changes; otherwise it is checked twice a second
+    if (this.baked && (this.dirty || damping || this.anims.size || this.tween || this.keys.size || this._expoMoving || now - (this._wT || 0) > 500)) { this._wT = now; this.bakeWeights(dt); }
     if (this.photo?.active) { try { this.photo.step(); } catch (err) { console.warn("Roost Atelier photo mode:", err); this.photo.stop(); this.opts.photo = false; this.emit("photo", { progress: -2, error: String(err?.message || err) }); } return; }
     if (!this.dirty && !damping) return;
     // moving things alone (AC air, a fan, the TV) are drawn at most 30 times a second
@@ -551,6 +554,9 @@ export class AtelierEngine {
       const m = floor.material; if (m && !Array.isArray(m)) { const had = !!m.envMap; m.envMap = rec.env.texture; m.envMapIntensity = 1; if (!had) m.needsUpdate = true; }
     }
     this.renderer.toneMapping = tm;
+    // rooms that are gone give their reflection memory back
+    const here = new Set(this.floor.rooms.map((r) => r.id));
+    for (const [id, rec] of this._refl) if (!here.has(id)) { rec.env?.dispose(); rec.rt.dispose(); this._refl.delete(id); }
     this._wallsOverride = prevOverride; this.applyWalls(); this.ceilings.visible = prevCeil;
     this.request(false);
   }
@@ -601,7 +607,8 @@ export class AtelierEngine {
     const ratio = this.expo ? Math.max(target / this.expo, this.expo / target) : 99;
     this.expo = ratio > 4 ? target : this.expo + (target - this.expo) * Math.min(1, el * 1.5);
     this.renderer.toneMappingExposure = this.expo * (this.plan?.settings?.exposure || 1);
-    if (Math.abs(target - this.expo) > target * 0.01) this.dirty = true;
+    this._expoMoving = Math.abs(target - this.expo) > target * 0.01;
+    if (this._expoMoving) this.dirty = true;
     // reflections of the sky follow the daylight only (no glare at night)
     this.scene.environmentIntensity = Math.max(0.03, Lb) * 0.9;
   }
@@ -661,10 +668,18 @@ export class AtelierEngine {
   }
 
   // the panorama for this time of day; the studio light stays until it has loaded
-  useSky(kind) {
-    this.skyKind = kind; this._skies ||= {};
+  // the panorama is only used for photos, so it is only downloaded when a photo is made (it is 1.5 MB)
+  useSky(kind) { this.skyKind = kind; if (this._skyWanted) this.loadSky(kind); }
+  ensureSky() {
+    this._skyWanted = true;
+    const kind = this.skyKind || "day";
+    if (this._skies?.[kind]?.equirect) return Promise.resolve();
+    return new Promise((res) => { this._skyWait = res; this.loadSky(kind); setTimeout(res, 8000); });
+  }
+  loadSky(kind) {
+    this._skies ||= {};
     // the live view keeps its soft studio light; the panorama lights the photo, as in a studio render
-    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; this.skyMean = this._skies[kind].mean; };
+    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; this.skyMean = this._skies[kind].mean; this._skyWait?.(); this._skyWait = null; };
     if (this._skies[kind]?.equirect) return apply();
     if (this._skies[kind]) return;
     this._skies[kind] = {};
@@ -817,6 +832,8 @@ export class AtelierEngine {
     if (this.busy || this.tween || !this.opts.photo) return;
     try {
       if (!this.photo) { const { PhotoMode } = await import("./photo.js"); this.photo = new PhotoMode(this); }
+      await this.ensureSky();
+      if (!this.opts.photo || this.busy) return;
       this.photo.start();
     } catch (err) {
       // some tablets can't run the light tracer: say so instead of failing quietly
@@ -858,6 +875,8 @@ export class AtelierEngine {
   dispose() {
     this.bakeMgr.dispose(); clearTimeout(this._rebake);
     window.removeEventListener("keydown", this._kd); window.removeEventListener("keyup", this._ku); window.removeEventListener("blur", this._blur); window.removeEventListener("pointerdown", this._pd, true);
+    for (const rec of this._refl?.values() || []) { rec.env?.dispose(); rec.rt.dispose(); } this._refl?.clear(); this._pmrem?.dispose();
+    for (const s of Object.values(this._skies || {})) s.equirect?.dispose(); this._tv?.dispose();
     this.alive = false; this.resizeObs.disconnect(); this.photo?.dispose(); this.controls.dispose(); this.composer.dispose?.();
     this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer.domElement.remove();
   }

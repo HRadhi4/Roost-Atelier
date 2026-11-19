@@ -9,10 +9,12 @@ from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from datetime import timedelta
 
 from .const import DOMAIN, PANEL_URL, URL_BASE
 from .storage import PlanStore
-from .uploads import BakeView, FileView, PhotoView, UploadView
+from .uploads import BakeView, FileView, PhotoView, UploadView, cleanup
 from . import websocket as ws
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     version = await hass.async_add_executor_job(_version)
 
     if not hass.data.get(f"{DOMAIN}_static"):
-        await hass.http.async_register_static_paths([StaticPathConfig(URL_BASE, str(FRONTEND), False)])
+        await hass.http.async_register_static_paths([StaticPathConfig(URL_BASE, str(FRONTEND), True)])
         hass.http.register_view(UploadView())
         hass.http.register_view(FileView())
         hass.http.register_view(BakeView())
@@ -52,6 +54,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         require_admin=True,
         config={"version": version},
     )
+
+    async def _tidy(_now=None) -> None:
+        plan_ids = set(store.plans) | {p.get("id") for p in store.deleted}
+        res = await hass.async_add_executor_job(cleanup, hass, store.used_files(), plan_ids)
+        if res["files"]:
+            _LOGGER.info("Roost Atelier tidied %s unused files (%.1f MB)", res["files"], res["bytes"] / 1e6)
+
+    entry.async_on_unload(async_call_later(hass, 180, _tidy))
+    entry.async_on_unload(async_track_time_interval(hass, _tidy, timedelta(hours=24)))
     return True
 
 

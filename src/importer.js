@@ -8,7 +8,7 @@ import { fromDxf, fromImage, pdfToImage } from "./recon.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const KIND_MAP = { stove: "kitchen_base", sink_cabinet: "kitchen_base", cabinet: "dresser", ac_split: null, curtain: null };
-const WORKER = new URL("./pdf.worker.min.mjs", import.meta.url).href; // copied next to the chunks at build time
+const WORKER = new URL(`./pdf.worker.min.mjs?v=${__VERSION__}`, import.meta.url).href; // copied next to the chunks at build time
 
 export function importPanel(ed, a) {
   const aiTasks = Object.keys(ed._hass.states).filter((e) => e.startsWith("ai_task."));
