@@ -681,6 +681,13 @@ export class AtelierEngine {
     this.request(true);
   }
   home() { this.userMoved = false; this.frame(this.view === "walk" ? "3d" : this.view || "3d"); }
+  // walk to a spot (from a tap on the plan), still looking the same way
+  walkToPoint(x, y) {
+    const room = this.floor?.rooms.find((r) => inside([x, y], r.pts)); if (!room) return false;
+    const dir = new THREE.Vector3().subVectors(this.controls.target, this.camera.position), to = new THREE.Vector3(x, 1.35, y);
+    this.walkRoomId = room.id; this.walkRoom = room; this.kbActive = true;
+    this.tweenTo(to, to.clone().add(dir), this.camera.fov, 0.7); this.updateHot(); return true;
+  }
   walkTo(roomId) { this.walkRoom = this.floor.rooms.find((r) => r.id === roomId); this.frame("walk"); }
   walkLook(e) {
     if (this.view !== "walk" || !this._drag) return;

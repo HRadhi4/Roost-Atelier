@@ -468,6 +468,9 @@ export class AtelierEditor {
     }
     if (d.kind === "addop") { this.addOpening(this.tool, d.P); return; }
     if (!d.moved) {
+      // in walk-through, tapping a spot on the plan walks you there
+      const eng = this.view?.engine, P = this.toPlan(e.clientX, e.clientY);
+      if (eng?.view === "walk" && (d.tapRoom || d.tapEmpty) && eng.walkToPoint(P[0], P[1])) return;
       if (d.tapRoom) return this.select({ t: "room", id: d.tapRoom.id });
       if (d.tapEmpty) return this.select(null);
       return;
