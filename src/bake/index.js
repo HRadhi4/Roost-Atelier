@@ -103,7 +103,7 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
   if (signal?.aborted) throw new Error("cancelled");
   done = 0.7; onProgress?.(0.7);
   const nb = neighbours(prep);
-  { const near = neighbours(prep, 0.25, 0.02, 24), Ds = smooth(D, near, L), soft = lights.length + windows.length + 1;
+  { const near = neighbours(prep, 0.12, 0.02), Ds = smooth(D, near, L), soft = lights.length + windows.length + 1;
     for (let k = 0; k < n; k++) for (let l = 0; l < soft; l++) { const i = (k * L + l) * 3; D[i] = Ds[i]; D[i + 1] = Ds[i + 1]; D[i + 2] = Ds[i + 2]; } }
   let E = D, G = null;
   for (let p = 0; p < PASSES; p++) {
@@ -124,34 +124,35 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
   }
   return { E: F, L: L2, sOff };
 }
-// points close together on the same kind of surface share their bounced light (removes speckle)
-function neighbours(prep, R = 0.55, sig = 0.09, MAX = 40) {
-  const { n, pos, nrm } = prep, cell = R, map = new Map(), key = (x, y, z) => `${x},${y},${z}`;
-  for (let k = 0; k < n; k++) { const c = key(Math.floor(pos[k * 3] / cell), Math.floor(pos[k * 3 + 1] / cell), Math.floor(pos[k * 3 + 2] / cell)); (map.get(c) || map.set(c, []).get(c)).push(k); }
+// points close together on the same kind of surface share their bounced light (removes speckle and blotches).
+// Points are grouped into small cells (by place and by which way the surface faces); each point then takes a
+// distance-weighted mix of the nearby cells. This costs the same for any size of home.
+function neighbours(prep, cell = 0.22, sig = 0.08) {
+  const { n, pos, nrm } = prep, map = new Map(), cellOf = new Int32Array(n), cx = [], cy = [], cz = [], cc = [], keys = [];
+  const bin = (k) => { const x = nrm[k * 3], y = nrm[k * 3 + 1], z = nrm[k * 3 + 2]; return y > 0.7 ? 8 : y < -0.7 ? 9 : ((Math.round(Math.atan2(z, x) / (Math.PI / 4)) % 8) + 8) % 8; };
+  for (let k = 0; k < n; k++) {
+    const gx = Math.floor(pos[k * 3] / cell), gy = Math.floor(pos[k * 3 + 1] / cell), gz = Math.floor(pos[k * 3 + 2] / cell), b = bin(k), key = `${gx},${gy},${gz},${b}`;
+    let c = map.get(key); if (c === undefined) { c = cc.length; map.set(key, c); cx.push(0); cy.push(0); cz.push(0); cc.push(0); keys.push([gx, gy, gz, b]); }
+    cellOf[k] = c; cx[c] += pos[k * 3]; cy[c] += pos[k * 3 + 1]; cz[c] += pos[k * 3 + 2]; cc[c]++;
+  }
+  for (let c = 0; c < cc.length; c++) { cx[c] /= cc[c]; cy[c] /= cc[c]; cz[c] /= cc[c]; }
+  // the nearby cells of each cell (same facing)
+  const near = keys.map(([gx, gy, gz, b]) => { const out = []; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let l = -1; l <= 1; l++) { const q = map.get(`${gx + i},${gy + j},${gz + l},${b}`); if (q !== undefined) out.push(q); } return out; });
   const start = new Int32Array(n + 1), list = [], wts = [];
   for (let k = 0; k < n; k++) {
-    start[k] = list.length;
-    const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2], cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
-    // all nearby points facing the same way, the closest ones kept (not just the first found, which made blotches)
-    const cand = [];
-    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let l = -1; l <= 1; l++) {
-      for (const q of map.get(key(cx + i, cy + j, cz + l)) || []) {
-        const dd = (pos[q * 3] - x) ** 2 + (pos[q * 3 + 1] - y) ** 2 + (pos[q * 3 + 2] - z) ** 2; if (dd > R * R) continue;
-        const dn = nrm[q * 3] * nrm[k * 3] + nrm[q * 3 + 1] * nrm[k * 3 + 1] + nrm[q * 3 + 2] * nrm[k * 3 + 2]; if (dn < 0.9) continue;
-        cand.push([dd, q]);
-      }
-    }
-    if (cand.length > MAX) { cand.sort((a, b) => a[0] - b[0]); cand.length = MAX; }
-    for (const [dd, q] of cand) { list.push(q); wts.push(Math.exp(-dd / sig)); }
+    start[k] = list.length; const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2];
+    for (const q of near[cellOf[k]]) { const dd = (cx[q] - x) ** 2 + (cy[q] - y) ** 2 + (cz[q] - z) ** 2; list.push(q); wts.push(cc[q] * Math.exp(-dd / sig)); }
   }
   start[n] = list.length;
-  return { start, list: Int32Array.from(list), wts: Float32Array.from(wts) };
+  return { start, list: Int32Array.from(list), wts: Float32Array.from(wts), cellOf, cells: cc.length, cc };
 }
-function smooth(G, { start, list, wts }, L) {
-  const n = start.length - 1, out = new Float32Array(G.length), S = L * 3;
+function smooth(G, { start, list, wts, cellOf, cells, cc }, L) {
+  const n = start.length - 1, S = L * 3, mean = new Float32Array(cells * S), out = new Float32Array(G.length);
+  for (let k = 0; k < n; k++) { const o = cellOf[k] * S, g = k * S; for (let c = 0; c < S; c++) mean[o + c] += G[g + c]; }
+  for (let q = 0; q < cells; q++) { const o = q * S, f = 1 / cc[q]; for (let c = 0; c < S; c++) mean[o + c] *= f; }
   for (let k = 0; k < n; k++) {
     let ws = 0; const o = k * S;
-    for (let j = start[k]; j < start[k + 1]; j++) { const q = list[j] * S, w = wts[j]; ws += w; for (let c = 0; c < S; c++) out[o + c] += G[q + c] * w; }
+    for (let j = start[k]; j < start[k + 1]; j++) { const q = list[j] * S, w = wts[j]; ws += w; for (let c = 0; c < S; c++) out[o + c] += mean[q + c] * w; }
     if (ws > 0) for (let c = 0; c < S; c++) out[o + c] /= ws; else for (let c = 0; c < S; c++) out[o + c] = G[o + c];
   }
   return out;
