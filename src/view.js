@@ -68,7 +68,9 @@ export class AtelierView {
   }
   setPlan(plan, floor = 0) {
     this.plan = plan;
-    this.entities = [...new Set(plan.floors.flatMap((f) => f.devices.map((d) => d.entity).filter(Boolean)))];
+    // a presence radar also needs the other people it can see (targets 1 to 3, left/right and ahead)
+    const more = (d) => (d.kind === "radar" && /_target_1_x$/.test(d.entity || "") ? [1, 2, 3].flatMap((n) => ["x", "y"].map((k) => d.entity.replace(/_target_1_x$/, `_target_${n}_${k}`))) : [d.entity]);
+    this.entities = [...new Set(plan.floors.flatMap((f) => f.devices.flatMap(more).filter(Boolean)))];
     this.engine.setPlan(plan, floor);
     this._last = null; this._sun = undefined;
     if (this._hass) this.hass = this._hass;

@@ -69,6 +69,8 @@ with sync_playwright() as p:
     page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.snapshot(); ed.plan.name = 'Test home'; ed.changed(false); }")
     page.wait_for_function("() => window.store.plan.name === 'Test home'", timeout=10000)
     check("an edit is saved", True)
+    page.wait_for_timeout(500)
+    check("your own save is not mistaken for another screen", not page.evaluate("() => !!document.getElementById('panel').shadowRoot.querySelector('.dialog.ask')"))
 
     # Home Assistant restarting: the save is tried again until it works
     page.evaluate("() => { window.fail.save = 2; const ed = document.getElementById('panel').editor; ed.snapshot(); ed.plan.name = 'After restart'; ed.changed(false); }")
@@ -86,6 +88,28 @@ with sync_playwright() as p:
     page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.root.querySelector('.dialog.ask')?.remove(); ed.homesMenu(); }")
     has = page.evaluate("() => !!document.getElementById('panel').shadowRoot.querySelector('[data-x=versions]')")
     check("Homes menu offers earlier versions and files", has)
+
+    # ---- new in 0.8: wall lengths, several pieces at once, stairs, levels below, presence radar
+    dims_n = page.evaluate("() => document.getElementById('panel').shadowRoot.querySelectorAll('svg text.dim').length")
+    check("wall lengths are written on the plan", dims_n > 4, f"{dims_n} lengths")
+    moved = page.evaluate("""() => { const ed = document.getElementById('panel').editor; const its = ed.floor.items.slice(0, 3);
+      ed.sel = { t: 'multi', list: its.map((i) => ({ t: 'item', id: i.id })) }; ed.inspector();
+      ed.aside.querySelector('[data-al=left]').click(); const xs = its.map((i) => i.x - (window._half ? 0 : 0));
+      return { panel: !!ed.aside.querySelector('[data-mdel]'), n: its.length }; }""")
+    check("several pieces can be selected and lined up", moved["panel"] and moved["n"] == 3)
+    built = page.evaluate("""async () => { const ed = document.getElementById('panel').editor; ed.sel = null;
+      ed.floor.items.push({ id: 'st1', kind: 'stairs', x: 1, y: 1, rot: 0, h: 2.8 });
+      ed.floor.devices.push({ id: 'rd1', kind: 'radar', entity: 'sensor.radar_target_1_x', x: 2, y: 2, rot: 0, name: 'Radar' });
+      window.hass.states = { 'sensor.radar_target_1_x': { entity_id: 'sensor.radar_target_1_x', state: '500', attributes: {} }, 'sensor.radar_target_1_y': { entity_id: 'sensor.radar_target_1_y', state: '1500', attributes: {} } };
+      ed.plan.floors.push(JSON.parse(JSON.stringify({ ...ed.floor, id: 'f2', name: 'Upper', elevation: 3.1, items: [], devices: [] })));
+      ed.plan.settings.levels = true; ed.view.setPlan(ed.plan, 0); ed.useFloor(1); ed.useFloor(0);
+      ed.hass = { ...window.hass }; await new Promise((r) => setTimeout(r, 1500));
+      const e = ed.view.engine, rec = e.devices.get('rd1'), p = rec?.people?.[0];
+      return { stairs: !!e.items.children.find((g) => g.userData.item === 'st1'), seen: !!p?.visible, x: p?.position.x, z: p?.position.z }; }""")
+    check("stairs are built", built["stairs"])
+    check("a presence radar shows the person it sees", built["seen"] and abs(built["x"] - 1.5) < 0.15 and abs(built["z"] - 3.5) < 0.15, str(built))
+    lv = page.evaluate("""() => { const ed = document.getElementById('panel').editor; ed.useFloor(1); const g = ed.view.engine.root.getObjectByName('levels'); const n = g ? g.children.length : 0; ed.useFloor(0); return n; }""")
+    check("levels below are shown under the upper level", lv > 5, f"{lv} pieces")
 
     serious = [e for e in errors if "favicon" not in e and "ha-icon" not in e]
     check("no errors in the browser", not serious, "; ".join(serious[:3]))

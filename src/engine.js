@@ -213,7 +213,7 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
     // the same home again (a save that changed nothing here, another level edited): nothing to rebuild
-    const sig = JSON.stringify([plan.id, floorIndex, plan.floors[floorIndex] || plan.floors[0], plan.settings, plan.north]);
+    const sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], plan.settings, plan.north]);
     if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; return; }
     this._sig = sig;
     this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
@@ -234,6 +234,7 @@ export class AtelierEngine {
     for (const it of floor.items) this.addItem(it, H);
     for (const d of floor.devices) this.addDevice(d, H);
     this.addGround(floor);
+    if (plan.settings?.levels && plan.floors.length > 1) this.addLevelsBelow(plan, floorIndex);
     this.applyWalls();
     this.fitSun();
     if (!this._framed) { this.frame(this.opts.view || "3d", true); this._framed = true; }
@@ -260,6 +261,26 @@ export class AtelierEngine {
     return gone;
   }
   free(gone) { for (const m of gone) { if (m.emissiveMap === this._tv) m.emissiveMap = null; m.envMap = null; m.dispose(); } }
+  // the levels under this one, drawn simply (floors and walls, no furniture), so the home reads as one building
+  addLevelsBelow(plan, fi) {
+    const elev = (j) => (j === 0 || plan.floors[j].elevation ? plan.floors[j].elevation || 0 : plan.floors.slice(0, j).reduce((a, f) => a + (f.height || 2.8) + 0.3, 0));
+    const here = elev(fi), g = new THREE.Group(); g.name = "levels";
+    const slab = new THREE.MeshStandardMaterial({ color: "#D9D4CB", roughness: 0.95 }), wall = new THREE.MeshStandardMaterial({ color: "#EAE6DF", roughness: 0.95 });
+    plan.floors.forEach((f, j) => {
+      const dy = elev(j) - here; if (j === fi || dy >= 0) return;
+      const H = f.height || 2.8;
+      for (const r of f.rooms) { const m = new THREE.Mesh(fineShape(r.pts, false), slab); m.position.y = dy; m.receiveShadow = true; g.add(m); }
+      const ws = walls(f); joinEnds(ws);
+      for (const w of ws) {
+        const len = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]); if (len < 0.05) continue;
+        const h = w.parapet ? 1 : H, m = new THREE.Mesh(new THREE.BoxGeometry(len + w.thick, h, w.thick), wall);
+        m.position.set((w.a[0] + w.b[0]) / 2, dy + h / 2, (w.a[1] + w.b[1]) / 2); m.rotation.y = -Math.atan2(w.b[1] - w.a[1], w.b[0] - w.a[0]);
+        m.castShadow = false; m.receiveShadow = true; g.add(m);
+      }
+    });
+    g.traverse((o) => { o.userData.noBake = true; });
+    this.root.add(g);
+  }
   addRoom(r, H) {
     const geo = fineShape(r.pts, false);
     const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
@@ -433,12 +454,41 @@ export class AtelierEngine {
     else if (kind === "person") { g.add(DEVICE_LOOKS.person({ color: dv.color })); g.position.set(dv.x, 0, dv.y); }
     else if (kind === "speaker") { g.add(DEVICE_LOOKS.speaker({})); g.position.set(dv.x, dv.z ?? 0.8, dv.y); }
     else if (kind === "vacuum") { g.add(DEVICE_LOOKS.vacuum({})); g.position.set(dv.x, 0, dv.y); }
+    else if (kind === "radar") {
+      // the small sensor box on the wall, and up to three people walking where it sees them
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.03), solid("#F3F1EC", { rough: 0.5 })); box.position.z = 0.015; g.add(box);
+      g.position.set(dv.x, dv.z ?? 1.9, dv.y); g.rotation.y = ((dv.rot || 0) * Math.PI) / 180; rec.mount = "wall";
+      rec.people = [0, 1, 2].map(() => { const p = DEVICE_LOOKS.person({ color: dv.color || "#E86FB0" }); p.visible = false; p.userData.device = dv.id; this.devG.add(p); return p; });
+    }
     else if (kind === "curtain") rec.window = this.attachCurtain(dv, H);
     else if (kind === "door" || kind === "lock") rec.door = this.findOpening(dv, ["door"]);
     else if (kind === "tv") rec.screen = this.findScreen(dv);
     else { g.position.set(dv.x, 1.2, dv.y); }
     this.devG.add(g);
     this.devices.set(dv.id, rec);
+  }
+  // radar targets (left/right and ahead, from the sensor) to spots in the home; people glide there smoothly
+  placePeople(rec, people) {
+    const dv = rec.dv, a = ((dv.rot || 0) * Math.PI) / 180, flip = dv.flip ? -1 : 1;
+    const fx = Math.sin(a), fz = Math.cos(a), rx = Math.cos(a) * flip, rz = -Math.sin(a) * flip;
+    rec.people.forEach((p, i) => {
+      const t = people[i];
+      if (!t) { p.visible = false; p.userData.goal = null; return; }
+      const gx = dv.x + fx * t[1] - rx * t[0], gz = dv.y + fz * t[1] - rz * t[0];
+      if (!p.visible) p.position.set(gx, 0, gz);
+      p.visible = true; p.userData.goal = [gx, gz];
+    });
+    this.animate(`r${dv.id}`, (dt) => {
+      let moving = false;
+      for (const p of rec.people) {
+        const g = p.userData.goal; if (!g || !p.visible) continue;
+        const dx = g[0] - p.position.x, dz = g[1] - p.position.z, d = Math.hypot(dx, dz); if (d < 0.01) continue;
+        const k = Math.min(1, dt * 4); p.position.x += dx * k; p.position.z += dz * k; moving = true;
+        if (d > 0.05) p.rotation.y = Math.atan2(dx, dz);
+      }
+      this.shadowsDirty = true;
+      return moving;
+    });
   }
   findOpening(dv, types) {
     let best = null, bd = 1.2;
@@ -521,6 +571,7 @@ export class AtelierEngine {
         const spin = rec.obj.getObjectByName("spin");
         if (s.on && spin) this.animate(`f${rec.dv.id}`, (dt) => { spin.rotation.y += dt * 6 * (s.speed || 0.7); return rec.key === key; });
       } else if (rec.kind === "person") { rec.obj.visible = s.on; this.shadowsDirty = true; }
+      else if (rec.kind === "radar") this.placePeople(rec, s.people || []);
     }
     if (lightsChanged || first) this.assignShadows(lightsOn);
     if (lightsChanged && !first) this.reflectSoon(2000);

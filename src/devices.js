@@ -15,7 +15,20 @@ export const KINDS = {
   speaker: { name: "Speaker", icon: "mdi:speaker", domains: ["media_player"] },
   vacuum: { name: "Robot vacuum", icon: "mdi:robot-vacuum", domains: ["vacuum"] },
   sensor: { name: "Sensor", icon: "mdi:thermometer", domains: ["sensor", "binary_sensor"] },
+  radar: { name: "Presence radar", icon: "mdi:radar", domains: ["sensor"], pick: (e) => /_target_1_x$/.test(e) },
 };
+// a presence radar (Athom, LD2450 and the like): where the people it sees are, in metres from it
+export function radarTargets(dv, states) {
+  const base = (dv.entity || "").replace(/_target_1_x$/, "");
+  if (!base) return [];
+  const out = [];
+  for (let n = 1; n <= 3; n++) {
+    const x = parseFloat(states?.[`${base}_target_${n}_x`]?.state), y = parseFloat(states?.[`${base}_target_${n}_y`]?.state);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) continue;
+    out.push([Math.round(x) / 1000, Math.abs(Math.round(y)) / 1000]);
+  }
+  return out;
+}
 export const LIGHT_LOOKS = { pendant: "Pendant", chandelier: "Chandelier", spots: "Spotlights", flush: "Ceiling light", floor: "Floor lamp", downlight: "Recessed spot", track: "Track light", linear: "Linear light", focus: "Focus light" };
 const BASE = { pendant: 30, chandelier: 45, spots: 22, flush: 30, floor: 14, downlight: 14, track: 12, linear: 16, focus: 10 };
 // typical real output of each kind of fitting, in lumens, and its warmth in kelvin
@@ -79,6 +92,10 @@ export function stateOf(rec, states, editing) {
   if (kind === "tv" || kind === "speaker") { if (!st) return { on: false, label: "" }; const on = !OFF.includes(st.state); return { on, label: on ? "On" : "Off", title: a.media_title }; }
   if (kind === "fan") { if (!st) return { on: false, label: "" }; const on = st.state === "on"; return { on, speed: (a.percentage ?? 70) / 100, label: on ? `${a.percentage ?? ""}%` : "Off" }; }
   if (kind === "person") { if (!st) return { on: editing, label: "" }; return { on: st.state === "home", label: st.state === "home" ? "Home" : "Away" }; }
+  if (kind === "radar") {
+    const people = editing && !dv.entity ? [[0.4, 1.6]] : radarTargets(dv, states);
+    return { people, label: dv.entity ? (people.length ? `${people.length} ${people.length === 1 ? "person" : "people"}` : "Nobody") : "" };
+  }
   if (kind === "vacuum") { if (!st) return { on: false, label: "" }; return { on: st.state === "cleaning", label: st.state === "cleaning" ? "On" : "Off" }; }
   if (!st) return { label: "" };
   return { label: `${st.state}${a.unit_of_measurement ? " " + a.unit_of_measurement : ""}`, on: st.state === "on" };

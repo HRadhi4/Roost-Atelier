@@ -2,6 +2,14 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.8.0 — 2026-11-19
+- **Presence radar:** add a *Presence radar* device (Athom, LD2450 and similar), pick its *target 1 x* sensor and turn it to face the room. Each person it sees walks in the right spot in 3D and shows as a dot on the plan; the plan also shows where the radar looks. *Flip left and right* fixes a sensor mounted the other way.
+- **Wall lengths on the plan** (the ruler button hides them) and a **printable plan** (printer button): a clean plan on white paper with room names, areas and a scale bar.
+- **Stairs** in the new *Building* furniture tab, as tall as the level.
+- **Show the levels below in 3D** (Settings): the lower levels are drawn under the one you are on.
+- **Several pieces at once:** Shift or Ctrl + tap, or *Select several* on a phone. Move them together, line them up, spread them evenly, copy or delete them.
+- Fix: your own save is never mistaken for a change from another screen.
+
 ## 0.7.0 — 2026-11-19
 - **Editing feels lighter.** Each change used to freeze the page for about half a second while the stored light was matched to the home again; that step is now about three times faster (same light, nothing to recalculate).
 - **No rebuild when nothing changed:** a save from another screen that does not touch this level, or the same home loaded again, no longer rebuilds the 3D home.

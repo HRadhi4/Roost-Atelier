@@ -25,7 +25,16 @@ It is part of the **Roost** family, alongside [Roost Cards](https://github.com/H
 - **Pick finishes** with one tap: wood, herringbone, porcelain, marble, terrazzo and carpet floors, nine wall paints, and fabric colours.
 - **Check the home**: the Atelier points out rooms with no door, bedrooms with no window, furniture blocking a door, and devices that aren't linked yet. Many of these it can fix in one tap.
 - **Several levels**: tap **+** next to **G** at the top to add a level. It starts with the outline of the level below. On a dashboard, each card shows one level.
+- **Stairs** (in the *Building* furniture tab) take the height of the level, and **Show the levels below in 3D** (Settings) draws the lower levels under the one you are on, so the home reads as one building.
+- **Several pieces at once:** Shift or Ctrl + tap (or *Select several* on a phone) to pick pieces, then move them together, line them up, spread them evenly, copy or delete them.
+- **Wall lengths** are written along every wall (the ruler button hides them), and the **printer button** prints a clean plan on white paper with room names, areas and a scale bar.
 - **Undo and redo** everything. Your work saves automatically.
+
+### Your work is safe
+- **Saves never get lost:** if Home Assistant restarts or the Wi-Fi drops, the Atelier keeps trying and keeps your changes on the device meanwhile. Closing the page with unsaved changes asks first.
+- **Earlier versions:** the last 10 versions of each home are kept (Homes menu → Earlier versions), and **deleted homes** can be brought back.
+- **Save to a file / Load from a file** to back a home up or move it to another Home Assistant.
+- **Two screens:** if the same home is changed on another screen, you choose which version to keep. Nothing is overwritten silently.
 
 ### Import
 - **From CAD, PDF or a picture of a plan** (DXF, PDF, JPG, PNG): walls become rooms, and gaps in the walls become doors and windows. Named furniture blocks in a DXF become furniture.
@@ -59,7 +68,7 @@ Roost Atelier lights your home **once**, then never has to render it again.
 - **Curtains and blinds** open to their real position, and the daylight in the room follows.
 - **Doors** swing open when a door sensor opens.
 - **ACs** show moving air when they're on. **Ceiling fans** turn. **TVs** light up.
-- **People** appear when they're home.
+- **People** appear when they're home, and a **presence radar** (Athom, LD2450 and similar) shows each person it sees walking in the right spot, on the plan and in 3D. Place it on the wall, pick its *target 1 x* sensor, and turn it to face the room.
 - **Tap** a device to switch it. **Press and hold** to open its details.
 - **Three views**: a 3D overview, a top-down plan, and walk-through, where you stand inside a room at eye height.
 

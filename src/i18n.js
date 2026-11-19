@@ -27,6 +27,12 @@ const AR = {
   "No earlier versions yet. One is kept each time you save, up to 10.": "لا توجد نسخ سابقة بعد. تُحفظ نسخة عند كل حفظ، حتى 10 نسخ.",
   "Earlier version brought back. Undo takes it away again.": "تمت استعادة النسخة السابقة. زر التراجع يلغيها.", Deleted: "حُذف", "Nothing deleted.": "لا شيء محذوف.",
   "Home brought back": "تمت استعادة المنزل", "It can be brought back from Deleted homes.": "يمكن استعادته من المنازل المحذوفة.",
+  "Presence radar": "رادار الحضور", Facing: "الاتجاه", "Turn round": "اعكس الاتجاه", "Flip left and right": "اعكس اليمين واليسار",
+  "The arrow on the plan shows where the sensor looks. Walk in front of it: if the person moves the wrong way, flip left and right.": "السهم على المخطط يبيّن اتجاه الحساس. امشِ أمامه: إذا تحرّك الشخص في الاتجاه المعاكس، اعكس اليمين واليسار.",
+  "Allow pop-ups to print the plan": "اسمح بالنوافذ المنبثقة لطباعة المخطط", Building: "البناء", Stairs: "درج", "Show the levels below in 3D": "إظهار الطوابق السفلية ثلاثية الأبعاد",
+  selected: "محدد", "Drag any of them to move them all. Shift or Ctrl + tap adds or removes one.": "اسحب أياً منها لتحريكها كلها. Shift أو Ctrl مع النقر يضيف أو يزيل قطعة.",
+  "Line up": "محاذاة", "Spread evenly": "توزيع متساوٍ", "Select several": "تحديد عدة قطع", "Tap more pieces to add them": "انقر قطعاً أخرى لإضافتها", "Done selecting": "انتهى التحديد",
+  "Left edges": "الحواف اليسرى", "Right edges": "الحواف اليمنى", "Top edges": "الحواف العليا", "Bottom edges": "الحواف السفلى", "Centres, up and down": "المراكز عمودياً", "Centres, side to side": "المراكز أفقياً", "Side to side": "أفقياً", "Up and down": "عمودياً",
 };
 let lang = "en";
 export function setLang(l) { lang = /^ar/.test(l || "") ? "ar" : "en"; return lang; }

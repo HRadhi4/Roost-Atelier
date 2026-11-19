@@ -5,7 +5,7 @@ import { ROOM_TYPES, uid, clone, snap, round, rect, area, centroid, bounds, insi
 import { SAMPLES } from "./samples.js";
 import { LIBRARY, CATEGORIES, dims } from "./furniture.js";
 import { FLOORS, WALLS, FABRICS, swatchColor, swatchCanvas } from "./materials.js";
-import { KINDS, LIGHT_LOOKS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex } from "./devices.js";
+import { KINDS, LIGHT_LOOKS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex, radarTargets } from "./devices.js";
 import { matchPhoto } from "./calibrate.js";
 import { RoomPhotographer } from "./photos.js";
 import { settle } from "./collide.js";
@@ -66,6 +66,7 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
 .ceilmode .plan .dv:not(.lamp){opacity:.18;pointer-events:none}
 .plan .dv.lamp{width:20px;height:20px}.plan .dv.lamp ha-icon{--mdc-icon-size:12px}
+.plan .zoom button.on{color:var(--acc2)}
 .plan .zoom{position:absolute;bottom:12px;inset-inline-start:12px;display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--border)}
 .three{position:relative;border-inline-start:1px solid var(--border);min-width:0}
 aside{grid-row:2;border-inline-start:1px solid var(--border);background:var(--panel);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px;z-index:2}
@@ -153,7 +154,7 @@ export class AtelierEditor {
         <div class="seg layout"><button data-l="plan" title="Plan"><ha-icon icon="mdi:floor-plan"></ha-icon></button><button data-l="split" title="Split"><ha-icon icon="mdi:view-split-vertical"></ha-icon></button><button data-l="three" title="${t("3D")}"><ha-icon icon="mdi:cube-outline"></ha-icon></button></div>
         <button data-a="settings" title="${t("Settings")}"><ha-icon icon="mdi:tune-variant"></ha-icon></button></header>
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
-        <button class="ceil" data-ceiling title="Ceiling"><ha-icon icon="mdi:ceiling-light-outline"></ha-icon><span></span></button><div class="zoom"><button data-z="in"><ha-icon icon="mdi:plus"></ha-icon></button><button data-z="fit"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button><button data-z="out"><ha-icon icon="mdi:minus"></ha-icon></button></div></div>
+        <button class="ceil" data-ceiling title="Ceiling"><ha-icon icon="mdi:ceiling-light-outline"></ha-icon><span></span></button><div class="zoom"><button data-sizes title="Sizes"><ha-icon icon="mdi:ruler"></ha-icon></button><button data-print title="Print"><ha-icon icon="mdi:printer-outline"></ha-icon></button><button data-z="in"><ha-icon icon="mdi:plus"></ha-icon></button><button data-z="fit"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button><button data-z="out"><ha-icon icon="mdi:minus"></ha-icon></button></div></div>
         <div class="three"></div></main><aside></aside></div>`;
     this.ed = root.querySelector(".ed"); this.svg = root.querySelector("svg"); this.g = root.querySelector("svg .w"); this.devsEl = root.querySelector(".devs");
     this.planEl = root.querySelector(".plan"); this.aside = root.querySelector("aside");
@@ -167,6 +168,9 @@ export class AtelierEditor {
     const cb = root.querySelector("[data-ceiling]"); cb.querySelector("span").textContent = t("Ceiling");
     cb.onclick = () => { this.ceiling = !this.ceiling; cb.classList.toggle("on", this.ceiling); this.ed.classList.toggle("ceilmode", this.ceiling); this.draw(); };
     root.querySelectorAll("[data-z]").forEach((b) => (b.onclick = () => { const z = b.dataset.z; if (z === "fit") { this.fit(); this._userView = false; } else this.zoomAt(this.planEl.clientWidth / 2, this.planEl.clientHeight / 2, z === "in" ? 1.25 : 0.8); }));
+    root.querySelector("[data-sizes]").onclick = (e) => { this.sizes = this.sizes === false; e.currentTarget.classList.toggle("on", this.sizes !== false); this.draw(); };
+    root.querySelector("[data-sizes]").classList.add("on");
+    root.querySelector("[data-print]").onclick = () => this.printPlan();
     this.bindPlan();
     this.ro = new ResizeObserver(() => { if (!this._userView && this.plan) this.fit(); this.draw(); }); this.ro.observe(this.planEl);
     this.keys = (e) => this.key(e); window.addEventListener("keydown", this.keys);
@@ -177,6 +181,8 @@ export class AtelierEditor {
     this.ed.classList.toggle("light", h.themes?.darkMode === false);
     if (this.view) this.view.hass = h;
     if (first) this.start();
+    // people seen by a presence radar move on the plan too (a few times a second at most)
+    else if (this.floor?.devices.some((d) => d.kind === "radar") && !this.drag && performance.now() - (this._rdT || 0) > 600) { this._rdT = performance.now(); this.draw(); }
   }
   pause(p) { this.view?.engine.setVisible(!p); if (p && this._unsaved) this.save(); }
   async start() {
@@ -274,6 +280,9 @@ export class AtelierEditor {
     try {
       this._unwatch = await this._hass.connection.subscribeMessage((m) => {
         if (!this.plan?.id || m.plan_id !== this.plan.id || !m.updated || m.updated === this._mine || m.updated === this._base) return;
+        // Home Assistant announces a save a moment before it answers it: our own save in flight is not "another screen"
+        // (if another screen really saved in between, the next save is refused and the choice is offered then)
+        if (this._saving) return;
         if (!this._unsaved) { this.open(this.plan.id); this.toast(t("Updated from another screen")); }
         else this.conflict();
       }, { type: "roost_atelier/subscribe" });
@@ -289,6 +298,63 @@ export class AtelierEditor {
   toast(text) {
     const el = document.createElement("div"); el.className = "toast"; el.textContent = text;
     this.root.querySelector(".ed").appendChild(el); setTimeout(() => el.remove(), 3500);
+  }
+  // several pieces selected together: line them up, spread them evenly, copy or remove them as one
+  multiPanel() {
+    const a = this.aside, list = this.sel.list.map((x) => this.find(x)).filter(Boolean);
+    const b = (k, icon, label) => `<button data-al="${k}" title="${t(label)}"><ha-icon icon="${icon}"></ha-icon></button>`;
+    a.innerHTML = `<div class="row between"><h2><ha-icon icon="mdi:selection-multiple"></ha-icon>${list.length} ${t("selected")}</h2><button data-close title="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>
+      <p class="tip">${t("Drag any of them to move them all. Shift or Ctrl + tap adds or removes one.")}</p>
+      <div class="field"><h3>${t("Line up")}</h3><div class="row">${b("left", "mdi:align-horizontal-left", "Left edges")}${b("cx", "mdi:align-horizontal-center", "Centres, up and down")}${b("right", "mdi:align-horizontal-right", "Right edges")}${b("top", "mdi:align-vertical-top", "Top edges")}${b("cy", "mdi:align-vertical-center", "Centres, side to side")}${b("bottom", "mdi:align-vertical-bottom", "Bottom edges")}</div></div>
+      ${list.length > 2 ? `<div class="field"><h3>${t("Spread evenly")}</h3><div class="row">${b("sx", "mdi:distribute-horizontal-center", "Side to side")}${b("sy", "mdi:distribute-vertical-center", "Up and down")}</div></div>` : ""}
+      <div class="row"><button data-mdup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-mdel><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+    const half = (o) => { if (!o.kind || !LIBRARY[o.kind]) return [0, 0]; const d = dims(o), r = ((o.rot || 0) % 180 + 180) % 180 === 90; return r ? [d.d / 2, d.w / 2] : [d.w / 2, d.d / 2]; };
+    const items = () => this.sel.list.map((x) => [x, this.find(x)]).filter(([, o]) => o);
+    a.querySelector("[data-close]").onclick = () => { this.picking = false; this.select(null); };
+    a.querySelectorAll("[data-al]").forEach((btn) => (btn.onclick = () => {
+      const k = btn.dataset.al, objs = items().map(([, o]) => o); this.snapshot();
+      const ext = (o) => { const [hx, hy] = half(o); return { l: o.x - hx, r: o.x + hx, t: o.y - hy, b: o.y + hy }; };
+      if (k === "left") { const v = Math.min(...objs.map((o) => ext(o).l)); objs.forEach((o) => (o.x = round(v + half(o)[0], 3))); }
+      if (k === "right") { const v = Math.max(...objs.map((o) => ext(o).r)); objs.forEach((o) => (o.x = round(v - half(o)[0], 3))); }
+      if (k === "top") { const v = Math.min(...objs.map((o) => ext(o).t)); objs.forEach((o) => (o.y = round(v + half(o)[1], 3))); }
+      if (k === "bottom") { const v = Math.max(...objs.map((o) => ext(o).b)); objs.forEach((o) => (o.y = round(v - half(o)[1], 3))); }
+      if (k === "cx") { const v = objs.reduce((t, o) => t + o.x, 0) / objs.length; objs.forEach((o) => (o.x = round(v, 3))); }
+      if (k === "cy") { const v = objs.reduce((t, o) => t + o.y, 0) / objs.length; objs.forEach((o) => (o.y = round(v, 3))); }
+      if (k === "sx" || k === "sy") {
+        const c = k === "sx" ? "x" : "y", sorted = [...objs].sort((p, q) => p[c] - q[c]), a0 = sorted[0][c], a1 = sorted[sorted.length - 1][c];
+        sorted.forEach((o, i) => (o[c] = round(a0 + ((a1 - a0) * i) / (sorted.length - 1), 3)));
+      }
+      this.changed();
+    }));
+    a.querySelector("[data-mdup]").onclick = () => {
+      this.snapshot(); const f = this.floor, next = [];
+      for (const [x, o] of items()) { const c = { ...clone(o), id: uid(x.t === "item" ? "i" : "d"), x: round(o.x + 0.5, 3), y: round(o.y + 0.5, 3) }; (x.t === "item" ? f.items : f.devices).push(c); next.push({ t: x.t, id: c.id }); }
+      this.sel = { t: "multi", list: next }; this.changed(); this.inspector();
+    };
+    a.querySelector("[data-mdel]").onclick = () => this.remove(this.sel);
+  }
+  // a clean plan on white paper: walls, doors, windows, furniture, room names and areas, wall lengths, a scale bar
+  printPlan() {
+    const keep = { sel: this.sel, ceiling: this.ceiling, z: this.z, px: this.px, py: this.py, sizes: this.sizes };
+    this.sel = null; this.ceiling = false; this.sizes = true;
+    const b = planBounds(this.floor), W = 1000, m = 1.2, z = W / (b.x1 - b.x0 + 2 * m);
+    this.z = z; this.px = 0; this.py = 0; this.draw();
+    const body = this.g.innerHTML;
+    Object.assign(this, keep); this.draw();
+    const H = (b.y1 - b.y0 + 2 * m) * z, today = new Date().toLocaleDateString();
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(this.plan.name)}</title><style>
+      @page{size:A4 landscape;margin:12mm}body{margin:0;font-family:Inter,Arial,sans-serif;color:#161936}
+      svg{width:100%;height:auto;--wall:#2A2F45;--text:#161936;--muted:#5E668F;--grid:transparent;--inset:#EEF0FA;--border:#C9CEF0;--acc1:#6D4BFF;--acc2:#8B6CFF;--panel:#fff;--track:#DDE1F0}
+      header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #C9CEF0;padding-bottom:6px;margin-bottom:8px}h1{font-size:18px;margin:0}small{color:#5E668F}
+      .hs,[data-rot],[data-aim]{display:none}</style></head><body>
+      <header><h1>${esc(this.plan.name)} · ${esc(this.floor.name || "")}</h1><small>${today}</small></header>
+      <svg viewBox="${b.x0 - m} ${b.y0 - m} ${b.x1 - b.x0 + 2 * m} ${b.y1 - b.y0 + 2 * m}" xmlns="http://www.w3.org/2000/svg">${body}
+        <g transform="translate(${b.x0 - m + 0.4} ${b.y1 + m - 0.4})"><rect width="1" height="0.08" fill="#161936"/><rect x="1" width="1" height="0.08" fill="#fff" stroke="#161936" stroke-width="0.01"/><text y="-0.12" font-size="${11 / z}" fill="#161936">0</text><text x="2" y="-0.12" font-size="${11 / z}" text-anchor="middle" fill="#161936">2 m</text></g></svg>
+      <script>setTimeout(() => print(), 300)<\/script></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { this.toast(t("Allow pop-ups to print the plan")); return; }
+    w.document.write(html); w.document.close();
+    void H;
   }
   // ------------------------------------------------------------ backups: a file, earlier versions, deleted homes
   exportFile() {
@@ -338,9 +404,11 @@ export class AtelierEditor {
   setStatus(s) { this.root.querySelector(".status").textContent = s; }
 
   // ------------------------------------------------------------ finding things
-  find(s) { if (!s) return null; const f = this.floor; return (s.t === "room" ? f.rooms : s.t === "op" ? f.openings : s.t === "item" ? f.items : f.devices).find((x) => x.id === s.id); }
+  find(s) { if (!s) return null; if (s.t === "multi") return s; const f = this.floor; return (s.t === "room" ? f.rooms : s.t === "op" ? f.openings : s.t === "item" ? f.items : f.devices).find((x) => x.id === s.id); }
   select(s) { this.sel = s; if (this.tool !== "select" && s) { this.tool = "select"; this.drawNav(); } this.draw(); this.inspector(); }
-  remove(s) { this.snapshot(); const f = this.floor, k = s.t === "room" ? "rooms" : s.t === "op" ? "openings" : s.t === "item" ? "items" : "devices"; f[k] = f[k].filter((x) => x.id !== s.id); this.sel = null; this.changed(); this.inspector(); }
+  remove(s) {
+    if (s.t === "multi") { this.snapshot(); const f = this.floor; for (const x of s.list) { const k = x.t === "item" ? "items" : "devices"; f[k] = f[k].filter((o) => o.id !== x.id); } this.sel = null; this.picking = false; this.changed(); this.inspector(); return; }
+    this.snapshot(); const f = this.floor, k = s.t === "room" ? "rooms" : s.t === "op" ? "openings" : s.t === "item" ? "items" : "devices"; f[k] = f[k].filter((x) => x.id !== s.id); this.sel = null; this.changed(); this.inspector(); }
 
   // ------------------------------------------------------------ floors
   drawFloors() {
@@ -405,7 +473,7 @@ export class AtelierEditor {
     // furniture footprints (faded in ceiling mode)
     if (this.ceiling) out += `<g opacity=".22" pointer-events="none">`;
     for (const it of f.items) {
-      const d = dims(it), L = LIBRARY[it.kind], on = s?.t === "item" && s.id === it.id;
+      const d = dims(it), L = LIBRARY[it.kind], on = (s?.t === "item" && s.id === it.id) || (s?.t === "multi" && s.list.some((x) => x.t === "item" && x.id === it.id));
       const isRound = /round|plant|tree|ottoman|bar_stool|pendant|chandelier/.test(it.kind);
       out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${it.id}">`;
       out += isRound ? `<ellipse rx="${d.w / 2}" ry="${d.d / 2}" fill="${light ? "#fff" : "#2A3060"}" fill-opacity=".9" stroke="${on ? "var(--acc2)" : light ? "#9AA3C9" : "#5E668F"}" stroke-width="${(on ? 2.5 : 1) * px}" ${d.mount === "ceiling" ? `stroke-dasharray="${4 * px} ${3 * px}" fill-opacity=".2"` : ""}/>`
@@ -417,6 +485,14 @@ export class AtelierEditor {
     if (this.ceiling) out += `</g>`;
     // the shape of linear lights, tracks and where focus lights point
     for (const d of f.devices) {
+      if (d.kind === "radar") {
+        // where the presence radar looks: a soft fan, 6 m deep and 120° wide
+        const a = ((d.rot || 0) * Math.PI) / 180, R = 6, w = Math.PI / 3, fx = Math.sin(a), fy = Math.cos(a);
+        const p1 = [d.x + R * Math.sin(a - w), d.y + R * Math.cos(a - w)], p2 = [d.x + R * Math.sin(a + w), d.y + R * Math.cos(a + w)];
+        out += `<path d="M${d.x} ${d.y}L${p1[0]} ${p1[1]}A${R} ${R} 0 0 0 ${p2[0]} ${p2[1]}Z" fill="#E86FB0" fill-opacity=".06" stroke="#E86FB0" stroke-opacity=".35" stroke-width="${1 * px}" stroke-dasharray="${4 * px} ${3 * px}" pointer-events="none"/><line x1="${d.x}" y1="${d.y}" x2="${d.x + fx * 0.6}" y2="${d.y + fy * 0.6}" stroke="#E86FB0" stroke-width="${2 * px}" pointer-events="none"/>`;
+        for (const [tx, ty] of radarTargets(d, this._hass?.states)) { const rx = Math.cos(a) * (d.flip ? -1 : 1), ry = -Math.sin(a) * (d.flip ? -1 : 1); out += `<circle cx="${d.x + fx * ty - rx * tx}" cy="${d.y + fy * ty - ry * tx}" r="${7 * px}" fill="#E86FB0" pointer-events="none"/>`; }
+        continue;
+      }
       if ((d.kind || deviceKind(d.entity)) !== "light") continue;
       const look = d.look || "flush", on = s?.t === "dev" && s.id === d.id, col = "#F5B041";
       if (look === "track" || look === "linear") {
@@ -439,6 +515,16 @@ export class AtelierEditor {
       if (pos < len) seg(pos, len);
     }
     if (wallThin) out += `<path d="${wallThin}" stroke="var(--wall)" stroke-opacity=".6" stroke-width="0.08" fill="none"/>`;
+    // wall lengths, written along each wall on its outer side (inside length for walls between rooms)
+    if (this.sizes !== false && !this.ceiling) for (const w of ws_) {
+      const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], len = Math.hypot(dx, dy); if (len * z < 70 || w.parapet) continue;
+      let nx = -dy / len, ny = dx / len;
+      const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
+      if (f.rooms.some((r) => inside([mx + nx * 0.3, my + ny * 0.3], r.pts)) && !f.rooms.some((r) => inside([mx - nx * 0.3, my - ny * 0.3], r.pts))) { nx = -nx; ny = -ny; }
+      let deg = (Math.atan2(dy, dx) * 180) / Math.PI; if (deg > 90) deg -= 180; if (deg < -90) deg += 180;
+      const off = w.thick / 2 + 9 * px, tx = mx + nx * off, ty = my + ny * off;
+      out += `<text class="dim" transform="translate(${tx} ${ty}) rotate(${deg})" font-size="${10 * px}" text-anchor="middle" dominant-baseline="middle" fill="var(--muted)" pointer-events="none">${len.toFixed(2)} m</text>`;
+    }
     // openings
     for (const op of f.openings) {
       const nw = nearestWall(f, [op.x, op.y], 0.3); if (!nw) continue;
@@ -488,7 +574,7 @@ export class AtelierEditor {
       if (!el) { el = document.createElement("div"); el.className = "dv"; el.dataset.dev = d.id; el.innerHTML = `<ha-icon></ha-icon>`; this.devsEl.appendChild(el); }
       const kind = d.kind || deviceKind(d.entity), [sx, sy] = this.toScreen(d.x, d.y);
       el.style.left = `${sx}px`; el.style.top = `${sy}px`; el.style.transform = `translate(-50%,-50%) scale(${Math.max(0.6, Math.min(1, z / 45))})`; el.style.setProperty("--c", DEV_COL[kind] || "#8B6CFF");
-      el.classList.toggle("sel", s?.t === "dev" && s.id === d.id);
+      el.classList.toggle("sel", (s?.t === "dev" && s.id === d.id) || (s?.t === "multi" && s.list.some((x) => x.t === "dev" && x.id === d.id)));
       el.classList.toggle("lamp", kind === "light" && ["downlight", "focus", "track", "linear", "spots"].includes(d.look));
       el.querySelector("ha-icon").setAttribute("icon", KINDS[kind]?.icon || "mdi:circle");
       el.title = d.name || "";
@@ -525,6 +611,19 @@ export class AtelierEditor {
     if (["door", "window", "slider", "arch"].includes(this.tool)) { this.drag = { ...start, kind: "addop" }; return; }
     const aim = tgt.closest?.("[data-aim]");
     if (aim) { const d = f.devices.find((x) => x.id === aim.dataset.aim); this.drag = { ...start, kind: "aim", obj: d }; this.selectQuiet({ t: "dev", id: d.id }); return; }
+    // several at once: Shift or Ctrl + tap (or "Select several" on a phone) adds or removes; dragging moves them all
+    const hitItem = tgt.closest?.("[data-item]"), hitObj = ds ? { t: "dev", id: ds.dataset.dev } : hitItem ? { t: "item", id: hitItem.dataset.item } : null;
+    if (hitObj && (e.shiftKey || e.ctrlKey || e.metaKey || this.picking)) {
+      const list = this.sel?.t === "multi" ? this.sel.list : this.sel && (this.sel.t === "item" || this.sel.t === "dev") ? [this.sel] : [];
+      const i = list.findIndex((x) => x.t === hitObj.t && x.id === hitObj.id);
+      const next = i >= 0 ? list.filter((_, k) => k !== i) : [...list, hitObj];
+      this.sel = next.length > 1 ? { t: "multi", list: next } : next[0] || null;
+      this.drag = null; this.draw(); this.inspector(); return;
+    }
+    if (hitObj && this.sel?.t === "multi" && this.sel.list.some((x) => x.t === hitObj.t && x.id === hitObj.id)) {
+      const objs = this.sel.list.map((x) => this.find(x)).filter(Boolean);
+      this.drag = { ...start, kind: "group", objs: objs.map((o) => [o, o.x, o.y]) }; return;
+    }
     if (ds) { const d = f.devices.find((x) => x.id === ds.dataset.dev); this.drag = { ...start, kind: "dev", obj: d, off: [d.x - P[0], d.y - P[1]] }; this.selectQuiet({ t: "dev", id: d.id }); return; }
     const a = tgt.closest?.("[data-v],[data-e],[data-rot],[data-op],[data-item],[data-room]");
     if (a?.dataset.v != null) { const r = this.find(this.sel); this.drag = { ...start, kind: "vertex", room: r, i: +a.dataset.v, links: this.linked(r.pts[+a.dataset.v]) }; return; }
@@ -549,6 +648,7 @@ export class AtelierEditor {
     this.guide = "";
     if (d.kind === "pan") { this._userView = true; this.px = d.px0 + e.clientX - d.x; this.py = d.py0 + e.clientY - d.y; this.draw(); return; }
     if (d.kind === "draw") { this.drawRect[1] = this.snapPt(P); this.draw(); return; }
+    if (d.kind === "group") { const ox = snap(dx), oy = snap(dy); for (const [o, x, y] of d.objs) { o.x = round(x + ox, 3); o.y = round(y + oy, 3); } return this.changed(); }
     if (d.kind === "room") {
       let ox = snap(dx), oy = snap(dy);
       const tg = snapTargets(f, d.room.id), b = bounds(d.pts0);
@@ -659,11 +759,12 @@ export class AtelierEditor {
       const d = { id: uid("d"), kind, entity: "", x: round(snap(P[0]), 3), y: round(snap(P[1]), 3), name: t(KINDS[kind].name) };
       if (kind === "light") d.look = "flush";
       if (sub) { d.look = sub === "cove" ? "linear" : sub; if (sub === "cove") d.style = "cove"; d.name = t({ downlight: "Recessed spot", track: "Track light", linear: "Linear light", cove: "Hidden cove", focus: "Focus light" }[sub]); if (sub === "focus") this.aimAtWall(d); }
-      if (kind === "ac") { const nw = nearestWall(this.floor, P, 3); if (nw) { const nx = (P[0] - nw.q[0]) / (nw.d || 1), ny = (P[1] - nw.q[1]) / (nw.d || 1); d.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); d.x = round(nw.q[0] + nx * (nw.w.thick / 2 + 0.13), 3); d.y = round(nw.q[1] + ny * (nw.w.thick / 2 + 0.13), 3); } }
+      if (kind === "ac" || kind === "radar") { const nw = nearestWall(this.floor, P, 3); if (nw) { const nx = (P[0] - nw.q[0]) / (nw.d || 1), ny = (P[1] - nw.q[1]) / (nw.d || 1); d.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); d.x = round(nw.q[0] + nx * (nw.w.thick / 2 + (kind === "ac" ? 0.13 : 0.02)), 3); d.y = round(nw.q[1] + ny * (nw.w.thick / 2 + (kind === "ac" ? 0.13 : 0.02)), 3); } }
       if (kind === "curtain" || kind === "door") { const o = this.floor.openings.filter((o) => (kind === "door" ? o.type === "door" : o.type === "window" || o.type === "slider")).sort((a, b) => Math.hypot(a.x - P[0], a.y - P[1]) - Math.hypot(b.x - P[0], b.y - P[1]))[0]; if (o) { d.x = o.x; d.y = o.y; } }
       this.floor.devices.push(d); this.sel = { t: "dev", id: d.id };
     } else {
       const L = LIBRARY[kind], it = { id: uid("i"), kind, x: round(snap(P[0]), 3), y: round(snap(P[1]), 3), rot: 0 };
+      if (kind === "stairs") it.h = this.floor.height || 2.8;
       if (L[6] === "ceiling") it.mount = "ceiling";
       this.floor.items.push(it); settle(it, this.floor.items); this.sel = { t: "item", id: it.id };
     }
@@ -683,6 +784,7 @@ export class AtelierEditor {
     if (this.tool === "room") { a.innerHTML = `<h2><ha-icon icon="mdi:vector-square-plus"></ha-icon>${t("Rooms")}</h2><p class="tip">${t("Tap and drag on the plan to draw a room.")}</p>`; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { a.innerHTML = `<h2>${t(TOOLS.find((x) => x[0] === this.tool)[2])}</h2><p class="tip">${t("Tap a wall to add it.")}</p>`; return; }
     if (!obj) return this.homePanel(mode === "settings");
+    if (s.t === "multi") return this.multiPanel();
     const head = (icon, title) => `<div class="row between"><h2><ha-icon icon="${icon}"></ha-icon>${esc(title)}</h2><button data-close title="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
     // every slider also takes a typed number
     const slider = (key, label, min, max, step, val, unit = " m") => `<div class="sl"><span>${t(label)}</span><b class="nv"><input type="number" inputmode="decimal" data-num="${key}" min="${min}" step="${step}" value="${round(val, 2)}"><i>${unit.trim()}</i></b><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
@@ -713,12 +815,12 @@ export class AtelierEditor {
       if (d.mount === "wall") h += slider("z", "Sill", 0, 2.4, 0.05, d.z);
       h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
       h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${Object.entries(FABRICS).map(([k, c]) => `<button data-color="${c}" title="${k}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
-      h += `<div class="row"><button data-dup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ha-icon icon="mdi:selection-multiple"></ha-icon>${t("Select several")}</button><button data-dup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "dev") {
       const kind = obj.kind || deviceKind(obj.entity), K = KINDS[kind];
       h += head(K.icon, obj.name || t(K.name));
       h += `<div class="field"><h3>${t("Name")}</h3><input type="text" data-k="name" value="${esc(obj.name)}"></div>`;
-      h += `<div class="field"><h3>${t("Entity")}</h3><select data-k="entity"><option value="">${t("Not linked")}</option>${Object.keys(this._hass.states).filter((e) => K.domains.includes(e.split(".")[0])).sort().map((e) => `<option value="${e}" ${obj.entity === e ? "selected" : ""}>${esc(this._hass.states[e].attributes.friendly_name || e)}</option>`).join("")}</select></div>`;
+      h += `<div class="field"><h3>${t("Entity")}</h3><select data-k="entity"><option value="">${t("Not linked")}</option>${Object.keys(this._hass.states).filter((e) => K.domains.includes(e.split(".")[0]) && (!K.pick || K.pick(e))).sort().map((e) => `<option value="${e}" ${obj.entity === e ? "selected" : ""}>${esc(this._hass.states[e].attributes.friendly_name || e)}</option>`).join("")}</select></div>`;
       if (kind === "light") h += `<div class="field"><h3>${t("Look")}</h3><div class="chips">${Object.entries(LIGHT_LOOKS).map(([k, v]) => `<button data-look="${k}" class="${(obj.look || "flush") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div></div>` 
         + slider("lumens", obj.look === "track" ? "Light output (each head)" : obj.look === "linear" ? "Light output (per metre)" : "Light output", 100, 5000, 50, obj.lumens || LUMENS[obj.look || "flush"], " lm")
         + `<label class="sl"><span>${t("Warmth")}</span><b data-out="kelvin">${obj.kelvin || KELVIN[obj.look || "flush"]} K</b><input type="range" data-k="kelvin" min="2200" max="6500" step="100" value="${obj.kelvin || KELVIN[obj.look || "flush"]}" style="accent-color:${kelvinToHex(obj.kelvin || KELVIN[obj.look || "flush"])}"></label>`
@@ -726,10 +828,12 @@ export class AtelierEditor {
         + (this.floor.rooms.some((r) => inside([obj.x, obj.y], r.pts)) ? `<div class="row"><button data-linkroom><ha-icon icon="mdi:link-variant"></ha-icon>${t(obj.entity ? "Same switch for every light in this room" : "Same on and off for every light in this room")}</button></div>` : "")
         + (obj.entity ? "" : `<div class="field"><h3>${t("Not smart: when is it on?")}</h3><div class="chips">${Object.entries(RULES).filter(([k]) => k !== "demo").map(([k, v]) => `<button data-rule="${k}" class="${(obj.rule || "on") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div>${obj.rule === "schedule" ? `<div class="row"><input type="text" data-k="from" value="${esc(obj.from || "18:00")}" style="width:90px"> – <input type="text" data-k="to" value="${esc(obj.to || "23:00")}" style="width:90px"></div>` : ""}</div>`);
       if (kind === "ac") h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><b>${obj.rot || 0}°</b><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
-      if (kind === "person") h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["#6D4BFF", "#4E8CFF", "#E86FB0", "#FF7A59", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
-      h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      if (kind === "radar") h += `<div class="field"><h3>${t("Facing")}</h3><div class="row"><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="180">${t("Turn round")}</button></div><p class="note">${t("The arrow on the plan shows where the sensor looks. Walk in front of it: if the person moves the wrong way, flip left and right.")}</p><div class="row"><button data-tog="flip" class="${obj.flip ? "on" : ""}"><ha-icon icon="mdi:swap-horizontal"></ha-icon>${t("Flip left and right")}</button></div></div>`;
+      if (kind === "person" || kind === "radar") h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["#6D4BFF", "#4E8CFF", "#E86FB0", "#FF7A59", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
+      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ha-icon icon="mdi:selection-multiple"></ha-icon>${t("Select several")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
     }
     a.innerHTML = h;
+    a.querySelector("[data-pick]")?.addEventListener("click", () => { this.picking = !this.picking; this.toast(t(this.picking ? "Tap more pieces to add them" : "Done selecting")); this.inspector(); });
     const pv = a.querySelector(".pv"); if (pv) (this.preview ||= new ItemPreview()).mount(pv, obj);
     this.bindInspector(obj, s);
   }
@@ -863,6 +967,7 @@ export class AtelierEditor {
       <div class="card"><div class="row between"><span class="tip">${t("Rooms")}</span><b>${f.rooms.length}</b></div><div class="row between"><span class="tip">m²</span><b>${round(total, 1)}</b></div><div class="row between"><span class="tip">${t("Furniture")}</span><b>${f.items.length}</b></div><div class="row between"><span class="tip">${t("Devices")}</span><b>${f.devices.length}</b></div></div>
       <div class="field"><h3>${t("Name")}</h3><input type="text" data-name value="${esc(p.name)}"></div>
       <div class="field"><h3>${t("Walls")}</h3><div class="seg"><button data-walls="cut" class="${st.walls !== "full" ? "on" : ""}">${t("Cut walls")}</button><button data-walls="full" class="${st.walls === "full" ? "on" : ""}">${t("Full walls")}</button></div></div>
+      ${p.floors.length > 1 ? `<div class="row"><button data-levels class="${st.levels ? "on" : ""}"><ha-icon icon="mdi:layers-outline"></ha-icon>${t("Show the levels below in 3D")}</button></div>` : ""}
       <label class="sl"><span>${t("Height")}</span><b data-out="fh">${f.height} m</b><input type="range" data-fh min="2.4" max="4.5" step="0.05" value="${f.height}"></label>
       <label class="sl"><span>${t("North")}</span><b data-out="north">${p.north || 0}°</b><input type="range" data-north min="0" max="359" step="1" value="${p.north || 0}"></label>
       <label class="sl"><span>${t("Overall brightness")}</span><b data-out="ex">${round(st.exposure || 1, 2)}×</b><input type="range" data-ex min="0.5" max="2" step="0.05" value="${st.exposure || 1}"></label>
@@ -878,6 +983,7 @@ export class AtelierEditor {
     a.querySelector("[data-delfloor]")?.addEventListener("click", () => this.removeFloor());
     a.querySelector("[data-name]").addEventListener("change", (e) => set(() => { p.name = e.target.value || p.name; this.root.querySelector("h1").textContent = p.name; }, false));
     a.querySelectorAll("[data-walls]").forEach((b) => (b.onclick = () => { set(() => (st.walls = b.dataset.walls)); this.homePanel(); }));
+    a.querySelector("[data-levels]")?.addEventListener("click", () => { set(() => (st.levels = !st.levels)); this.homePanel(); });
     a.querySelector("[data-fh]").addEventListener("change", (e) => set(() => (f.height = +e.target.value)));
     a.querySelector("[data-fh]").addEventListener("input", (e) => (a.querySelector('[data-out="fh"]').textContent = `${e.target.value} m`));
     a.querySelector("[data-ex]").addEventListener("input", (e) => { a.querySelector('[data-out="ex"]').textContent = `${e.target.value}×`; st.exposure = +e.target.value; this.view.engine.request(false); });
@@ -955,6 +1061,6 @@ export class AtelierEditor {
     if (e.target.closest?.("input,select,textarea") || e.composedPath()[0]?.matches?.("input,select,textarea")) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); }
     else if ((e.key === "Delete" || e.key === "Backspace") && this.sel) this.remove(this.sel);
-    else if (e.key === "Escape") this.select(null);
+    else if (e.key === "Escape") { this.picking = false; this.select(null); }
   }
 }
