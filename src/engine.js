@@ -4,6 +4,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
+
+// Real skies photographed as panoramas (day, sunset, night): they light the rooms and show in reflections
+export const ENV_BASE = { url: new URL("../env/", import.meta.url).href };
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
@@ -24,6 +28,26 @@ export function pickQuality(renderer) {
   if (/SwiftShader|llvmpipe|Mali-(4|T)|Adreno \(TM\) [345]\d\d/i.test(gpu) || cores <= 4 || mem <= 2) return "low";
   if (/Mali|Adreno|PowerVR|Apple GPU/i.test(gpu) || /Android|iPad|iPhone/i.test(navigator.userAgent)) return "medium";
   return "high";
+}
+
+// How each wall end meets the others: straight on (no overlap), into a T (stops at the face),
+// or at a corner (one wall wraps the corner, the other stops against it).
+function joinEnds(ws) {
+  const key = (p) => `${Math.round(p[0] * 1000)},${Math.round(p[1] * 1000)}`, nodes = new Map();
+  ws.forEach((w, i) => { if (w.parapet) return; [["a", 0], ["b", 1]].forEach(([e, k]) => { const id = key(w[e]); if (!nodes.has(id)) nodes.set(id, []); nodes.get(id).push({ w, i, end: k }); }); });
+  const dir = (w, end) => { const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], l = Math.hypot(dx, dy); return end ? [-dx / l, -dy / l] : [dx / l, dy / l]; };
+  for (const list of nodes.values()) {
+    const coll = (x) => list.some((y) => y !== x && (() => { const a = dir(x.w, x.end), b = dir(y.w, y.end); return a[0] * b[0] + a[1] * b[1] < -0.999; })());
+    const through = list.filter(coll);
+    for (const x of list) {
+      let ext;
+      if (list.length === 1) ext = x.w.thick / 2;
+      else if (coll(x)) ext = 0;
+      else if (through.length) ext = -Math.max(...through.map((y) => y.w.thick)) / 2;
+      else { const first = list.reduce((m, y) => (y.i < m.i ? y : m)); ext = x === first ? Math.max(...list.map((y) => y.w.thick)) / 2 : -first.w.thick / 2; }
+      x.w[x.end ? "ext1" : "ext0"] = ext;
+    }
+  }
 }
 
 export class AtelierEngine {
@@ -121,7 +145,7 @@ export class AtelierEngine {
     if (this.tween) this.stepTween(dt);
     const damping = this.controls.enabled && this.controls.update();
     if (this.anims.size) { for (const a of [...this.anims]) if (a(dt) === false) this.anims.delete(a); this.dirty = true; }
-    if (this.photo?.active) { this.photo.step(); return; }
+    if (this.photo?.active) { try { this.photo.step(); } catch (err) { console.warn("Roost Atelier photo mode:", err); this.photo.stop(); this.opts.photo = false; this.emit("photo", { progress: -2, error: String(err?.message || err) }); } return; }
     if (!this.dirty && !damping) return;
     this.dirty = false;
     if (this.shadowsDirty) { this.renderer.shadowMap.needsUpdate = true; this.shadowsDirty = false; }
@@ -141,7 +165,8 @@ export class AtelierEngine {
     this.rooms = new THREE.Group(); this.wallsG = new THREE.Group(); this.items = new THREE.Group(); this.devG = new THREE.Group(); this.ceilings = new THREE.Group();
     this.root.add(this.rooms, this.wallsG, this.items, this.devG, this.ceilings);
     for (const r of floor.rooms) this.addRoom(r, H);
-    for (const w of walls(floor)) this.addWall(w, floor, H);
+    const ws = walls(floor); joinEnds(ws);
+    for (const w of ws) this.addWall(w, floor, H);
     for (const it of floor.items) this.addItem(it, H);
     for (const d of floor.devices) this.addDevice(d, H);
     this.addGround(floor);
@@ -197,7 +222,8 @@ export class AtelierEngine {
   wallBox(w, s0, s1, y0, y1, matL, matR, ang, t, low = false) {
     const len = s1 - s0; if (len < 0.01 || y1 - y0 < 0.01) return;
     const atEnd0 = s0 < 0.001, atEnd1 = Math.abs(s1 - Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])) < 0.001;
-    const ext0 = atEnd0 ? t / 2 : 0, ext1 = atEnd1 ? t / 2 : 0;
+    // wall ends meet without overlapping, so no two surfaces share the same spot (clean photos)
+    const ext0 = atEnd0 ? w.ext0 ?? t / 2 : 0, ext1 = atEnd1 ? w.ext1 ?? t / 2 : 0;
     const geo = new THREE.BoxGeometry(len + ext0 + ext1, y1 - y0, t);
     const capTop = solid("#2A2F45", { rough: 0.85 });
     // BoxGeometry faces: +x, -x, +y, -y, +z, -z. +z faces the left side of a→b in plan (y down) after rotation.
@@ -448,11 +474,29 @@ export class AtelierEngine {
     const ms = { low: 1024, medium: 2048, high: 4096 }[this.quality]; if (this.sun.shadow.mapSize.x !== ms) { this.sun.shadow.mapSize.set(ms, ms); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
     this.sun.intensity = 2.6 * day; this.sun.color.set(el < 12 ? "#ffcf9e" : "#fff4e2");
     this.hemi.intensity = 0.12 + 0.75 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
+    const kind = el > 14 ? "day" : el > -5 ? "sunset" : "night";
+    // the outdoor panoramas are much brighter than a room, so they are toned down indoors
     this.scene.environmentIntensity = 0.12 + 0.55 * day;
+    this.useSky(kind);
     this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
     this.isDay = day > 0.3;
     this.emit("sky", { day });
     this.shadowsDirty = true; this.request(false);
+  }
+
+  // the panorama for this time of day; the studio light stays until it has loaded
+  useSky(kind) {
+    this.skyKind = kind; this._skies ||= {};
+    // the live view keeps its soft studio light; the panorama lights the photo, as in a studio render
+    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; };
+    if (this._skies[kind]?.equirect) return apply();
+    if (this._skies[kind]) return;
+    this._skies[kind] = {};
+    new HDRLoader().load(`${ENV_BASE.url}${kind}.hdr`, (tex) => {
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      this._skies[kind] = { equirect: tex };
+      apply();
+    }, undefined, () => { delete this._skies[kind]; });
   }
 
   // ---------------------------------------------------------------- views
@@ -465,7 +509,8 @@ export class AtelierEngine {
       const room = this.walkRoom || this.floor.rooms.find((x) => x.type === "living") || this.floor.rooms[0];
       const [x, y] = centroid(room.pts), bb = room.pts;
       const far = bb.reduce((m, p) => (Math.hypot(p[0] - x, p[1] - y) > Math.hypot(m[0] - x, m[1] - y) ? p : m), bb[0]);
-      pos = new THREE.Vector3(x + (far[0] - x) * 0.7, 1.55, y + (far[1] - y) * 0.7); target = new THREE.Vector3(x - (far[0] - x) * 0.4, 1.2, y - (far[1] - y) * 0.4); fov = 62;
+      // eye level, looking straight ahead so walls stay upright like in a professional interior photo
+      pos = new THREE.Vector3(x + (far[0] - x) * 0.72, 1.35, y + (far[1] - y) * 0.72); target = new THREE.Vector3(x - (far[0] - x) * 0.4, 1.35, y - (far[1] - y) * 0.4); fov = 60;
       this.walkRoomId = room.id;
     } else {
       // far enough that the whole home fits, seen from the south-east at about 45°
@@ -517,7 +562,7 @@ export class AtelierEngine {
     if (hit) this.emit("tap", hit);
     if (this.view === "walk" && hit?.room && !hit.device) {
       const p = hit.point, dir = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
-      const to = new THREE.Vector3(p.x, 1.55, p.z); this.tweenTo(to, to.clone().add(dir), this.camera.fov, 0.7);
+      const to = new THREE.Vector3(p.x, 1.35, p.z); this.tweenTo(to, to.clone().add(dir), this.camera.fov, 0.7);
     }
   }
   pick(e) {
@@ -560,8 +605,14 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- photo mode
   async startPhoto() {
     if (this.busy || this.tween || !this.opts.photo) return;
-    if (!this.photo) { const { PhotoMode } = await import("./photo.js"); this.photo = new PhotoMode(this); }
-    this.photo.start();
+    try {
+      if (!this.photo) { const { PhotoMode } = await import("./photo.js"); this.photo = new PhotoMode(this); }
+      this.photo.start();
+    } catch (err) {
+      // some tablets can't run the light tracer: say so instead of failing quietly
+      console.warn("Roost Atelier photo mode:", err); this.photo?.stop?.(); this.opts.photo = false;
+      this.emit("photo", { progress: -2, error: String(err?.message || err) });
+    }
   }
   setPhoto(on) { this.opts.photo = on; if (on) this.startPhoto(); else this.photo?.stop(); this.request(true); }
   snapshot() { this.composer.render(); return this.renderer.domElement.toDataURL("image/jpeg", 0.92); }

@@ -398,3 +398,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
+==== Sky panoramas (env/*.hdr) ====
+Quarry 01 (day), Venice Sunset (sunset) and Moonless Golf (night) by Poly Haven, https://polyhaven.com, released under CC0 (public domain).

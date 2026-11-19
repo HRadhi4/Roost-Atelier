@@ -77,7 +77,9 @@ export class AtelierView {
   }
   drawProgress(p) {
     const el = this.root.querySelector(".prog");
-    el.classList.toggle("hide", p < 0 || p >= 1);
+    if (p === -2) { this.photoOn = false; this.drawBar(); el.classList.remove("hide"); el.querySelector("span").textContent = t("Photo mode isn't available on this device"); el.querySelector("i").style.display = "none"; clearTimeout(this._pe); this._pe = setTimeout(() => { el.classList.add("hide"); el.querySelector("span").textContent = t("Making photo"); el.querySelector("i").style.display = ""; }, 5000); return; }
+    el.querySelector("span").textContent = t(p >= 1 ? "Photo ready" : "Making photo");
+    el.classList.toggle("hide", p < 0 || (p >= 1 && !this._showReady));
     el.querySelector("b").style.width = `${Math.max(0, p) * 100}%`;
   }
   drawHot(list) {
