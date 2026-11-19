@@ -44,7 +44,7 @@ export function pickQuality(renderer) {
   if (/SwiftShader|llvmpipe|Mali-(4|T)|Adreno \(TM\) [345]\d\d/i.test(gpu) || cores <= 4 || mem <= 2) return "low";
   if (/Mali|Adreno|PowerVR|Apple GPU/i.test(gpu) || /Android|iPad|iPhone/i.test(navigator.userAgent)) return "medium";
   // graphics built into the processor (most laptops and mini PCs): lighter effects keep it smooth
-  if (/Intel|Iris|UHD Graphics|HD Graphics|Radeon\(TM\) Graphics|Radeon Graphics|Radeon Vega|Vega \d/i.test(gpu)) return "medium";
+  if (!/Arc/i.test(gpu) && /Intel|Iris|UHD Graphics|HD Graphics|Radeon\(TM\) Graphics|Radeon Graphics|Radeon Vega|Vega \d/i.test(gpu)) return "medium";
   return "high";
 }
 
@@ -158,7 +158,7 @@ export class AtelierEngine {
   resize() {
     const w = this.host.clientWidth || 300, h = this.host.clientHeight || 200;
     this.size = [w, h];
-    const r = this.baseRatio() * (this.scale || 1) * (this.lowRes ? 0.6 : 1);
+    const r = this.baseRatio() * (this.lowRes ? 0.6 * (this.scale || 1) : 1);
     this.renderer.setPixelRatio(r); this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(r); this.composer.setSize(w, h);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();

@@ -53,7 +53,8 @@ export class ItemPreview {
   tick(now) {
     if (!this.canvas.isConnected) { this._raf = null; return; }
     this._raf = requestAnimationFrame(this.tick);
-    if (this.spin && !document.hidden) { const dt = Math.min(0.05, (now - (this._t || now)) / 1000); this.angle += dt * 0.35; this._t = now; this.draw(); }
+    // a slow turn needs only 30 pictures a second
+    if (this.spin && !document.hidden) { if (now - (this._t || 0) < 32) return; const dt = Math.min(0.1, (now - (this._t || now)) / 1000); this.angle += dt * 0.35; this._t = now; this.draw(); }
     else this._t = now;
   }
   draw() {
