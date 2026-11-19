@@ -2,6 +2,8 @@
 import { AtelierEngine } from "./engine.js";
 import { KINDS, tapAction } from "./devices.js";
 import { t, isRtl } from "./i18n.js";
+import { CONTROLS_CSS, controlsHtml, bindControls } from "./controls.js";
+import { inside } from "./model.js";
 
 const COLORS = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
 
@@ -30,12 +32,21 @@ export const VIEW_CSS = `
 .av .prog i{display:block;width:60px;height:4px;border-radius:2px;background:rgba(255,255,255,.2);overflow:hidden}
 .av .prog i b{display:block;height:100%;background:linear-gradient(90deg,#6D4BFF,#8B6CFF);width:0}
 .av .prog.hide{opacity:0}
+.av .pop{position:absolute;z-index:6;width:min(268px,calc(100% - 24px));padding:12px;border-radius:20px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);box-sizing:border-box}
+.av .side{position:absolute;z-index:6;top:10px;bottom:62px;inset-inline-end:10px;width:min(320px,calc(100% - 20px));padding:14px;border-radius:22px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;color:#EEF0FF;font:500 13px Inter,sans-serif}
+.av .side .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.av .side .top b{font:600 16px "Space Grotesk",Inter,sans-serif}
+.av .side .top button{all:unset;cursor:pointer;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(255,255,255,.08)}
+.av .side h4{all:unset;font:600 11px Inter,sans-serif;color:#9AA3D9;text-transform:uppercase;letter-spacing:.06em}
+.av .side .card{padding:12px;border-radius:16px;background:rgba(255,255,255,.05)}
+.av .side .card.pick{cursor:pointer}
+${CONTROLS_CSS}
 .av .empty{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;padding:20px}
 `;
 
 export class AtelierView {
-  constructor(host, { onMoreInfo, toolbar = true, hotspots = true, editing = false, view = "3d", photo = false, quality = "auto", canBake, store } = {}) {
-    this.host = host; this.onMoreInfo = onMoreInfo;
+  constructor(host, { onMoreInfo, toolbar = true, hotspots = true, editing = false, view = "3d", photo = false, quality = "auto", canBake, store, tap = "controls" } = {}) {
+    this.host = host; this.onMoreInfo = onMoreInfo; this.tapMode = editing ? "toggle" : tap;
     host.innerHTML = `<div class="av" dir="${isRtl() ? "rtl" : "ltr"}"><div class="hot"></div><div class="prog hide"><span>${t("Making photo")}</span><i><b></b></i></div>${toolbar ? `<div class="bar"></div>` : ""}</div>`;
     this.root = host.firstElementChild; this.hotEl = this.root.querySelector(".hot");
     // the light is baked on a computer, not on phones or tablets; the result is shared through Home Assistant
@@ -49,7 +60,9 @@ export class AtelierView {
     this.engine.on("photo", ({ progress }) => this.drawProgress(progress));
     this.engine.on("tap", (hit) => this.tap(hit));
     this.engine.on("hold", (hit) => hit.device && this.more(hit.device));
-    this.engine.on("view", () => this.drawBar());
+    this.engine.on("view", () => { this.drawBar(); if (this.openId) this.open(this.openId); });
+    // a tap anywhere else closes the pop-up (the side panel stays until closed)
+    this.root.addEventListener("pointerdown", (e) => { const p = e.composedPath(); if (this.popEl && !p.includes(this.popEl) && !p.some((n) => n.classList?.contains?.("hs"))) this.closePanel(); });
     this.toolbar = toolbar; this.photoOn = photo;
     this.drawBar();
     this.io = new IntersectionObserver(([e]) => this.engine.setVisible(e.isIntersecting)); this.io.observe(this.root);
@@ -64,7 +77,7 @@ export class AtelierView {
     if (wx !== this._wx) { this._wx = wx; this.engine.setWeather(wx); }
     const sun = h.states["sun.sun"];
     if (sun !== this._sun) { this._sun = sun; this.engine.setSun(this.plan.settings?.sun === false ? null : sun); }
-    if (changed) { this._last = states; this.engine.setStates(states); }
+    if (changed) { this._last = states; this.engine.setStates(states); if (this.openId) this.refreshPanel(); }
   }
   setPlan(plan, floor = 0) {
     this.plan = plan;
@@ -134,16 +147,59 @@ export class AtelierView {
       const sp = el.querySelector("span"); if (sp.textContent !== lbl) sp.textContent = lbl;
     }
     for (const [id, el] of this.hsMap) if (!seen.has(id)) { el.remove(); this.hsMap.delete(id); }
+    if (this.popEl) this.placePop();
   }
   dev(id) { return this.plan?.floors.flatMap((f) => f.devices).find((d) => d.id === id); }
   toggle(id) {
     const d = this.dev(id); if (!d) return;
     if (!d.entity) { this.onDemo?.(d); return; }
+    if (this.tapMode === "controls") return this.openId === id && this.popEl ? this.closePanel() : this.open(id);
     const dom = d.entity.split(".")[0];
     if (dom === "lock" || dom === "alarm_control_panel" || dom === "sensor" || dom === "binary_sensor" || dom === "person" || dom === "device_tracker") return this.more(id);
     if (tapAction(this._hass, d.entity) === false) this.more(id);
   }
   more(id) { const d = this.dev(id); if (d?.entity) this.onMoreInfo?.(d.entity); else this.onDemo?.(d); }
   tap(hit) { if (hit.device) this.toggle(hit.device); else this.onPick?.(hit); }
+  // ---------------------------------------------------------------- the controls of a device
+  // in the 3D and top views a small pop-up next to it; walking in a room, a side panel with everything in that room
+  open(id) {
+    const d = this.dev(id); if (!d?.entity) return;
+    this.openId = id;
+    if (this.engine.view === "walk") { this.popEl?.remove(); this.popEl = null; this.drawSide(); }
+    else { this.sideEl?.remove(); this.sideEl = null; this.drawPop(); }
+  }
+  closePanel() { this.popEl?.remove(); this.sideEl?.remove(); this.popEl = this.sideEl = null; this.openId = null; }
+  refreshPanel() {
+    const el = this.popEl || this.sideEl; if (!el || el.querySelector(".ctl[data-busy]")) return;
+    if (this.popEl) this.drawPop(); else this.drawSide();
+  }
+  colour(d) { return COLORS[d.kind || "light"] || "#8B6CFF"; }
+  drawPop() {
+    const d = this.dev(this.openId); if (!d) return this.closePanel();
+    if (!this.popEl) { this.popEl = document.createElement("div"); this.popEl.className = "pop"; this.root.appendChild(this.popEl); }
+    this.popEl.innerHTML = controlsHtml(this._hass, d.entity, d.name, this.colour(d));
+    bindControls(this.popEl, () => this._hass, (e) => { this.closePanel(); this.onMoreInfo?.(e); });
+    this.placePop();
+  }
+  placePop() {
+    const el = this.popEl, hs = this.hsMap.get(this.openId); if (!el) return;
+    const W = this.root.clientWidth, H = this.root.clientHeight, w = el.offsetWidth, h = el.offsetHeight;
+    const x = hs ? parseFloat(hs.style.left) : W / 2, y = hs ? parseFloat(hs.style.top) : H / 2;
+    const left = Math.max(12, Math.min(W - w - 12, x - w / 2)), top = y - h - 28 > 8 ? y - h - 28 : Math.min(H - h - 8, y + 28);
+    el.style.left = `${left}px`; el.style.top = `${Math.max(8, top)}px`;
+  }
+  drawSide() {
+    const d = this.dev(this.openId); if (!d) return this.closePanel();
+    const floor = this.plan.floors.find((f) => f.devices.includes(d)), room = floor?.rooms.find((r) => inside([d.x, d.y], r.pts));
+    const others = (floor?.devices || []).filter((x) => x !== d && x.entity && this._hass?.states[x.entity] && (!room || inside([x.x, x.y], room.pts)))
+      .filter((x, i, a) => a.findIndex((y) => y.entity === x.entity) === i && x.entity !== d.entity);
+    if (!this.sideEl) { this.sideEl = document.createElement("div"); this.sideEl.className = "side"; this.root.appendChild(this.sideEl); }
+    this.sideEl.innerHTML = `<div class="top"><b>${room?.name ? room.name.replace(/[<>&"]/g, "") : t("This room")}</b><button data-x aria-label="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>
+      <div class="card">${controlsHtml(this._hass, d.entity, d.name, this.colour(d))}</div>
+      ${others.length ? `<h4>${t("Also in this room")}</h4>${others.map((x) => `<div class="card pick" data-id="${x.id}">${controlsHtml(this._hass, x.entity, x.name, this.colour(x), { compact: true })}</div>`).join("")}` : ""}`;
+    bindControls(this.sideEl, () => this._hass, (e) => this.onMoreInfo?.(e));
+    this.sideEl.querySelector("[data-x]").onclick = () => this.closePanel();
+    this.sideEl.querySelectorAll(".card.pick").forEach((c) => c.addEventListener("click", (e) => { if (e.target.closest("button")) return; this.openId = c.dataset.id; this.drawSide(); }));
+  }
   dispose() { this.io.disconnect(); this.engine.dispose(); this.host.innerHTML = ""; }
 }

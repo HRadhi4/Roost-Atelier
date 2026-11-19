@@ -51,6 +51,9 @@ Roost Atelier lights your home **once**, then never has to render it again.
 - **Lamps that aren't smart** take part too: always on, always off, on after sunset, or between set times.
 - **Match your real room.** Each room has a brightness slider, and *Match a photo of this room* reads the colour of the light in a photo and sets the lamps' warmth to it.
 
+### Control everything from the 3D home
+- **Tap any device** to get a small pop-up with its controls right next to it (lights, ACs, curtains, TVs, fans, locks). Walking through a room, a side panel lists everything in that room. Prefer one-tap switching? Set *Tapping a device* to *Turns it on or off*.
+
 ### Realistic photos with local AI
 - **Photo mode** traces light bounce by bounce, then a **local AI denoiser** (Intel Open Image Denoise, the same kind of AI that professional renderers use) cleans the picture. It runs on your own computer's graphics through WebGPU; nothing leaves your home.
 - **Photos of the whole floor and every room, by themselves.** Once the light is ready, the Atelier makes a finished photo of the whole floor and of each room in the background, on its own hidden canvas, so you keep working. A bar shows how far it is. The photos are kept in Home Assistant (Settings → Room photos) and made again when you change the home.

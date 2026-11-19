@@ -2,6 +2,11 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.11.0 — 2026-11-19
+- **Tap a device to control it.** On the dashboard card, tapping a light, AC, curtain, TV, fan or lock opens a small pop-up next to it with what that device needs: on and off, brightness and warmth for lights, temperature and modes for the AC, open, stop, close and how open for curtains, volume, play and source for the TV, speed for fans. *More* opens the full details.
+- **Walking in a room shows a side panel** with the device you tapped and everything else in that room, each with its own controls.
+- The card's settings have a new choice, *Tapping a device*: show its controls (the new default) or simply turn it on or off as before.
+
 ## 0.10.0 — 2026-11-19
 - **Reading a room photo works with no setup.** A small AI now runs on your own phone or computer: it finds sofas, beds, tables, chairs, kitchen units, the fridge, bathroom fittings, ceiling lights, curtains, windows, the AC and the TV, counts them and sees where they are. The photo never leaves the device. The first time, it downloads its reading model (about 150 MB) once; after that it starts straight away.
 - If an AI provider is connected in Home Assistant (for example Google Gemini) you can pick it instead, for finer detail such as light types and sizes.

@@ -47,7 +47,7 @@ class RoostAtelierCard extends HTMLElement {
       if (!id) id = (await listPlans(this._hass))[0]?.id;
       if (!id) { this.card.innerHTML = `<div class="av"><div class="empty">${t("No homes yet")}<br>Atelier → ${t("New home")}</div></div>`; this._booted = false; return; }
       const plan = await getPlan(this._hass, id);
-      this._view = new AtelierView(this.card, { toolbar: this._config.toolbar, hotspots: this._config.hotspots, view: this._config.view, photo: this._config.photo, quality: this._config.quality, onMoreInfo: (e) => fire(this, "hass-more-info", { entityId: e }) });
+      this._view = new AtelierView(this.card, { toolbar: this._config.toolbar, hotspots: this._config.hotspots, view: this._config.view, photo: this._config.photo, quality: this._config.quality, tap: this._config.tap || "controls", onMoreInfo: (e) => fire(this, "hass-more-info", { entityId: e }) });
       this._view.setPlan(plan, this._config.floor || 0);
       this._view.hass = this._hass;
       this._planId = id; this._updated = plan.updated;
@@ -82,6 +82,7 @@ class RoostAtelierCardEditor extends HTMLElement {
       { name: "height", label: t("Height"), selector: { number: { min: 240, max: 1200, step: 20, mode: "slider", unit_of_measurement: "px" } } },
       { name: "toolbar", label: "View buttons", selector: { boolean: {} } },
       { name: "hotspots", label: "Device buttons", selector: { boolean: {} } },
+      { name: "tap", label: "Tapping a device", selector: { select: { mode: "box", options: [{ value: "controls", label: "Shows its controls" }, { value: "toggle", label: "Turns it on or off" }] } } },
       { name: "photo", label: t("Photo") + " (idle)", selector: { boolean: {} } },
       { name: "quality", label: t("Quality"), selector: { select: { mode: "dropdown", options: ["auto", "low", "medium", "high"].map((v) => ({ value: v, label: t(v[0].toUpperCase() + v.slice(1)) })) } } },
       { name: "language", label: "Language", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Auto" }, { value: "en", label: "English" }, { value: "ar", label: "العربية" }] } } },

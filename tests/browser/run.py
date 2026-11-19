@@ -127,6 +127,34 @@ with sync_playwright() as p:
     check("ceiling button works in split view", page.evaluate("() => document.getElementById('panel').editor.ceiling === true"))
     page.set_viewport_size({"width": 1200, "height": 800})
 
+    # tapping a device on the dashboard card shows its controls next to it; walking in a room shows a side panel
+    page.evaluate("""() => { document.getElementById('panel')?.remove(); window.svc = [];
+      const p = { ...window.SAMPLES[0].make(), id: 'home1', updated: window.store.plan.updated + 1 }, f = p.floors[0];
+      const r = f.rooms[0], cx = r.pts.reduce((a, q) => a + q[0], 0) / r.pts.length, cy = r.pts.reduce((a, q) => a + q[1], 0) / r.pts.length;
+      f.devices.push({ id: 'tl1', kind: 'light', look: 'downlight', entity: 'light.lounge', name: 'Lounge spots', x: cx, y: cy }, { id: 'tl2', kind: 'light', look: 'pendant', entity: 'light.lounge_2', x: cx + 0.5, y: cy }, { id: 'ta1', kind: 'ac', entity: 'climate.lounge', x: cx, y: cy + 0.5 });
+      window.store.plan = p;
+      window.hass = { ...window.hass, callService: async (d, s, data) => { window.svc.push(`${d}.${s}`); }, states: {
+        'light.lounge': { entity_id: 'light.lounge', state: 'on', attributes: { friendly_name: 'Lounge spots', brightness: 128, supported_color_modes: ['brightness'] } },
+        'light.lounge_2': { entity_id: 'light.lounge_2', state: 'off', attributes: { friendly_name: 'Lounge lamp', supported_color_modes: ['onoff'] } },
+        'climate.lounge': { entity_id: 'climate.lounge', state: 'cool', attributes: { friendly_name: 'Lounge AC', temperature: 23, current_temperature: 25, hvac_modes: ['off', 'cool', 'dry', 'fan_only'] } } } };
+      const c = document.createElement('roost-atelier-card'); c.id = 'card2'; c.setConfig({ plan: 'home1', height: 600 }); c.style.cssText = 'display:block;width:800px'; document.getElementById('slot').appendChild(c); c.hass = window.hass; }""")
+    page.wait_for_function("() => document.getElementById('card2')?._view?.engine?.floor", timeout=60000)
+    page.wait_for_timeout(1500)
+    res = page.evaluate("""async () => { const v = document.getElementById('card2')._view, d = v.plan.floors[0].devices.find((x) => x.entity === 'light.lounge');
+      v.toggle(d.id); await new Promise((r) => setTimeout(r, 100));
+      const pop = v.root.querySelector('.pop'); const out = { pop: !!pop, slider: !!pop?.querySelector('input[data-a=bri]'), name: pop?.querySelector('.hd b')?.textContent };
+      pop?.querySelector('[data-a=power]')?.click(); await new Promise((r) => setTimeout(r, 50)); out.called = window.svc.slice();
+      v.engine.view = 'walk'; v.open(d.id); await new Promise((r) => setTimeout(r, 50));
+      const side = v.root.querySelector('.side'); out.side = !!side; out.popGone = !v.root.querySelector('.pop'); out.others = side ? side.querySelectorAll('.card.pick').length : 0;
+      const acDev = v.plan.floors[0].devices.find((x) => x.entity === 'climate.lounge'); v.engine.view = '3d'; v.open(acDev.id); await new Promise((r) => setTimeout(r, 50));
+      const ap = v.root.querySelector('.pop'); out.ac = !!ap?.querySelector('[data-a=tup]') && ap.querySelectorAll('[data-a=mode]').length === 3;
+      ap?.querySelector('[data-a=tup]')?.click(); await new Promise((r) => setTimeout(r, 50)); out.called2 = window.svc.slice();
+      return out; }""")
+    check("tapping a light shows its controls next to it", res["pop"] and res["slider"] and res["name"] == "Lounge spots", str(res))
+    check("the power button switches it", "homeassistant.turn_off" in res["called"], str(res["called"]))
+    check("walking in a room shows the side panel instead", res["side"] and res["popGone"], str(res))
+    check("the AC pop-up has temperature and modes", res["ac"] and "climate.set_temperature" in res["called2"], str(res))
+
     # the local photo reader starts in the background; with no internet here it says so plainly instead of hanging
     got = page.evaluate("""async () => { const w = new Worker('/custom_components/roost_atelier/frontend/chunks/detect-worker.js', { type: 'module' });
       const c = document.createElement('canvas'); c.width = 64; c.height = 48; const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg'));
