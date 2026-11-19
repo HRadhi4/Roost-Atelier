@@ -541,17 +541,22 @@ export class AtelierEngine {
     const hexOf = (c) => "#" + c.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
     const skyC = adapt(hexOf(sk.sky.map((v) => v ** (1 / 2.2))), 0.85), sunC = adapt(hexOf(sk.sun.map((v) => v ** (1 / 2.2))), 0.5);
     mgr.update({ lights, windows, sky: skyC.map((v) => v * sk.L), sun: sunC.map((v) => v * sk.E), sunKeyW: mgr.sunKeyWeights(sk.az, sk.el), curtainAvg: cN ? cSum / cN : 1, room, roomGain: gains, cut: this.cutView() });
-    // exposure like an interior photographer: the room reads bright and true by day; night rooms stay a little darker
-    const Lavg = Math.max(0.03, (0.45 * (mgr.Eavg || 0)) / Math.PI), eye = 1.35 / (Lavg ** 0.553 * 120 ** 0.447),
-      // by day expose like an interior photo (bright and true); lamp-lit rooms at night keep their evening mood
-      tt = Math.max(0, Math.min(1, Math.log(Lavg / 0.5) / Math.log(16))), target = eye * Math.exp(Math.log(1.2) + tt * Math.log(5.6 / 1.2));
-    // adapts over about half a second of real time (like an eye), and at once after a big jump (night to day)
+    // One steady exposure, set by the daylight only (never by the lamps), like a photographer who sets the camera
+    // once for the room. At night it rests on a fixed evening level, so switching lamps never makes the picture jump.
+    // Lamps then add a soft, capped pool and their warmth on top (see bakeLampCap): more lamps feel cosier, not glaring.
+    const NIGHT = 45, mood = this.plan?.settings?.mood ?? 1;
+    const Lb = Math.max(0, (0.45 * (mgr.Ebase || 0)) / Math.PI), Lref = Math.sqrt(Lb * Lb + NIGHT * NIGHT);
+    const target = 5.2 / Lref;
+    // the strongest a lamp's light can get on a surface (lux): a bright pool near the lamp, softer further away
+    mgr.U.bakeLampCap.value = 170 * mood;
+    // adapts gently (about a second) when daylight changes or you walk into another room, at once after a big jump
     const now = performance.now(), el = Math.min(1, (now - (this._expoT || now)) / 1000); this._expoT = now;
     const ratio = this.expo ? Math.max(target / this.expo, this.expo / target) : 99;
-    this.expo = ratio > 3 ? target : this.expo + (target - this.expo) * Math.min(1, el * 2.5);
+    this.expo = ratio > 4 ? target : this.expo + (target - this.expo) * Math.min(1, el * 1.5);
     this.renderer.toneMappingExposure = this.expo * (this.plan?.settings?.exposure || 1);
     if (Math.abs(target - this.expo) > target * 0.01) this.dirty = true;
-    this.scene.environmentIntensity = Lavg * 0.9;
+    // reflections of the sky follow the daylight only (no glare at night)
+    this.scene.environmentIntensity = Math.max(0.03, Lb) * 0.9;
   }
   assignShadows(on) {
     const max = { low: 0, medium: 2, high: 4 }[this.quality], size = { low: 256, medium: 512, high: 1024 }[this.quality];
@@ -578,7 +583,7 @@ export class AtelierEngine {
     const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, r = Math.max(b.x1 - b.x0, b.y1 - b.y0);
     const s = this.sunState, north = ((this.plan?.north || 0) * Math.PI) / 180;
     let el = s ? Number(s.attributes?.elevation ?? 35) : 35, az = s ? Number(s.attributes?.azimuth ?? 200) : 200;
-    if (this.opts.forceTime === "night") el = -10; else if (this.opts.forceTime === "day") { el = 40; az = 210; }
+    if (this.opts.forceTime === "night") el = -10; else if (this.opts.forceTime === "day") { el = 40; az = 210; } else if (this.opts.forceTime === "evening") { el = 7; az = 255; }
     const day = Math.max(0, Math.min(1, (el + 4) / 14));
     const e = (Math.max(el, 4) * Math.PI) / 180, a = (az * Math.PI) / 180 + north;
     this.sun.position.set(cx + Math.sin(a) * Math.cos(e) * r * 2, Math.sin(e) * r * 2, cz - Math.cos(a) * Math.cos(e) * r * 2);
@@ -594,8 +599,9 @@ export class AtelierEngine {
     this.skyNow = { E: Esun, L: Lsky, az, el, sun: [sunCol.r, sunCol.g, sunCol.b], sky: [skyCol.r, skyCol.g, skyCol.b] };
     for (const rec of this.devices.values()) if (rec.kind === "light") rec.ctx = { night: el < 0 };
     if (this._night !== (el < 0)) { const first = this._night === undefined; this._night = el < 0; if (!first && this.devices.size) this.updateDevices(false); }
-    if (this.baked) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); this.hemi.intensity = 0; }
-    if (this.rebaking) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); }
+    // sun patches on the floor stay bright but never blinding (the eye squints, the camera rolls off)
+    if (this.baked) { this.sun.intensity = this.cutView() ? 0 : Esun * 0.5; this.sun.color.copy(sunCol); this.hemi.intensity = 0; }
+    if (this.rebaking) { this.sun.intensity = this.cutView() ? 0 : Esun * 0.5; this.sun.color.copy(sunCol); }
     this.hemi.intensity = this.rebaking ? 0 : 0.1 + 0.3 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
     const kind = el > 14 ? "day" : el > -5 ? "sunset" : "night";
     // the outdoor panoramas are much brighter than a room, so they are toned down indoors

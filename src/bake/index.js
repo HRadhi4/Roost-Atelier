@@ -25,7 +25,7 @@ export function sunDir(az, el, northDeg = 0) {
 }
 
 // ---------------------------------------------------------------- shared shader pieces
-const U = { bakeTex: { value: null }, bakeW: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) }, bakeLayers: { value: 0 }, bakeRows: { value: 1 }, bakeWidth: { value: TEXW }, bakeRoomGain: { value: new Array(33).fill(1) } };
+const U = { bakeTex: { value: null }, bakeW: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) }, bakeLayers: { value: 0 }, bakeRows: { value: 1 }, bakeWidth: { value: TEXW }, bakeRoomGain: { value: new Array(33).fill(1) }, bakeNLights: { value: 0 }, bakeLampCap: { value: 1e9 } };
 let PATCHED_BEGIN = null;
 function patchedBegin() {
   if (PATCHED_BEGIN) return PATCHED_BEGIN;
@@ -43,11 +43,13 @@ function bakedMaterial(m) {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", `#include <common>
 attribute float bakeId; attribute float bakeRoom;
-uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33];
+uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33]; uniform int bakeNLights; uniform float bakeLampCap;
 varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_vertex>
-{ int bid = int(bakeId + 0.5), bx = bid % bakeWidth, by = bid / bakeWidth; vec3 e = vec3(0.0);
-  for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; if (bakeW[l].x + bakeW[l].y + bakeW[l].z <= 0.0) continue; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) e += t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; }
-  vBaked = e * bakeRoomGain[int(bakeRoom + 0.5)]; }`);
+{ int bid = int(bakeId + 0.5), bx = bid % bakeWidth, by = bid / bakeWidth; vec3 e = vec3(0.0), lamp = vec3(0.0);
+  for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; if (bakeW[l].x + bakeW[l].y + bakeW[l].z <= 0.0) continue; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) { vec3 v = t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; if (l < bakeNLights) lamp += v; else e += v; } }
+  // lamps add a soft pool and their colour, never a glare: their light is eased off as it gets strong
+  float lumL = dot(lamp, vec3(0.2126, 0.7152, 0.0722)); lamp *= bakeLampCap / (bakeLampCap + lumL);
+  vBaked = (e + lamp) * bakeRoomGain[int(bakeRoom + 0.5)]; }`);
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vBaked;")
       .replace("#include <lights_fragment_begin>", patchedBegin())
       .replace("#include <lights_fragment_maps>", "#include <lights_fragment_maps>\niblIrradiance = vBaked;");
@@ -253,7 +255,7 @@ export class BakeManager {
     if (!this.active) return;
     const meta = this.data.meta, out = U.bakeW.value, L = meta.L, mean = meta.stats.mean, row = ((w.room ?? -1) + 1) * L;
     const K = meta.layers.filter((l) => l.t === "sun").length, sunStart = L - 2 * K, dirStart = L - K;
-    let Eexp = 0;
+    let Eexp = 0, Ebase = 0;
     meta.layers.forEach((ly, l) => {
       let c = [0, 0, 0], meter = 1;
       if (ly.t === "light") c = w.lights[ly.id] || c;
@@ -268,12 +270,13 @@ export class BakeManager {
         if (ly.t === "sundir") meter = 0.12;
       }
       out[l].set(c[0], c[1], c[2]);
-      Eexp += meter * lum(c[0], c[1], c[2]) * (mean[row + l] ?? mean[l] ?? 0);
+      const add = meter * lum(c[0], c[1], c[2]) * (mean[row + l] ?? mean[l] ?? 0); Eexp += add; if (ly.t !== "light") Ebase += add;
       // in walk-through the live sun still lights the room: count it when setting the exposure
-      if (ly.t === "sundir" && !w.cut) Eexp += meter * lum(...w.sun) * (w.sunKeyW?.[l - dirStart] || 0) * w.curtainAvg * (mean[row + l] ?? mean[l] ?? 0);
+      if (ly.t === "sundir" && !w.cut) { const add = meter * lum(...w.sun) * (w.sunKeyW?.[l - dirStart] || 0) * w.curtainAvg * (mean[row + l] ?? mean[l] ?? 0); Eexp += add; Ebase += add; }
     });
     for (let i = 0; i < 33; i++) U.bakeRoomGain.value[i] = w.roomGain?.[i] ?? 1;
-    this.Eavg = Eexp;
+    this.Eavg = Eexp; this.Ebase = Ebase;
+    U.bakeNLights.value = meta.layers.filter((ly) => ly.t === "light").length;
   }
   sunKeyWeights(az, el) {
     const keys = this.data?.meta.layers.filter((l) => l.t === "sun") || [];

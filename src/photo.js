@@ -7,7 +7,7 @@ import { denoise, aiAvailable } from "./ai/denoise.js";
 
 // The tracer mixes up colours on objects made of several materials, so it gets its own copy of the
 // home where every surface is a separate object with one material.
-export function photoScene(src, { sun = true } = {}) {
+export function photoScene(src, { sun = true, lampCap = 0 } = {}) {
   const out = new THREE.Scene();
   src.updateMatrixWorld(true);
   src.traverseVisible((o) => {
@@ -29,6 +29,8 @@ export function photoScene(src, { sun = true } = {}) {
       const l = o.clone(false);
       // with baked light the live lamps only carry half their light (their shine); photos need all of it
       if (o.isPointLight && src.userData.baked) l.intensity *= 2;
+      // the same eased-off lamp light as the live view: a soft pool, not a glare (about 1.2 m from the lamp)
+      if (o.isPointLight && lampCap > 0) { const E1 = l.intensity / 1.44; l.intensity *= lampCap / (lampCap + E1); }
       // the same white balance as the live view: warm lamps look warm, not orange
       if (o.isPointLight) { const c = l.color, lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, k = 0.55; c.setRGB(c.r + (lum - c.r) * k, c.g + (lum - c.g) * k, c.b + (lum - c.b) * k); } l.matrixAutoUpdate = false; l.matrix.copy(o.matrixWorld); l.matrixWorld.copy(o.matrixWorld);
       l.position.setFromMatrixPosition(o.matrixWorld);
@@ -77,7 +79,7 @@ export class PhotoMode {
     this.sky.topColor.set(day ? "#cfe0ff" : "#1a2050"); this.sky.bottomColor.set(day ? "#f2ebe0" : "#0b0d17"); this.sky.update();
     // rebuilt every time: lights, curtains and doors may have moved since the last photo
     e.scene.userData.baked = !!e.baked;
-    this.scene = photoScene(e.scene);
+    this.scene = photoScene(e.scene, { lampCap: e.baked ? e.bakeMgr.U.bakeLampCap.value : 0 });
     this.cleaned?.dispose(); this.cleaned = null; this.cleaning = false;
     this.scene.environment = e.skyTexture || this.sky;
     // baked: the sky picture is scaled to the real sky brightness (cd/m²) so photo and live view agree

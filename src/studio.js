@@ -46,7 +46,7 @@ export class Studio {
         const prevView = e.view;
         e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun();
         e.scene.userData.baked = !!e.baked;
-        const scene = photoScene(e.scene, { sun: shot.view === "walk" });
+        const scene = photoScene(e.scene, { sun: shot.view === "walk", lampCap: e.baked ? e.bakeMgr.U.bakeLampCap.value : 0 });
         const exposure = e.renderer.toneMappingExposure, toneMapping = e.renderer.toneMapping;
         const mid = e.baked ? Math.min(0.35, exposure * (0.45 * (e.bakeMgr.Eavg || 0)) / Math.PI) * 0.75 : 0;
         e.view = prevView; e._wallsOverride = null; e.applyWalls(); e.fitSun();

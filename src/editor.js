@@ -658,6 +658,7 @@ export class AtelierEditor {
       <label class="sl"><span>${t("Height")}</span><b data-out="fh">${f.height} m</b><input type="range" data-fh min="2.4" max="4.5" step="0.05" value="${f.height}"></label>
       <label class="sl"><span>${t("North")}</span><b data-out="north">${p.north || 0}°</b><input type="range" data-north min="0" max="359" step="1" value="${p.north || 0}"></label>
       <label class="sl"><span>${t("Overall brightness")}</span><b data-out="ex">${round(st.exposure || 1, 2)}×</b><input type="range" data-ex min="0.5" max="2" step="0.05" value="${st.exposure || 1}"></label>
+      <label class="sl"><span>${t("Lamp glow")}</span><b data-out="mood">${round(st.mood || 1, 2)}×</b><input type="range" data-mood min="0.5" max="2" step="0.05" value="${st.mood || 1}"></label>
       <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
@@ -673,6 +674,8 @@ export class AtelierEditor {
     a.querySelector("[data-fh]").addEventListener("input", (e) => (a.querySelector('[data-out="fh"]').textContent = `${e.target.value} m`));
     a.querySelector("[data-ex]").addEventListener("input", (e) => { a.querySelector('[data-out="ex"]').textContent = `${e.target.value}×`; st.exposure = +e.target.value; this.view.engine.request(false); });
     a.querySelector("[data-ex]").addEventListener("change", () => this.changed(false));
+    a.querySelector("[data-mood]").addEventListener("input", (e) => { a.querySelector('[data-out="mood"]').textContent = `${e.target.value}×`; st.mood = +e.target.value; this.view.engine.request(false); });
+    a.querySelector("[data-mood]").addEventListener("change", () => this.changed(false));
     a.querySelector("[data-north]").addEventListener("input", (e) => { a.querySelector('[data-out="north"]').textContent = `${e.target.value}°`; p.north = +e.target.value; this.view.engine.fitSun(); });
     a.querySelector("[data-north]").addEventListener("change", () => this.changed(false));
     a.querySelector("[data-sun]").onclick = () => { set(() => (st.sun = st.sun === false)); this.homePanel(); this.view.hass = this._hass; this.view._sun = undefined; this.view.hass = this._hass; };
