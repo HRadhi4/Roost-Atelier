@@ -506,7 +506,7 @@ export class AtelierEngine {
   lightIntensity(rec) {
     const s = rec.s || {}; if (!rec.light) return;
     if (this.baked || this.rebaking) { rec.light.distance = 0; rec.light.decay = 2; rec.light.intensity = ((s.lm || 0) / (4 * Math.PI)) * rec.f * 0.5; }
-    else { rec.light.distance = 9; rec.light.intensity = (s.intensity || 0) * rec.f; }
+    else { rec.light.distance = 9; rec.light.intensity = (s.intensity || 0) * rec.f * 0.6; }
   }
   // the overview cuts the walls and hides the ceilings: there the sun comes from the bake (which had them)
   cutView() { return this.view !== "walk" && (this.plan?.settings?.walls || this.opts.walls) === "cut"; }
@@ -541,8 +541,10 @@ export class AtelierEngine {
     const hexOf = (c) => "#" + c.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
     const skyC = adapt(hexOf(sk.sky.map((v) => v ** (1 / 2.2))), 0.85), sunC = adapt(hexOf(sk.sun.map((v) => v ** (1 / 2.2))), 0.5);
     mgr.update({ lights, windows, sky: skyC.map((v) => v * sk.L), sun: sunC.map((v) => v * sk.E), sunKeyW: mgr.sunKeyWeights(sk.az, sk.el), curtainAvg: cN ? cSum / cN : 1, room, roomGain: gains, cut: this.cutView() });
-    // exposure like a camera that partly adapts, as the eye does: night rooms stay a little darker than day
-    const Lavg = Math.max(0.03, (0.45 * (mgr.Eavg || 0)) / Math.PI), target = 1.35 / (Lavg ** 0.553 * 120 ** 0.447);
+    // exposure like an interior photographer: the room reads bright and true by day; night rooms stay a little darker
+    const Lavg = Math.max(0.03, (0.45 * (mgr.Eavg || 0)) / Math.PI), eye = 1.35 / (Lavg ** 0.553 * 120 ** 0.447),
+      // by day expose like an interior photo (bright and true); lamp-lit rooms at night keep their evening mood
+      tt = Math.max(0, Math.min(1, Math.log(Lavg / 0.5) / Math.log(16))), target = eye * Math.exp(Math.log(1.2) + tt * Math.log(5.6 / 1.2));
     // adapts over about half a second of real time (like an eye), and at once after a big jump (night to day)
     const now = performance.now(), el = Math.min(1, (now - (this._expoT || now)) / 1000); this._expoT = now;
     const ratio = this.expo ? Math.max(target / this.expo, this.expo / target) : 99;
@@ -583,7 +585,7 @@ export class AtelierEngine {
     this.sun.target.position.set(cx, 0, cz);
     const sc = this.sun.shadow.camera; Object.assign(sc, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: r * 5 }); sc.updateProjectionMatrix();
     const ms = { low: 1024, medium: 2048, high: 4096 }[this.quality]; if (this.sun.shadow.mapSize.x !== ms) { this.sun.shadow.mapSize.set(ms, ms); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
-    this.sun.intensity = 2.6 * day; this.sun.color.set(el < 12 ? "#ffcf9e" : "#fff4e2");
+    this.sun.intensity = 1.8 * day; this.sun.color.set(el < 12 ? "#ffcf9e" : "#fff4e2");
     // real sun and sky (lux and cd/m²) for the baked light
     const clear = this.clearSky ?? 1, se = Math.sin((Math.max(el, 0) * Math.PI) / 180);
     const Esun = el > 0 ? 95000 * clear * se ** 0.35 * Math.min(1, el / 4) : 0;
@@ -594,12 +596,12 @@ export class AtelierEngine {
     if (this._night !== (el < 0)) { const first = this._night === undefined; this._night = el < 0; if (!first && this.devices.size) this.updateDevices(false); }
     if (this.baked) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); this.hemi.intensity = 0; }
     if (this.rebaking) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); }
-    this.hemi.intensity = this.rebaking ? 0 : 0.12 + 0.75 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
+    this.hemi.intensity = this.rebaking ? 0 : 0.1 + 0.3 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
     const kind = el > 14 ? "day" : el > -5 ? "sunset" : "night";
     // the outdoor panoramas are much brighter than a room, so they are toned down indoors
-    if (!this.baked && !this.rebaking) this.scene.environmentIntensity = 0.12 + 0.55 * day;
+    if (!this.baked && !this.rebaking) this.scene.environmentIntensity = 0.1 + 0.28 * day;
     this.useSky(kind);
-    if (!this.baked && !this.rebaking) this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
+    if (!this.baked && !this.rebaking) this.renderer.toneMappingExposure = 0.55 + (1 - day) * 0.25;
     this.isDay = day > 0.3;
     this.emit("sky", { day });
     this.shadowsDirty = true; this.request(false);
