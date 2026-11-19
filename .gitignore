@@ -6,3 +6,5 @@ __pycache__/
 dev/dev.bundle.js
 dev/env/
 dev/*.bundle.js
+dev/ai/
+dev/bake-worker.js

@@ -16,7 +16,22 @@ import { N8AOPass } from "n8ao";
 import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES } from "./model.js";
 import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "./materials.js";
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
-import { deviceKind, lightLook, stateOf } from "./devices.js";
+import { deviceKind, lightLook, stateOf, kelvinToHex } from "./devices.js";
+import { BakeManager } from "./bake/index.js";
+import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+
+const seg = (a) => Math.max(1, Math.ceil(a / 0.3));
+const wallGeo = (l, h, t) => new THREE.BoxGeometry(l, h, t, seg(l), seg(h), 1);
+// floors and ceilings are split into small pieces so the stored light has enough detail
+function fineShape(pts, flip) {
+  const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, flip ? y : -y)));
+  let g = new THREE.ShapeGeometry(shape); g.deleteAttribute("normal");
+  g = new TessellateModifier(0.32, 10).modify(g);
+  g = mergeVertices(g); g.computeVertexNormals();
+  g.rotateX(flip ? Math.PI / 2 : -Math.PI / 2);
+  return g;
+}
 
 const CUT = 1.15;
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -91,6 +106,7 @@ export class AtelierEngine {
     this.devices = new Map(); this.anims = new Set(); this.hot = [];
     this.states = {}; this.dirty = true; this.shadowsDirty = true; this.alive = true; this.visible = true;
     this.listeners = {};
+    this.bakeMgr = new BakeManager(this); this.clearSky = 1; this.location = opts.location || null;
     this.setupComposer();
     this.resizeObs = new ResizeObserver(() => this.resize()); this.resizeObs.observe(host);
     this.resize();
@@ -145,6 +161,7 @@ export class AtelierEngine {
     if (this.tween) this.stepTween(dt);
     const damping = this.controls.enabled && this.controls.update();
     if (this.anims.size) { for (const a of [...this.anims]) if (a(dt) === false) this.anims.delete(a); this.dirty = true; }
+    if (this.baked) { this.bakeWeights(dt); }
     if (this.photo?.active) { try { this.photo.step(); } catch (err) { console.warn("Roost Atelier photo mode:", err); this.photo.stop(); this.opts.photo = false; this.emit("photo", { progress: -2, error: String(err?.message || err) }); } return; }
     if (!this.dirty && !damping) return;
     this.dirty = false;
@@ -157,6 +174,7 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
     this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
+    this.baked = false; this.bakeMgr.active = false; this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     const floor = plan.floors[floorIndex] || plan.floors[0];
     this.floor = floor;
     this.clear();
@@ -176,6 +194,7 @@ export class AtelierEngine {
     this.updateDevices(true);
     this.shadowsDirty = true; this.request(true);
     this.emit("built");
+    this.bakeMgr.onBuilt();
   }
   clear() {
     for (const c of [...this.root.children]) { this.root.remove(c); c.traverse?.((o) => { if (o.geometry && !o.geometry.parameters?.shared) o.geometry.dispose?.(); }); }
@@ -183,15 +202,13 @@ export class AtelierEngine {
     this.devices.clear(); this.anims.clear(); this.hot = [];
   }
   addRoom(r, H) {
-    const shape = new THREE.Shape(r.pts.map(([x, y]) => new THREE.Vector2(x, -y)));
-    const geo = new THREE.ShapeGeometry(shape); geo.rotateX(-Math.PI / 2);
+    const geo = fineShape(r.pts, false);
     const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
     const m = new THREE.Mesh(geo, floorMaterial(r.floor || type.floor));
     m.receiveShadow = true; m.userData.room = r.id; m.name = "floor";
     this.rooms.add(m);
     if (!type.outdoor) {
-      const cm = solid("#F7F5F1", { rough: 0.95 }); cm.side = THREE.BackSide;
-      const c = new THREE.Mesh(geo, cm); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
+      const c = new THREE.Mesh(fineShape(r.pts, true), solid("#F7F5F1", { rough: 0.95 })); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
       this.ceilings.add(c);
     }
   }
@@ -224,7 +241,7 @@ export class AtelierEngine {
     const atEnd0 = s0 < 0.001, atEnd1 = Math.abs(s1 - Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])) < 0.001;
     // wall ends meet without overlapping, so no two surfaces share the same spot (clean photos)
     const ext0 = atEnd0 ? w.ext0 ?? t / 2 : 0, ext1 = atEnd1 ? w.ext1 ?? t / 2 : 0;
-    const geo = new THREE.BoxGeometry(len + ext0 + ext1, y1 - y0, t);
+    const geo = wallGeo(len + ext0 + ext1, y1 - y0, t);
     const capTop = solid("#2A2F45", { rough: 0.85 });
     // BoxGeometry faces: +x, -x, +y, -y, +z, -z. +z faces the left side of a→b in plan (y down) after rotation.
     // faces: +x, -x, +y (top), -y, +z (left side of a->b), -z (right side)
@@ -233,12 +250,14 @@ export class AtelierEngine {
     m.position.set(w.a[0] + ux * cx, (y0 + y1) / 2, w.a[1] + uy * cx);
     m.rotation.y = -ang;
     m.castShadow = true; m.receiveShadow = true; m.userData.wall = true; m.userData.y1 = y1; m.userData.y0 = y0; m.userData.low = low;
+    m.userData.fullGeo = geo; m.userData.fullY = (y0 + y1) / 2;
+    if (y0 < CUT && y1 > CUT) { m.userData.cutGeo = wallGeo(len + ext0 + ext1, CUT - y0, t); m.userData.cutY = y0 + (CUT - y0) / 2; }
     this.wallsG.add(m);
     return m;
   }
   addOpening(op, w, t0, t1, ang, t, floor) {
     const ux = Math.cos(ang), uy = Math.sin(ang), mid = (t0 + t1) / 2, cx = w.a[0] + ux * mid, cz = w.a[1] + uy * mid, width = t1 - t0;
-    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = -ang; g.userData.opening = op.id;
+    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = -ang; g.userData.opening = op.id; g.userData.exterior = !!w.exterior; g.userData.width = width;
     const frameM = op.type === "window" || op.type === "slider" ? metal("#2B2D33", 0.4) : solid("#F3F1EC", { rough: 0.6 });
     const fw = 0.05;
     const top = op.sill + op.height;
@@ -251,7 +270,7 @@ export class AtelierEngine {
       const pane = new THREE.Mesh(new THREE.PlaneGeometry(width - fw * 2, op.height - fw * 2), glass()); pane.position.set(0, op.sill + op.height / 2, 0); pane.userData.glass = true; g.add(pane);
       const mull = new THREE.Mesh(new THREE.BoxGeometry(0.03, op.height - fw * 2, 0.04), frameM); mull.position.set(0, op.sill + op.height / 2, 0); if (width > 1.2) g.add(mull);
     } else if (op.type === "slider") {
-      for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.02), glass()); p.position.set(s * width / 4, op.sill + op.height / 2, s * 0.02); p.name = s < 0 ? "slideL" : "slideR"; g.add(p); const fr = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.025), frameM); fr.scale.set(1, 1, 1); }
+      for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.02), glass()); p.position.set(s * width / 4, op.sill + op.height / 2, s * 0.02); p.name = s < 0 ? "slideL" : "slideR"; p.userData.glass = true; g.add(p); const fr = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.025), frameM); fr.scale.set(1, 1, 1); }
     } else if (op.type === "door") {
       const leaves = op.double ? [[-1, width / 2], [1, width / 2]] : [[op.swing >= 0 ? -1 : 1, width]];
       const mat = op.main ? wood("walnut") : solid("#F7F5F1", { rough: 0.5 });
@@ -286,10 +305,10 @@ export class AtelierEngine {
   addGround(floor) {
     const b = planBounds(floor), w = b.x1 - b.x0 + 40, d = b.y1 - b.y0 + 40;
     const geo = new THREE.PlaneGeometry(w, d); geo.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, -0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true;
+    const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, -0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true; m.userData.noBake = true;
     this.root.add(m);
     const slab = new THREE.Mesh(new THREE.BoxGeometry(b.x1 - b.x0 + 0.4, 0.12, b.y1 - b.y0 + 0.4), solid("#D6D0C6", { rough: 0.9 }));
-    slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; this.root.add(slab);
+    slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; slab.userData.noBake = true; this.root.add(slab);
     this.bounds = b;
   }
   applyWalls() {
@@ -298,18 +317,13 @@ export class AtelierEngine {
       if (!o.isMesh) return;
       if (o.userData.wall && mode === "cut" && o.userData.y0 >= CUT) { o.visible = false; return; }
       o.visible = true;
-      if (o.userData.wall && mode === "cut" && o.userData.y1 > CUT) {
-        // walls are cut at waist height so you can see into every room; the cut shows as a dark top
-        if (!o.userData.cutGeo) {
-          const p = o.geometry.parameters, h = CUT - o.userData.y0;
-          o.userData.fullGeo = o.geometry; o.userData.fullY = o.position.y;
-          o.userData.cutGeo = new THREE.BoxGeometry(p.width, h, p.depth);
-        }
-        o.geometry = o.userData.cutGeo; o.position.y = o.userData.y0 + (CUT - o.userData.y0) / 2;
-      } else if (o.userData.fullGeo) { o.geometry = o.userData.fullGeo; o.position.y = o.userData.fullY; }
+      // walls are cut at waist height so you can see into every room; the cut shows as a dark top
+      if (o.userData.wall && mode === "cut" && o.userData.cutGeo) { o.geometry = o.userData.cutGeo; o.position.y = o.userData.cutY; }
+      else if (o.userData.fullGeo) { o.geometry = o.userData.fullGeo; o.position.y = o.userData.fullY; }
       if (o.userData.cuttable) o.material.clippingPlanes = mode === "cut" ? [this.cutPlane] : null;
     });
     this.ceilings.visible = this.view === "walk";
+    if (this.baked) this.fitSun();
     for (const d of this.devices.values()) if (d.mount === "ceiling" && d.obj) d.obj.visible = this.view === "walk" || mode !== "cut" || d.look === "pendant" || d.look === "chandelier";
     this.shadowsDirty = true; this.request(true);
   }
@@ -324,7 +338,7 @@ export class AtelierEngine {
       const mk = DEVICE_LOOKS[look] || DEVICE_LOOKS.flush;
       g.add(mk({}));
       if (look === "floor") { g.position.set(dv.x, 0, dv.y); rec.lightPos = new THREE.Vector3(dv.x, 1.45, dv.y); }
-      else { g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; rec.lightPos = new THREE.Vector3(dv.x, look === "pendant" || look === "chandelier" ? H - 0.85 : H - 0.15, dv.y); }
+      else { g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; rec.lightPos = new THREE.Vector3(dv.x, look === "pendant" ? H - 0.79 : look === "chandelier" ? H - 0.85 : H - 0.15, dv.y); }
       const l = new THREE.PointLight("#ffd29a", 0, 9, 2);
       l.position.copy(rec.lightPos); rec.light = l; this.scene.add(l);
     } else if (kind === "ac") {
@@ -370,15 +384,15 @@ export class AtelierEngine {
     const width = op.width + 0.4, drop = Math.min(H - 0.08, op.sill + op.height + 0.25);
     const panels = [];
     const mat = fabric(dv.color || "#E6DCCB").clone(); mat.side = THREE.DoubleSide; mat.transparent = true; mat.opacity = 0.96;
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, width + 0.1, 8), metal("#2B2D33")); rail.rotation.z = Math.PI / 2; rail.position.set(0, drop + 0.04, 0.16); rail.material = rail.material.clone(); rail.userData.cuttable = true; win.add(rail);
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, width + 0.1, 8), metal("#2B2D33")); rail.rotation.z = Math.PI / 2; rail.position.set(0, drop + 0.04, 0.16); rail.material = rail.material.clone(); rail.userData.cuttable = true; rail.userData.noBake = true; win.add(rail);
     for (const s of [-1, 1]) {
       const geo = new THREE.PlaneGeometry(width / 2, drop, 40, 1), pos = geo.attributes.position;
       for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin((pos.getX(i) / (width / 2)) * Math.PI * 9) * 0.03);
       geo.computeVertexNormals(); geo.translate(s * width / 4, drop / 2, 0);
-      const m = new THREE.Mesh(geo, mat); m.position.set(0, 0, 0.16); m.castShadow = true; m.userData.side = s; m.userData.cuttable = true;
+      const m = new THREE.Mesh(geo, mat); m.position.set(0, 0, 0.16); m.castShadow = true; m.userData.side = s; m.userData.cuttable = true; m.userData.noBake = true;
       win.add(m); panels.push(m);
     }
-    return { panels, width, open: 1, target: 1 };
+    return { panels, width, open: 1, target: 1, opening: win.userData.opening };
   }
   airStream(g) {
     const n = 60, geo = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), seeds = new Float32Array(n);
@@ -428,23 +442,71 @@ export class AtelierEngine {
     this.request(false);
   }
   fadeLight(rec, s) {
-    const target = s.on ? s.intensity : 0, col = new THREE.Color(s.color || "#ffd29a");
+    rec.s = s; rec.f ??= 0;
+    const target = s.on ? 1 : 0, col = new THREE.Color(s.color || "#ffd29a");
     rec.light.color.copy(col);
     const glows = []; rec.obj.traverse((o) => { if (o.name === "glow") glows.push(o); });
     this.animate(`l${rec.dv.id}`, (dt) => {
-      const cur = rec.light.intensity, nx = cur + (target - cur) * Math.min(1, dt * 7);
-      rec.light.intensity = Math.abs(nx - target) < 0.05 ? target : nx;
-      const f = target ? rec.light.intensity / target : rec.light.intensity / (rec.lastI || 1);
-      for (const gw of glows) { gw.material.emissive.copy(col); gw.material.emissiveIntensity = s.on ? 2.5 * Math.max(0.15, f) : 0; }
-      if (rec.light.intensity === target) { rec.lastI = target || rec.lastI; return false; }
-      return true;
+      rec.f += (target - rec.f) * Math.min(1, dt * 7); if (Math.abs(rec.f - target) < 0.01) rec.f = target;
+      this.lightIntensity(rec);
+      for (const gw of glows) { gw.material.emissive.copy(col); gw.material.emissiveIntensity = rec.f > 0.01 ? 2.5 * Math.max(0.15, rec.f) * (this.baked ? 1.5 : 1) : 0; }
+      return rec.f !== target;
     });
     this.shadowsDirty = true;
+  }
+  // live: the old simple lights; baked: the real candela (only for the shine, the light itself is baked)
+  lightIntensity(rec) {
+    const s = rec.s || {}; if (!rec.light) return;
+    if (this.baked) { rec.light.distance = 0; rec.light.decay = 2; rec.light.intensity = ((s.lm || 0) / (4 * Math.PI)) * rec.f * 0.5; }
+    else { rec.light.distance = 9; rec.light.intensity = (s.intensity || 0) * rec.f; }
+  }
+  // the overview cuts the walls and hides the ceilings: there the sun comes from the bake (which had them)
+  cutView() { return this.view !== "walk" && (this.plan?.settings?.walls || this.opts.walls) === "cut"; }
+  // called when stored light was put on the home
+  onBaked() {
+    for (const rec of this.devices.values()) if (rec.light) { this.lightIntensity(rec); rec.light.castShadow = false; }
+    this.hemi.intensity = 0; this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.fitSun(); this.shadowsDirty = true; this.request(false);
+  }
+  setWeather(st) {
+    // how clear the sky is, from the weather entity
+    const c = st?.state || "", cov = st?.attributes?.cloud_coverage;
+    let clear = { sunny: 1, "clear-night": 1, windy: 0.9, partlycloudy: 0.55, cloudy: 0.12, fog: 0.08, rainy: 0.1, pouring: 0.05, snowy: 0.1, "snowy-rainy": 0.08, hail: 0.08, lightning: 0.05, "lightning-rainy": 0.05, exceptional: 0.5 }[c] ?? 1;
+    if (typeof cov === "number") clear = Math.min(clear, 1 - 0.85 * (cov / 100));
+    if (Math.abs(clear - this.clearSky) > 0.01) { this.clearSky = clear; this.fitSun(); }
+  }
+  // camera-style mixing: how strongly each lamp, window and the sun shine right now
+  bakeWeights(dt = 0) {
+    const mgr = this.bakeMgr; if (!mgr.active) return;
+    const adapt = (hex, k = 0.55) => { const c = new THREE.Color(hex), l = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; return [c.r + (l - c.r) * k, c.g + (l - c.g) * k, c.b + (l - c.b) * k].map((v) => v / Math.max(l, 1e-3)); };
+    const lights = {}, windows = {};
+    let cSum = 0, cN = 0;
+    for (const rec of this.devices.values()) {
+      if (rec.kind === "light" && rec.s) { const c = adapt(rec.s.color); lights[rec.dv.id] = c.map((v) => v * (rec.s.lm || 0) * (rec.f || 0)); }
+      if (rec.kind === "curtain" && rec.window) { const f = 0.12 + 0.88 * rec.window.open; windows[rec.window.opening] = f; cSum += f; cN++; }
+    }
+    const sk = this.skyNow || { L: 0, E: 0, sky: [1, 1, 1], sun: [1, 1, 1] };
+    const room = this.view === "walk" && this.walkRoomId ? (mgr.data.meta.rooms.indexOf(this.walkRoomId)) : -1;
+    const gains = [1, ...this.floor.rooms.map((r) => r.gain || 1)];
+    // the eye adapts to daylight colour too (like a camera's white balance), not only to lamps
+    const hexOf = (c) => "#" + c.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
+    const skyC = adapt(hexOf(sk.sky.map((v) => v ** (1 / 2.2))), 0.85), sunC = adapt(hexOf(sk.sun.map((v) => v ** (1 / 2.2))), 0.5);
+    mgr.update({ lights, windows, sky: skyC.map((v) => v * sk.L), sun: sunC.map((v) => v * sk.E), sunKeyW: mgr.sunKeyWeights(sk.az, sk.el), curtainAvg: cN ? cSum / cN : 1, room, roomGain: gains, cut: this.cutView() });
+    // exposure like a camera that partly adapts, as the eye does: night rooms stay a little darker than day
+    const Lavg = Math.max(0.03, (0.45 * (mgr.Eavg || 0)) / Math.PI), target = 1.35 / (Lavg ** 0.553 * 120 ** 0.447);
+    // adapts over about half a second of real time (like an eye), and at once after a big jump (night to day)
+    const now = performance.now(), el = Math.min(1, (now - (this._expoT || now)) / 1000); this._expoT = now;
+    const ratio = this.expo ? Math.max(target / this.expo, this.expo / target) : 99;
+    this.expo = ratio > 3 ? target : this.expo + (target - this.expo) * Math.min(1, el * 2.5);
+    this.renderer.toneMappingExposure = this.expo * (this.plan?.settings?.exposure || 1);
+    if (Math.abs(target - this.expo) > target * 0.01) this.dirty = true;
+    this.scene.environmentIntensity = Lavg * 0.9;
   }
   assignShadows(on) {
     const max = { low: 0, medium: 2, high: 4 }[this.quality], size = { low: 256, medium: 512, high: 1024 }[this.quality];
     on.sort((a, b) => b[1].intensity - a[1].intensity);
     for (const rec of this.devices.values()) if (rec.light) rec.light.castShadow = false;
+    if (this.baked) return;
     on.slice(0, max).forEach(([rec]) => { rec.light.castShadow = true; rec.light.shadow.mapSize.set(size, size); rec.light.shadow.bias = -0.002; rec.light.shadow.radius = 4; rec.light.shadow.camera.near = 0.1; });
     this.shadowsDirty = true;
   }
@@ -473,12 +535,21 @@ export class AtelierEngine {
     const sc = this.sun.shadow.camera; Object.assign(sc, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: r * 5 }); sc.updateProjectionMatrix();
     const ms = { low: 1024, medium: 2048, high: 4096 }[this.quality]; if (this.sun.shadow.mapSize.x !== ms) { this.sun.shadow.mapSize.set(ms, ms); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
     this.sun.intensity = 2.6 * day; this.sun.color.set(el < 12 ? "#ffcf9e" : "#fff4e2");
+    // real sun and sky (lux and cd/m²) for the baked light
+    const clear = this.clearSky ?? 1, se = Math.sin((Math.max(el, 0) * Math.PI) / 180);
+    const Esun = el > 0 ? 95000 * clear * se ** 0.35 * Math.min(1, el / 4) : 0;
+    const Lsky = el > -6 ? (3200 + 1800 * clear) * Math.max(0, Math.sin(((el + 6) * Math.PI) / 180)) ** 0.9 + 0.05 : 0.04;
+    const sunCol = new THREE.Color(el < 8 ? "#ffb877" : el < 20 ? "#ffd9b0" : "#fff3e3"), skyCol = new THREE.Color(el < 3 ? (el > -6 ? "#c7b4d8" : "#5d6fa8") : clear > 0.5 ? "#dfe9ff" : "#eef0f2");
+    this.skyNow = { E: Esun, L: Lsky, az, el, sun: [sunCol.r, sunCol.g, sunCol.b], sky: [skyCol.r, skyCol.g, skyCol.b] };
+    for (const rec of this.devices.values()) if (rec.kind === "light") rec.ctx = { night: el < 0 };
+    if (this._night !== (el < 0)) { const first = this._night === undefined; this._night = el < 0; if (!first && this.devices.size) this.updateDevices(false); }
+    if (this.baked) { this.sun.intensity = this.cutView() ? 0 : Esun; this.sun.color.copy(sunCol); this.hemi.intensity = 0; }
     this.hemi.intensity = 0.12 + 0.75 * day; this.hemi.color.set(day > 0.3 ? "#eaf2ff" : "#5c6aa8"); this.hemi.groundColor.set(day > 0.3 ? "#b8ad9c" : "#151830");
     const kind = el > 14 ? "day" : el > -5 ? "sunset" : "night";
     // the outdoor panoramas are much brighter than a room, so they are toned down indoors
-    this.scene.environmentIntensity = 0.12 + 0.55 * day;
+    if (!this.baked) this.scene.environmentIntensity = 0.12 + 0.55 * day;
     this.useSky(kind);
-    this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
+    if (!this.baked) this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.35;
     this.isDay = day > 0.3;
     this.emit("sky", { day });
     this.shadowsDirty = true; this.request(false);
@@ -488,13 +559,16 @@ export class AtelierEngine {
   useSky(kind) {
     this.skyKind = kind; this._skies ||= {};
     // the live view keeps its soft studio light; the panorama lights the photo, as in a studio render
-    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; };
+    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; this.skyMean = this._skies[kind].mean; };
     if (this._skies[kind]?.equirect) return apply();
     if (this._skies[kind]) return;
     this._skies[kind] = {};
     new HDRLoader().load(`${ENV_BASE.url}${kind}.hdr`, (tex) => {
       tex.mapping = THREE.EquirectangularReflectionMapping;
-      this._skies[kind] = { equirect: tex };
+      // average brightness of the sky picture (to scale it to the real sky in photos)
+      let sum = 0, cnt = 0; const d = tex.image.data, half = d instanceof Uint16Array;
+      for (let i = 0; i < d.length; i += 4 * 37) { const f = (v) => (half ? THREE.DataUtils.fromHalfFloat(v) : v); sum += 0.2126 * f(d[i]) + 0.7152 * f(d[i + 1]) + 0.0722 * f(d[i + 2]); cnt++; }
+      this._skies[kind] = { equirect: tex, mean: sum / Math.max(1, cnt) };
       apply();
     }, undefined, () => { delete this._skies[kind]; });
   }
@@ -614,10 +688,28 @@ export class AtelierEngine {
       this.emit("photo", { progress: -2, error: String(err?.message || err) });
     }
   }
+  // the AI clean-up needs WebGPU
+  async photoReady() { try { const { aiAvailable } = await import("./ai/denoise.js"); return await aiAvailable(); } catch { return false; } }
+  // make one finished photo of the current view and give it back as a JPEG
+  async takePhoto(aborted = () => false) {
+    this.opts.photo = true; await this.startPhoto();
+    const t0 = performance.now();
+    while (!aborted()) {
+      await new Promise((r) => setTimeout(r, 300));
+      const p = this.photo; if (!p?.active) return null;
+      if (p.cleaned || (p.done && !p.cleaning) || performance.now() - t0 > 600000) break;
+    }
+    if (aborted() || !this.photo?.active) return null;
+    if (this.photo.cleaned) this.photo.show();
+    const src = this.renderer.domElement, c = document.createElement("canvas"); c.width = src.width; c.height = src.height; c.getContext("2d").drawImage(src, 0, 0);
+    this.setPhoto(false);
+    return new Promise((r) => c.toBlob(r, "image/jpeg", 0.9));
+  }
   setPhoto(on) { this.opts.photo = on; if (on) this.startPhoto(); else this.photo?.stop(); this.request(true); }
   snapshot() { this.composer.render(); return this.renderer.domElement.toDataURL("image/jpeg", 0.92); }
 
   dispose() {
+    this.bakeMgr.dispose();
     this.alive = false; this.resizeObs.disconnect(); this.photo?.dispose(); this.controls.dispose(); this.composer.dispose?.();
     this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer.domElement.remove();
   }

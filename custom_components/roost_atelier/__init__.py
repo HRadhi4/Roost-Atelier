@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PANEL_URL, URL_BASE
 from .storage import PlanStore
-from .uploads import UploadView, FileView
+from .uploads import BakeView, FileView, PhotoView, UploadView
 from . import websocket as ws
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.http.async_register_static_paths([StaticPathConfig(URL_BASE, str(FRONTEND), False)])
         hass.http.register_view(UploadView())
         hass.http.register_view(FileView())
+        hass.http.register_view(BakeView())
+        hass.http.register_view(PhotoView())
         ws.async_register(hass)
         hass.data[f"{DOMAIN}_static"] = True
 

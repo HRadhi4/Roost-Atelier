@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { WebGLPathTracer, GradientEquirectTexture, DenoiseMaterial } from "three-gpu-pathtracer";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import { denoise, aiAvailable } from "./ai/denoise.js";
 
 // The tracer mixes up colours on objects made of several materials, so it gets its own copy of the
 // home where every surface is a separate object with one material.
@@ -24,8 +25,12 @@ function photoScene(src) {
           add(part, o.material[grp.materialIndex]);
         }
       } else add(o.geometry, o.material);
-    } else if (o.isLight && !o.isAmbientLight && o.intensity > 0) {
-      const l = o.clone(false); l.matrixAutoUpdate = false; l.matrix.copy(o.matrixWorld); l.matrixWorld.copy(o.matrixWorld);
+    } else if (o.isLight && !o.isAmbientLight && !o.isHemisphereLight && o.intensity > 0) {
+      const l = o.clone(false);
+      // with baked light the live lamps only carry half their light (their shine); photos need all of it
+      if (o.isPointLight && src.userData.baked) l.intensity *= 2;
+      // the same white balance as the live view: warm lamps look warm, not orange
+      if (o.isPointLight) { const c = l.color, lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, k = 0.55; c.setRGB(c.r + (lum - c.r) * k, c.g + (lum - c.g) * k, c.b + (lum - c.b) * k); } l.matrixAutoUpdate = false; l.matrix.copy(o.matrixWorld); l.matrixWorld.copy(o.matrixWorld);
       l.position.setFromMatrixPosition(o.matrixWorld);
       if (o.target) { l.target = new THREE.Object3D(); l.target.position.setFromMatrixPosition(o.target.matrixWorld); out.add(l.target); l.target.updateMatrixWorld(); }
       out.add(l);
@@ -59,6 +64,10 @@ export class PhotoMode {
     };
     this.pt = pt; this.active = false; this.version = -1;
     this.max = { low: 120, medium: 260, high: 600 }[engine.quality];
+    // with a WebGPU graphics chip, the local AI cleans the photo after far fewer light samples
+    this.aiAt = { low: 24, medium: 48, high: 96 }[engine.quality];
+    aiAvailable().then((ok) => (this.ai = ok));
+    this.view = new FullScreenQuad(new THREE.MeshBasicMaterial({ map: null }));
   }
   start() {
     const e = this.e;
@@ -67,8 +76,12 @@ export class PhotoMode {
     const day = e.isDay;
     this.sky.topColor.set(day ? "#cfe0ff" : "#1a2050"); this.sky.bottomColor.set(day ? "#f2ebe0" : "#0b0d17"); this.sky.update();
     // rebuilt every time: lights, curtains and doors may have moved since the last photo
+    e.scene.userData.baked = !!e.baked;
     this.scene = photoScene(e.scene);
-    this.scene.environment = e.skyTexture || this.sky; this.scene.environmentIntensity = e.skyTexture ? { day: 1, sunset: 1.2, night: 2 }[e.skyKind] : e.scene.environmentIntensity;
+    this.cleaned?.dispose(); this.cleaned = null; this.cleaning = false;
+    this.scene.environment = e.skyTexture || this.sky;
+    // baked: the sky picture is scaled to the real sky brightness (cd/m²) so photo and live view agree
+    this.scene.environmentIntensity = e.baked && e.skyTexture ? (e.skyNow?.L || 1) / (e.skyMean || 1) : e.skyTexture ? { day: 1, sunset: 1.2, night: 2 }[e.skyKind] : e.scene.environmentIntensity;
     this.scene.background = null;
     this.pt.setScene(this.scene, e.camera);
     this.pt.reset();
@@ -76,11 +89,27 @@ export class PhotoMode {
     e.emit("photo", { progress: 0 });
   }
   step() {
+    if (this.cleaned) { this.show(); return; }
     if (this.done) return;
     this.pt.renderSample();
+    if (this.ai && !this.cleaning && this.pt.samples >= this.aiAt) { this.clean(); return; }
     const p = Math.min(1, this.pt.samples / this.max);
     if ((this._n = (this._n || 0) + 1) % 10 === 0) this.e.emit("photo", { progress: p });
     if (p >= 1) { this.done = true; this.e.emit("photo", { progress: 1 }); }
+  }
+  async clean() {
+    const e = this.e; this.cleaning = true; this.done = true; e.emit("photo", { progress: 0.95, ai: true });
+    try {
+      this.cleaned = await denoise({ renderer: e.renderer, target: this.pt._pathTracer.target, scene: this.scene, camera: e.camera, exposure: e.renderer.toneMappingExposure, mid: e.baked ? Math.min(0.35, e.renderer.toneMappingExposure * (0.45 * (e.bakeMgr.Eavg || 0)) / Math.PI) * 0.75 : 0, small: e.quality !== "high" });
+      if (!this.active) return;
+      this.show(); e.emit("photo", { progress: 1, ai: true });
+    } catch (err) { console.warn("Roost Atelier AI clean-up:", err); this.ai = false; this.done = false; this.cleaning = false; }
+  }
+  // the clean picture, shown with the same camera look (exposure is already in it)
+  show() {
+    const r = this.e.renderer, ex = r.toneMappingExposure;
+    this.view.material.map = this.cleaned; this.view.material.needsUpdate = this.view.material.map !== this._shown; this._shown = this.cleaned;
+    r.toneMappingExposure = 1; r.setRenderTarget(null); this.view.render(r); r.toneMappingExposure = ex;
   }
   stop() {
     if (!this.active) return;
@@ -88,5 +117,5 @@ export class PhotoMode {
     this.e.emit("photo", { progress: -1 });
     this.e.request(false);
   }
-  dispose() { this.stop(); this.pt.dispose(); this.denoise.dispose(); }
+  dispose() { this.stop(); this.pt.dispose(); this.denoise.dispose(); this.view.dispose(); this.cleaned?.dispose(); }
 }

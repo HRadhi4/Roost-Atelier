@@ -18,6 +18,21 @@ export const KINDS = {
 };
 export const LIGHT_LOOKS = { pendant: "Pendant", chandelier: "Chandelier", spots: "Spotlights", flush: "Ceiling light", floor: "Floor lamp" };
 const BASE = { pendant: 30, chandelier: 45, spots: 22, flush: 30, floor: 14 };
+// typical real output of each kind of fitting, in lumens, and its warmth in kelvin
+export const LUMENS = { pendant: 900, chandelier: 2400, spots: 1200, flush: 1800, floor: 700 };
+export const KELVIN = { pendant: 2700, chandelier: 2700, spots: 3000, flush: 3000, floor: 2700 };
+// lamps that aren't smart: when they are on
+export const RULES = { demo: "Always on", on: "Always on", off: "Always off", night: "On after sunset", schedule: "On between set times" };
+function ruleOn(dv, ctx) {
+  const r = dv.rule || "demo";
+  if (r === "off") return false;
+  if (r === "night") return ctx.night ?? true;
+  if (r === "schedule") {
+    const now = new Date(), m = now.getHours() * 60 + now.getMinutes(), p = (t) => { const [h, mm] = String(t || "0:0").split(":").map(Number); return h * 60 + (mm || 0); };
+    const a = p(dv.from || "18:00"), b = p(dv.to || "23:00"); return a <= b ? m >= a && m < b : m >= a || m < b;
+  }
+  return true;
+}
 export const lightLook = (dv) => dv.look || "flush";
 
 export function kelvinToHex(k) {
@@ -34,13 +49,15 @@ export function stateOf(rec, states, editing) {
   const dv = rec.dv, st = dv.entity ? states?.[dv.entity] : null, a = st?.attributes || {};
   const kind = rec.kind;
   if (kind === "light") {
-    if (!st) return { on: !!(dv.demo ?? true), intensity: (BASE[rec.look] || 25) * (dv.power || 1), color: "#ffcf96", label: "" };
+    const look = rec.look || "flush", lm = (dv.lumens || LUMENS[look] || 1200) * (dv.power || 1), warm = kelvinToHex(dv.kelvin || KELVIN[look] || 2700);
+    if (!st) { const on = ruleOn(dv, rec.ctx || {}); return { on, intensity: (BASE[look] || 25) * (dv.power || 1), lm, color: warm, label: dv.entity ? "" : "" }; }
     const on = st.state === "on";
     const b = a.brightness != null ? Math.max(0.08, a.brightness / 255) : 1;
-    let color = "#ffcf96";
+    let color = warm;
     if (a.rgb_color && a.color_mode && !/color_temp|brightness|onoff/.test(a.color_mode)) color = "#" + a.rgb_color.map((v) => v.toString(16).padStart(2, "0")).join("");
     else if (a.color_temp_kelvin) color = kelvinToHex(a.color_temp_kelvin);
-    return { on, intensity: (BASE[rec.look] || 25) * b * (dv.power || 1), color, label: on ? (a.brightness != null ? `${Math.round(b * 100)}%` : "On") : "Off" };
+    // dimmed bulbs give less light (lumens follow brightness)
+    return { on, intensity: (BASE[look] || 25) * b * (dv.power || 1), lm: lm * b, color, label: on ? (a.brightness != null ? `${Math.round(b * 100)}%` : "On") : "Off" };
   }
   if (kind === "curtain") {
     if (!st) return { open: 1, label: "" };

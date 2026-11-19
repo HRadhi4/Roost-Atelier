@@ -61,3 +61,99 @@ class FileView(HomeAssistantView):
         if not await hass.async_add_executor_job(path.is_file):
             return web.Response(status=404)
         return web.FileResponse(path)
+
+
+BAKE_KEY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_BAKE = 200 * 1024 * 1024
+
+
+class BakeView(HomeAssistantView):
+    """The baked light of a home: made once on a computer, shared with every screen (stored compressed)."""
+
+    url = "/api/roost_atelier/bake/{key}"
+    name = "api:roost_atelier:bake"
+
+    def _path(self, hass, key: str) -> Path:
+        return folder(hass) / "light" / f"{key}.rab.gz"
+
+    async def get(self, request: web.Request, key: str) -> web.StreamResponse:
+        hass = request.app[KEY_HASS]
+        if not BAKE_KEY.match(key):
+            return web.Response(status=400)
+        path = self._path(hass, key)
+        if not await hass.async_add_executor_job(path.is_file):
+            return web.Response(status=404)
+        data = await hass.async_add_executor_job(path.read_bytes)
+        return web.Response(body=data, content_type="application/octet-stream", headers={"Content-Encoding": "gzip", "Cache-Control": "no-cache"})
+
+    async def post(self, request: web.Request, key: str) -> web.Response:
+        hass = request.app[KEY_HASS]
+        if not request["hass_user"].is_admin:
+            return web.Response(status=403)
+        if not BAKE_KEY.match(key):
+            return web.Response(status=400)
+        body = await request.read()
+        if not body or len(body) > MAX_BAKE or body[:4] != b"RAB1":
+            return web.Response(status=400, text="Not a light file")
+        path = self._path(hass, key)
+
+        def write() -> int:
+            import gzip
+            path.parent.mkdir(parents=True, exist_ok=True)
+            packed = gzip.compress(body, compresslevel=6)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_bytes(packed)
+            tmp.replace(path)
+            return len(packed)
+
+        size = await hass.async_add_executor_job(write)
+        return web.json_response({"stored": size})
+
+
+PHOTO_KEY = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+
+class PhotoView(HomeAssistantView):
+    """Room photos the integration makes by itself (realistic render cleaned by the local AI)."""
+
+    url = "/api/roost_atelier/photo/{key}"
+    name = "api:roost_atelier:photo"
+
+    async def get(self, request: web.Request, key: str) -> web.StreamResponse:
+        hass = request.app[KEY_HASS]
+        if not PHOTO_KEY.match(key):
+            return web.Response(status=400)
+        path = folder(hass) / "photos" / f"{key}.jpg"
+        if not await hass.async_add_executor_job(path.is_file):
+            return web.Response(status=404)
+        return web.FileResponse(path, headers={"Cache-Control": "no-cache"})
+
+    async def post(self, request: web.Request, key: str) -> web.Response:
+        hass = request.app[KEY_HASS]
+        if not request["hass_user"].is_admin:
+            return web.Response(status=403)
+        if not PHOTO_KEY.match(key):
+            return web.Response(status=400)
+        body = await request.read()
+        if not body or len(body) > MAX_UPLOAD or body[:2] != b"\xff\xd8":
+            return web.Response(status=400, text="Not a photo")
+        path = folder(hass) / "photos" / f"{key}.jpg"
+
+        def write() -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_bytes(body)
+            tmp.replace(path)
+
+        await hass.async_add_executor_job(write)
+        return web.json_response({"ok": True})
+
+
+def list_photos(hass, prefix: str) -> list[dict]:
+    base = folder(hass) / "photos"
+    if not base.is_dir():
+        return []
+    out = []
+    for p in sorted(base.glob(f"{prefix}*.jpg")):
+        out.append({"key": p.stem, "updated": p.stat().st_mtime})
+    return out

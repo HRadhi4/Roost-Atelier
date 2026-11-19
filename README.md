@@ -31,19 +31,31 @@ It is part of the **Roost** family, alongside [Roost Cards](https://github.com/H
 - **From CAD, PDF or a picture of a plan** (DXF, PDF, JPG, PNG): walls become rooms, and gaps in the walls become doors and windows. Named furniture blocks in a DXF become furniture.
 - **From a photo of a room**: Home Assistant's own AI (any AI Task, such as Google Gemini, OpenAI or a local model) recognises each piece of furniture with its colour and size, and you add them in one tap.
 
+### Light that behaves like the real thing
+Roost Atelier lights your home **once**, then never has to render it again.
+
+- **Baked once, mixed live.** When the home is ready, the computer that opened the Atelier works out how every lamp, every window and the sun at several times of day light each surface, including light bouncing off walls, floors and furniture. Each one is kept as its own layer on your Home Assistant server. Switching, dimming or recolouring a lamp, opening a curtain or the sun moving just mixes those layers: instant, smooth, even on a tablet.
+- **Only when something moves.** Lamps, curtains, weather and the time of day never need a new bake. Moving a wall, a lamp or furniture does: it is redone by itself in the background on the next computer that opens the Atelier, and every screen picks it up.
+- **Real brightness.** Each lamp has its real output in lumens and its warmth in kelvin (or follows the bulb's own colour from Home Assistant). The sun and sky follow `sun.sun` and your weather entity (clear, cloudy, rain).
+- **Like a camera, not like a game.** Exposure adapts the way your eye does: a lamp-lit room at night stays a little darker and warmer than the same room in daylight, and sunny patches glow without the rest going black. Nothing is harsh.
+- **Lamps that aren't smart** take part too: always on, always off, on after sunset, or between set times.
+- **Match your real room.** Each room has a brightness slider, and *Match a photo of this room* reads the colour of the light in a photo and sets the lamps' warmth to it.
+
+### Realistic photos with local AI
+- **Photo mode** traces light bounce by bounce, then a **local AI denoiser** (Intel Open Image Denoise, the same kind of AI that professional renderers use) cleans the picture. It runs on your own computer's graphics through WebGPU; nothing leaves your home.
+- **Room photos by themselves.** When the light is baked and nobody is using the computer, the Atelier walks into each room, makes a finished photo and keeps it in Home Assistant. Touch anything and it stops at once.
+
 ### Live on your dashboards
-- **Lights** glow in their real colour and brightness and cast soft shadows.
-- **Curtains and blinds** open to their real position.
+- **Lights** glow in their real colour and brightness.
+- **Curtains and blinds** open to their real position, and the daylight in the room follows.
 - **Doors** swing open when a door sensor opens.
 - **ACs** show moving air when they're on. **Ceiling fans** turn. **TVs** light up.
 - **People** appear when they're home.
-- **The sun** follows `sun.sun`, so mornings, sunsets and nights look right, and you can set where north is.
 - **Tap** a device to switch it. **Press and hold** to open its details.
-- **Three views**: a 3D overview, a top-down plan, and walk-through, where you stand inside a room.
-- **Photo mode**: leave the home still for a moment and it refines into a photo-real render with soft light bounces and reflections.
+- **Three views**: a 3D overview, a top-down plan, and walk-through, where you stand inside a room at eye height.
 
 ### Smooth on tablets
-The home is only redrawn when something changes. While you drag, it draws at lower sharpness and sharpens again when you let go. Quality adjusts to your device automatically, or you can choose it yourself. The dashboard card loads a 6 KB file; the 3D engine loads only when a card is on screen.
+Tablets and phones never do the heavy work: they only show the light a computer has baked. The home is only redrawn when something changes. While you drag, it draws at lower sharpness and sharpens again when you let go. Quality adjusts to your device automatically, or you can choose it yourself. The dashboard card loads a 6 KB file; the 3D engine loads only when a card is on screen.
 
 ### English and Arabic
 Follows your Home Assistant language. In Arabic the whole layout switches to right-to-left.
@@ -84,6 +96,14 @@ Walls snap to their neighbours, and the length of every wall is shown as you go.
 **5. Furniture.** Open **Furniture**, choose a category and drag a piece onto the plan (or tap it to drop it in the selected room). Near a wall, a piece turns and sits against the wall by itself. Drag the round handle to turn it; use the sliders for its size and the swatches for its colour.
 
 **6. Devices.** Open **Devices** and drag in lights, ACs, curtains, TVs, doors and people. Tap one and choose its entity from the list. Until it's linked it shows a demo state, so you can see how it will look.
+
+**6b. Make the light true to life.** Tap a lamp:
+- **Light output**: the lumens printed on the bulb's box (a typical ceiling light is 1,500–2,000 lm, a table lamp 400–800 lm).
+- **Warmth**: 2700 K is warm like a classic bulb, 4000 K is neutral, 6500 K is cool daylight. Smart bulbs that report their colour follow it by themselves.
+- **Not smart?** Leave it unlinked and choose when it is on: always, after sunset, or between two times.
+Then tap a room: **Room brightness** fine-tunes it, and **Match a photo of this room** reads the colour of the light in a photo of the real room.
+
+The first time, the computer you are using bakes the light (a progress bar shows *Lighting*). It takes about a minute for a flat on a typical computer, and only happens again when you move walls, lamps or furniture.
 
 **7. Check.** Tap **Check the home** (the badge at the bottom of the left rail). Fix anything it finds, many with one tap.
 

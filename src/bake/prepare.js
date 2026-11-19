@@ -1,0 +1,139 @@
+// Gathers every surface of the home for the light bake: where each point is, which way it faces and
+// what colour it is. Every surface point gets a number (its "bake id") so the stored light can be found
+// again later. The order is fixed, so the same home always gets the same numbers on every device.
+import * as THREE from "three";
+
+export const BAKE_VERSION = 6;
+const PROBE = 0.06; // points closer than this (and facing the same way) share one light value
+
+const _avg = new Map();
+// the average colour of a texture, in linear light
+function textureAverage(tex) {
+  const img = tex?.image; if (!img) return [1, 1, 1];
+  const key = img; if (_avg.has(key)) return _avg.get(key);
+  let out = [1, 1, 1];
+  try {
+    const c = (typeof OffscreenCanvas !== "undefined") ? new OffscreenCanvas(8, 8) : Object.assign(document.createElement("canvas"), { width: 8, height: 8 });
+    const x = c.getContext("2d"); x.drawImage(img, 0, 0, 8, 8);
+    const d = x.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    const lin = (v) => { v /= 64 * 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    out = [lin(r), lin(g), lin(b)];
+  } catch { /* image not ready: treat as white */ }
+  _avg.set(key, out); return out;
+}
+export function albedoOf(m) {
+  if (!m) return [0.5, 0.5, 0.5];
+  const c = m.color || new THREE.Color(1, 1, 1), t = m.map ? textureAverage(m.map) : [1, 1, 1], k = 1 - (m.metalness || 0) * 0.85;
+  return [Math.min(0.92, c.r * t[0] * k), Math.min(0.92, c.g * t[1] * k), Math.min(0.92, c.b * t[2] * k)];
+}
+
+// Light shapes: how much of the lamp's light goes in each direction
+export const LIGHT_PROFILE = { pendant: { r: 0.14, down: 0.75 }, chandelier: { r: 0.25, down: 0.35 }, spots: { r: 0.04, down: 1, cone: 0.55 }, flush: { r: 0.2, down: 1 }, floor: { r: 0.15, down: 0.45 } };
+
+// what takes part in the bake: receivers get light, occluders block it
+function roleOf(o) {
+  const u = o.userData;
+  if (!o.isMesh || u.noBake || u.glass || o.material?.isShadowMaterial || o.material?.transparent && o.material.opacity < 0.9) return null;
+  let p = o, inDevice = false, leaf = false, exterior = false;
+  while (p) { if (p.userData?.device) inDevice = true; if (p.name === "leaf") leaf = true; if (p.userData?.exterior) exterior = true; p = p.parent; }
+  if (inDevice) return null;
+  return { receive: true, occlude: !leaf || exterior };
+}
+
+// engine: the AtelierEngine after setPlan. Returns everything the bake needs.
+export function prepare(engine) {
+  const recv = [], seenGeo = new Set();
+  const roots = [engine.rooms, engine.ceilings, engine.wallsG, engine.items];
+  engine.scene.updateMatrixWorld(true);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+  for (const root of roots) root.traverse((o) => {
+    const r = roleOf(o); if (!r) return;
+    if (o.userData.wall) {
+      // walls have a full-height shape and a waist-height (cut) shape; both get light
+      const variants = [[o.userData.fullGeo || o.geometry, o.userData.fullY ?? o.position.y, true]];
+      if (o.userData.cutGeo) variants.push([o.userData.cutGeo, o.userData.cutY, false]);
+      for (const [geo, y, occ] of variants) {
+        q.setFromEuler(o.rotation); p.set(o.position.x, y, o.position.z);
+        recv.push({ mesh: o, geo, matrix: m4.clone().compose(p, q, s), occlude: occ && r.occlude });
+      }
+      return;
+    }
+    if (seenGeo.has(o.geometry)) { o.geometry = o.geometry.clone(); }
+    seenGeo.add(o.geometry);
+    recv.push({ mesh: o, geo: o.geometry, matrix: o.matrixWorld.clone(), occlude: r.occlude });
+  });
+
+  // count vertices, give out ids
+  let n = 0;
+  for (const r of recv) { r.base = n; n += r.geo.attributes.position.count; }
+  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), alb = new Float32Array(n * 3);
+  const tris = [];
+  const v = new THREE.Vector3(), nm = new THREE.Matrix3();
+  const rooms = engine.floor.rooms.filter((x) => x.pts?.length >= 3);
+  for (const r of recv) {
+    const g = r.geo, P = g.attributes.position, N = g.attributes.normal, cnt = P.count;
+    nm.getNormalMatrix(r.matrix);
+    const ids = new Float32Array(cnt);
+    for (let i = 0; i < cnt; i++) {
+      const k = r.base + i; ids[i] = k;
+      v.fromBufferAttribute(P, i).applyMatrix4(r.matrix); pos.set([v.x, v.y, v.z], k * 3);
+      if (N) { v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nrm.set([v.x, v.y, v.z], k * 3); }
+    }
+    g.setAttribute("bakeId", new THREE.BufferAttribute(ids, 1));
+    // colour of each point from the material of its triangles
+    const mats = Array.isArray(r.mesh.material) ? r.mesh.material : [r.mesh.material];
+    const idx = g.index ? g.index.array : null, triCount = (idx ? idx.length : cnt) / 3;
+    const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.length : cnt, materialIndex: 0 }];
+    for (const grp of groups) {
+      const a = albedoOf(mats[grp.materialIndex] || mats[0]);
+      for (let t = grp.start; t < grp.start + grp.count; t++) { const vi = idx ? idx[t] : t; alb.set(a, (r.base + vi) * 3); }
+    }
+    if (r.occlude) for (let t = 0; t < triCount; t++) tris.push(r.base + (idx ? idx[t * 3] : t * 3), r.base + (idx ? idx[t * 3 + 1] : t * 3 + 1), r.base + (idx ? idx[t * 3 + 2] : t * 3 + 2));
+  }
+  // group points into probes
+  const rep = new Int32Array(n), keyOf = new Map(), pp = [], pn = [], pa = [], pc = [];
+  for (let k = 0; k < n; k++) {
+    const key = `${Math.round(pos[k * 3] / PROBE)},${Math.round(pos[k * 3 + 1] / PROBE)},${Math.round(pos[k * 3 + 2] / PROBE)}|${Math.round(nrm[k * 3] * 2)},${Math.round(nrm[k * 3 + 1] * 2)},${Math.round(nrm[k * 3 + 2] * 2)}`;
+    let q = keyOf.get(key);
+    if (q === undefined) { q = pc.length; keyOf.set(key, q); pc.push(0); pp.push(0, 0, 0); pn.push(0, 0, 0); pa.push(0, 0, 0); }
+    rep[k] = q; pc[q]++;
+    for (let c = 0; c < 3; c++) { pp[q * 3 + c] += pos[k * 3 + c]; pn[q * 3 + c] += nrm[k * 3 + c]; pa[q * 3 + c] += alb[k * 3 + c]; }
+  }
+  const m = pc.length, ppos = new Float32Array(m * 3), pnrm = new Float32Array(m * 3), palb = new Float32Array(m * 3), room = new Int32Array(m).fill(-1);
+  for (let q = 0; q < m; q++) {
+    const l = Math.hypot(pn[q * 3], pn[q * 3 + 1], pn[q * 3 + 2]) || 1;
+    for (let c = 0; c < 3; c++) { ppos[q * 3 + c] = pp[q * 3 + c] / pc[q]; pnrm[q * 3 + c] = pn[q * 3 + c] / l; palb[q * 3 + c] = pa[q * 3 + c] / pc[q]; }
+    // which room each probe belongs to (for per-room brightness)
+    const x = ppos[q * 3], z = ppos[q * 3 + 2]; for (let i = 0; i < rooms.length; i++) if (insidePoly(x, z, rooms[i].pts)) { room[q] = i; break; }
+  }
+  // the stored light is looked up by probe number
+  for (const r of recv) { const ids = r.geo.attributes.bakeId.array; for (let i = 0; i < ids.length; i++) ids[i] = rep[ids[i]]; r.geo.attributes.bakeId.needsUpdate = true; }
+
+  // light sources
+  const lights = [];
+  for (const rec of engine.devices.values()) if (rec.kind === "light" && rec.lightPos) {
+    const pr = LIGHT_PROFILE[rec.look] || LIGHT_PROFILE.flush;
+    lights.push({ id: rec.dv.id, p: rec.lightPos.toArray(), ...pr });
+  }
+  // windows and glass doors: openings in outside walls that let the sky in
+  const windows = [];
+  engine.wallsG.children.forEach((g) => {
+    const op = g.userData.opening && engine.floor.openings.find((x) => x.id === g.userData.opening);
+    if (!op || !g.userData.exterior || !(op.type === "window" || op.type === "slider" || op.type === "door" || op.type === "arch")) return;
+    const u = new THREE.Vector3(1, 0, 0).applyQuaternion(g.quaternion), nn = new THREE.Vector3(0, 0, 1).applyQuaternion(g.quaternion);
+    windows.push({ id: op.id, c: [g.position.x, op.sill + op.height / 2, g.position.z], u: u.toArray(), n: nn.toArray(), hw: g.userData.width / 2, hh: op.height / 2 });
+  });
+  // geometry (all points, for blocking light) and probes (where light is measured)
+  return { recv, n: m, verts: n, pos: ppos, nrm: pnrm, alb: palb, room, rep, vpos: pos, index: new Uint32Array(tris), lights, windows, rooms: rooms.map((r) => r.id) };
+}
+function insidePoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; }
+
+// a short fingerprint of everything that changes the light (not the on/off states)
+export function bakeHash(floor, extra) {
+  const keep = { h: floor.height, r: floor.rooms.map((r) => [r.pts, r.type, r.floor, r.wall]), o: floor.openings, i: floor.items.map((i) => [i.kind, i.x, i.y, i.rot, i.w, i.d, i.h, i.color, i.mount]),
+    l: floor.devices.filter((d) => (d.kind || "light") === "light" && !d.entity?.match(/^(cover|climate|media_player|lock|person|fan|vacuum|binary_sensor)\./)).map((d) => [d.x, d.y, d.look, d.kind]), extra, v: BAKE_VERSION };
+  const s = JSON.stringify(keep); let h1 = 0x811c9dc5, h2 = 0x1234567;
+  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = Math.imul(h2 ^ c, 2246822519) ^ (h2 >>> 13); }
+  return ((h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0"));
+}

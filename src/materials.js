@@ -44,7 +44,8 @@ function planks(base, vary, { plank = 8, herring = false } = {}) {
       for (const k of [c, r, hgt]) { k.translate(x, y); k.rotate(angle); }
       const v = 1 + (rnd() - 0.5) * vary;
       c.fillStyle = rgb(br * v, bg * v, bb * v); c.fillRect(0, 0, bw, bh);
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < 6; i++) { const cx = rnd() * bw; c.strokeStyle = `rgba(${br * 0.6},${bg * 0.52},${bb * 0.45},${0.05 + rnd() * 0.06})`; c.lineWidth = 2 + rnd() * 5; c.beginPath(); c.ellipse(cx, bh * rnd(), bw * (0.15 + rnd() * 0.3), bh * (0.25 + rnd() * 0.4), 0, 0, Math.PI * 2); c.stroke(); }
+      for (let i = 0; i < 46; i++) {
         const gx = rnd() * bw, a = 0.04 + rnd() * 0.08;
         c.strokeStyle = `rgba(${br * 0.55},${bg * 0.5},${bb * 0.45},${a})`; c.lineWidth = 0.6 + rnd() * 1.6;
         c.beginPath(); c.moveTo(gx, 0); c.bezierCurveTo(gx + (rnd() - 0.5) * 10, bh * 0.33, gx + (rnd() - 0.5) * 10, bh * 0.66, gx + (rnd() - 0.5) * 6, bh); c.stroke();
@@ -106,6 +107,7 @@ function weave(base) {
       const on = ((x / s) + (y / s)) % 2 === 0, v = on ? 175 : 95;
       hgt.fillStyle = `rgb(${v},${v},${v})`; hgt.fillRect(x, y, s, s);
       c.fillStyle = `rgba(${on ? 255 : 0},${on ? 255 : 0},${on ? 255 : 0},${0.035 + rnd() * 0.03})`; c.fillRect(x, y, s, s);
+      if (rnd() < 0.08) { const t = rnd() > 0.5 ? 255 : 0; c.fillStyle = `rgba(${t},${t},${t},${0.05 + rnd() * 0.06})`; c.fillRect(x, y, s * (1 + rnd() * 6), 1); }
     }
   };
 }
@@ -141,10 +143,11 @@ export const FABRICS = {
   linen: "#D8CFC0", grey: "#8E8C92", charcoal: "#45464C", navy: "#2F3E5C", sage: "#8FA08A", terracotta: "#B8674A", mustard: "#C9A040", blush: "#D9AFA3", cream: "#EEE6D8", plum: "#6A4766",
 };
 
-function painted(key, painter) {
+function painted(key, painter, size = SIZE) {
   if (cache.has(key)) return cache.get(key);
-  const c = canvas(), r = canvas(), h = canvas();
+  const c = canvas(size, size), r = canvas(size, size), h = canvas(size, size);
   seed = [...key].reduce((a, ch) => a + ch.charCodeAt(0) * 31, 7);
+  const k = size / SIZE; for (const x of [c, r, h]) x.getContext("2d").scale(k, k);
   painter(c.getContext("2d"), r.getContext("2d"), h.getContext("2d"), SIZE, SIZE);
   const out = { map: c, rough: r, normal: normalFrom(h, 2.2) };
   cache.set(key, out);
@@ -156,7 +159,7 @@ export function floorMaterial(name) {
   const k = `floor:${name}`;
   if (matCache.has(k)) return matCache.get(k);
   const def = FLOORS[name] || FLOORS.oak;
-  const p = painted(k, def[1]);
+  const p = painted(k, def[1], 1024);
   const m = new THREE.MeshPhysicalMaterial({
     map: tex(p.map, true, def[2]), roughnessMap: tex(p.rough, false, def[2]), normalMap: tex(p.normal, false, def[2]),
     roughness: def[3], metalness: 0, clearcoat: def[3] < 0.5 ? 0.35 : 0.08, clearcoatRoughness: 0.25, envMapIntensity: 0.9,

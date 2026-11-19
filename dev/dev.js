@@ -3,7 +3,7 @@ import { SAMPLES } from "../src/samples.js";
 const st = document.createElement("style"); st.textContent = VIEW_CSS; document.head.appendChild(st);
 const q = new URLSearchParams(location.search);
 const host = document.getElementById("app");
-const v = new AtelierView(host, { quality: q.get("q") || "medium", view: q.get("view") || "3d" });
+const v = new AtelierView(host, { quality: q.get("q") || "medium", view: q.get("view") || "3d", canBake: true, store: { load: async () => null, save: async () => {} } });
 const plan = SAMPLES.find((s) => s.id === (q.get("s") || "apartment")).make();
 v.engine.opts.forceTime = q.get("t") || "day";
 v.setPlan(plan);

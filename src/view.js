@@ -33,11 +33,14 @@ export const VIEW_CSS = `
 `;
 
 export class AtelierView {
-  constructor(host, { onMoreInfo, toolbar = true, hotspots = true, editing = false, view = "3d", photo = false, quality = "auto" } = {}) {
+  constructor(host, { onMoreInfo, toolbar = true, hotspots = true, editing = false, view = "3d", photo = false, quality = "auto", canBake, store } = {}) {
     this.host = host; this.onMoreInfo = onMoreInfo;
     host.innerHTML = `<div class="av" dir="${isRtl() ? "rtl" : "ltr"}"><div class="hot"></div><div class="prog hide"><span>${t("Making photo")}</span><i><b></b></i></div>${toolbar ? `<div class="bar"></div>` : ""}</div>`;
     this.root = host.firstElementChild; this.hotEl = this.root.querySelector(".hot");
-    this.engine = new AtelierEngine(this.root, { editing, view, hotspots, photo, quality });
+    // the light is baked on a computer, not on phones or tablets; the result is shared through Home Assistant
+    const strong = (navigator.hardwareConcurrency || 2) >= 4 && !/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+    this.engine = new AtelierEngine(this.root, { editing, view, hotspots, photo, quality, canBake: canBake ?? strong, store: store || { load: (k) => this.loadBake(k), save: (k, b) => this.saveBake(k, b) } });
+    this.engine.on("bake", ({ state, progress }) => this.drawBake(state, progress));
     this.root.insertBefore(this.engine.renderer.domElement, this.hotEl);
     this.hsMap = new Map();
     this.engine.on("hotspots", (list) => this.drawHot(list));
@@ -55,6 +58,9 @@ export class AtelierView {
     if (!this.plan) return;
     const ids = this.entities, states = {}; let changed = false;
     for (const id of ids) { states[id] = h.states[id]; if (states[id] !== this._last?.[id]) changed = true; }
+    if (!this._loc && h.config) { this._loc = true; this.engine.location = { lat: h.config.latitude, lon: h.config.longitude }; }
+    const wx = h.states[this.plan.settings?.weather || ""] || Object.values(h.states).find((s) => s.entity_id.startsWith("weather."));
+    if (wx !== this._wx) { this._wx = wx; this.engine.setWeather(wx); }
     const sun = h.states["sun.sun"];
     if (sun !== this._sun) { this._sun = sun; this.engine.setSun(this.plan.settings?.sun === false ? null : sun); }
     if (changed) { this._last = states; this.engine.setStates(states); }
@@ -74,6 +80,21 @@ export class AtelierView {
       <div class="grp"><button data-p class="${this.photoOn ? "on" : ""}" title="${t("Photo")}"><ha-icon icon="mdi:camera-iris"></ha-icon><span class="lbl">${t("Photo")}</span></button></div>`;
     bar.querySelectorAll("[data-v]").forEach((b) => (b.onclick = () => { this.engine.userMoved = false; this.engine.frame(b.dataset.v); }));
     bar.querySelector("[data-p]").onclick = () => { this.photoOn = !this.photoOn; this.engine.setPhoto(this.photoOn); this.drawBar(); };
+  }
+  // stored light lives on the Home Assistant server, shared by every screen
+  async loadBake(key) {
+    if (!this._hass) return null;
+    const r = await this._hass.fetchWithAuth(`/api/roost_atelier/bake/${key}`); if (!r.ok) return null;
+    return r.arrayBuffer();
+  }
+  async saveBake(key, buf) {
+    if (!this._hass?.user?.is_admin) return;
+    await this._hass.fetchWithAuth(`/api/roost_atelier/bake/${key}`, { method: "POST", body: buf, headers: { "Content-Type": "application/octet-stream" } });
+  }
+  drawBake(state, p) {
+    const el = this.root.querySelector(".prog");
+    if (state === "baking") { el.classList.remove("hide"); el.querySelector("span").textContent = `${t("Lighting")} ${Math.round(p * 100)}%`; el.querySelector("b").style.width = `${p * 100}%`; this._baking = true; }
+    else if (this._baking) { this._baking = false; el.classList.add("hide"); el.querySelector("span").textContent = t("Making photo"); }
   }
   drawProgress(p) {
     const el = this.root.querySelector(".prog");

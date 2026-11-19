@@ -5,10 +5,13 @@ import { ROOM_TYPES, uid, clone, snap, round, rect, area, centroid, bounds, insi
 import { SAMPLES } from "./samples.js";
 import { LIBRARY, CATEGORIES, dims } from "./furniture.js";
 import { FLOORS, WALLS, FABRICS, swatchColor, swatchCanvas } from "./materials.js";
-import { KINDS, LIGHT_LOOKS, deviceKind } from "./devices.js";
+import { KINDS, LIGHT_LOOKS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex } from "./devices.js";
+import { matchPhoto } from "./calibrate.js";
+import { RoomPhotographer } from "./photos.js";
 import { AtelierView, VIEW_CSS } from "./view.js";
 import { check } from "./check.js";
 
+const LIVE_KEYS = new Set(["lumens", "kelvin", "gain", "power"]);
 const ws = (hass, msg) => hass.connection.sendMessagePromise(msg);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const ICON_ROOM = Object.fromEntries(Object.entries(ROOM_TYPES).map(([k, v]) => [k, v.icon]));
@@ -82,6 +85,9 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .card{padding:12px;border-radius:16px;background:var(--inset);display:flex;flex-direction:column;gap:8px}
 .list button{width:100%;justify-content:flex-start;height:auto;min-height:48px;padding:8px 12px;border-radius:14px;background:var(--inset);margin-bottom:6px;text-align:start}
 .list small{display:block;color:var(--muted);font-size:11px}
+.shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.shots .shot{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
+.shots img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:var(--inset)}
 .issue{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:14px;background:var(--inset)}
 .issue ha-icon{color:#F5B041}.issue.ok ha-icon{color:#5FBF77}
 .ghost{position:fixed;z-index:20;pointer-events:none;transform:translate(-50%,-50%);padding:8px 12px;border-radius:12px;background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
@@ -137,9 +143,13 @@ export class AtelierEditor {
   }
   pause(p) { this.view?.engine.setVisible(!p); }
   async start() {
-    this.view = new AtelierView(this.root.querySelector(".three"), { editing: true, onMoreInfo: () => {} });
+    this.view = new AtelierView(this.root.querySelector(".three"), { editing: true, canBake: true, onMoreInfo: () => {} });
     this.view.onPick = (hit) => { if (hit.item) this.select({ t: "item", id: hit.item }); else if (hit.room) this.select({ t: "room", id: hit.room }); };
     this.view.onDemo = (d) => this.select({ t: "dev", id: d.id });
+    // light is baked here (this computer), then room photos are made when nobody is using it
+    this.photographer = new RoomPhotographer(this);
+    this.emitPhotos = () => { if (!this.sel && this.tool === "select") this.homePanel(); };
+    this.view.engine.on("bake", ({ state }) => { if (state === "ready") this.photographer.schedule(); else if (state === "baking") this.photographer.reset(); });
     this.view.engine.on("hold", (hit) => { if (hit.device) this.select({ t: "dev", id: hit.device }); });
     let list = [];
     try { list = await ws(this._hass, { type: "roost_atelier/plans" }); } catch (e) { console.warn(e); }
@@ -493,6 +503,8 @@ export class AtelierEditor {
       if (isRect) h += slider("rw", "Width", 1, 20, 0.05, b.x1 - b.x0) + slider("rd", "Depth", 1, 20, 0.05, b.y1 - b.y0);
       h += `<div class="field"><h3>${t("Floor")}</h3><div class="sw">${Object.entries(FLOORS).map(([k, v]) => `<button data-floor="${k}" title="${esc(v[0])}" class="${(obj.floor || type.floor) === k ? "on" : ""}" style="background-image:url(${floorThumb(k)})"></button>`).join("")}</div></div>`;
       if (!type.outdoor) h += `<div class="field"><h3>${t("Walls")}</h3><div class="sw">${Object.entries(WALLS).map(([k, v]) => `<button data-wall="${k}" title="${esc(v[0])}" class="${(obj.wall || "warm-white") === k ? "on" : ""}" style="background:${v[1]}"></button>`).join("")}</div></div>`;
+      h += slider("gain", "Room brightness", 0.4, 2, 0.05, obj.gain || 1, "×");
+      h += `<div class="row"><label><button data-match><ha-icon icon="mdi:camera-image"></ha-icon>${t("Match a photo of this room")}</button><input type="file" data-photo accept="image/*" hidden></label></div><span class="tip" data-match-out></span>`;
       h += `<div class="row"><button data-dup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "op") {
       h += head(obj.type === "window" ? "mdi:window-closed-variant" : obj.type === "slider" ? "mdi:door-sliding" : obj.type === "arch" ? "mdi:gate-arrow-right" : "mdi:door", t(obj.type[0].toUpperCase() + obj.type.slice(1)));
@@ -514,7 +526,10 @@ export class AtelierEditor {
       h += head(K.icon, obj.name || t(K.name));
       h += `<div class="field"><h3>${t("Name")}</h3><input type="text" data-k="name" value="${esc(obj.name)}"></div>`;
       h += `<div class="field"><h3>${t("Entity")}</h3><select data-k="entity"><option value="">${t("Not linked")}</option>${Object.keys(this._hass.states).filter((e) => K.domains.includes(e.split(".")[0])).sort().map((e) => `<option value="${e}" ${obj.entity === e ? "selected" : ""}>${esc(this._hass.states[e].attributes.friendly_name || e)}</option>`).join("")}</select></div>`;
-      if (kind === "light") h += `<div class="field"><h3>${t("Look")}</h3><div class="chips">${Object.entries(LIGHT_LOOKS).map(([k, v]) => `<button data-look="${k}" class="${(obj.look || "flush") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div></div>` + slider("power", "Brightness", 0.2, 3, 0.1, obj.power || 1, "×");
+      if (kind === "light") h += `<div class="field"><h3>${t("Look")}</h3><div class="chips">${Object.entries(LIGHT_LOOKS).map(([k, v]) => `<button data-look="${k}" class="${(obj.look || "flush") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div></div>` 
+        + slider("lumens", "Light output", 100, 5000, 50, obj.lumens || LUMENS[obj.look || "flush"], " lm")
+        + `<label class="sl"><span>${t("Warmth")}</span><b data-out="kelvin">${obj.kelvin || KELVIN[obj.look || "flush"]} K</b><input type="range" data-k="kelvin" min="2200" max="6500" step="100" value="${obj.kelvin || KELVIN[obj.look || "flush"]}" style="accent-color:${kelvinToHex(obj.kelvin || KELVIN[obj.look || "flush"])}"></label>`
+        + (obj.entity ? "" : `<div class="field"><h3>${t("Not smart: when is it on?")}</h3><div class="chips">${Object.entries(RULES).filter(([k]) => k !== "demo").map(([k, v]) => `<button data-rule="${k}" class="${(obj.rule || "on") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div>${obj.rule === "schedule" ? `<div class="row"><input type="text" data-k="from" value="${esc(obj.from || "18:00")}" style="width:90px"> – <input type="text" data-k="to" value="${esc(obj.to || "23:00")}" style="width:90px"></div>` : ""}</div>`);
       if (kind === "ac") h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><b>${obj.rot || 0}°</b><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
       if (kind === "person") h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["#6D4BFF", "#4E8CFF", "#E86FB0", "#FF7A59", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
       h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
@@ -530,20 +545,32 @@ export class AtelierEditor {
     a.querySelectorAll("input[type=text][data-k]").forEach((i) => i.addEventListener("input", () => set(() => (obj[i.dataset.k] = i.value), false)));
     a.querySelectorAll("select[data-k]").forEach((i) => i.addEventListener("change", () => set(() => { obj[i.dataset.k] = i.value; if (i.value && !obj.name) obj.name = this._hass.states[i.value]?.attributes.friendly_name || ""; })));
     a.querySelectorAll("input[type=range]").forEach((i) => i.addEventListener("input", () => {
-      const k = i.dataset.k, v = parseFloat(i.value), out = a.querySelector(`[data-out="${k}"]`); if (out) out.textContent = `${round(v, 2)}${k === "power" ? "×" : " m"}`;
+      const k = i.dataset.k, v = parseFloat(i.value), out = a.querySelector(`[data-out="${k}"]`); if (out) out.textContent = `${round(v, 2)}${{ power: "×", lumens: " lm", kelvin: " K", gain: "×" }[k] ?? " m"}`;
       set(() => {
         if (k === "rw" || k === "rd") { const b = bounds(obj.pts); for (const p of obj.pts) { if (k === "rw" && Math.abs(p[0] - b.x1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][0] = round(b.x0 + v, 3); p[0] = round(b.x0 + v, 3); } if (k === "rd" && Math.abs(p[1] - b.y1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][1] = round(b.y0 + v, 3); p[1] = round(b.y0 + v, 3); } } }
         else obj[k] = v;
-      }, true);
+      }, !LIVE_KEYS.has(k));
+      // light output, warmth and room brightness change instantly: no rebuild, no new light bake
+      if (LIVE_KEYS.has(k)) { if (k === "kelvin") i.style.accentColor = kelvinToHex(v); this.view.engine.updateDevices(true); this.view.engine.request(false); }
     }));
     a.querySelectorAll("[data-type]").forEach((b) => (b.onclick = () => { set(() => { obj.type = b.dataset.type; }); this.inspector(); }));
     a.querySelectorAll("[data-floor]").forEach((b) => (b.onclick = () => { set(() => (obj.floor = b.dataset.floor)); this.inspector(); }));
     a.querySelectorAll("[data-wall]").forEach((b) => (b.onclick = () => { set(() => (obj.wall = b.dataset.wall)); this.inspector(); }));
     a.querySelectorAll("[data-otype]").forEach((b) => (b.onclick = () => { set(() => { obj.type = b.dataset.otype; if (obj.type === "window") { obj.sill = obj.sill || 0.9; obj.height = Math.min(obj.height, 1.6); } else obj.sill = 0; }); this.inspector(); }));
+    a.querySelector("[data-match]")?.addEventListener("click", () => a.querySelector("[data-photo]").click());
+    a.querySelector("[data-photo]")?.addEventListener("change", async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const out = a.querySelector("[data-match-out]"); out.textContent = "…";
+      const res = await matchPhoto(f, obj, this.floor);
+      if (!res) { out.textContent = t("Could not read this photo"); return; }
+      this.snapshot(); res.apply(); this.changed(false); this.view.engine.updateDevices(true); this.inspector();
+      this.aside.querySelector("[data-match-out]").textContent = res.text;
+    });
     a.querySelector("[data-flip]")?.addEventListener("click", () => set(() => (obj.swing = (obj.swing || 1) * -1)));
     a.querySelectorAll("[data-tog]").forEach((b) => (b.onclick = () => { set(() => (obj[b.dataset.tog] = !obj[b.dataset.tog])); this.inspector(); }));
     a.querySelectorAll("[data-rotby]").forEach((b) => (b.onclick = () => { set(() => (obj.rot = (((obj.rot || 0) + +b.dataset.rotby) % 360 + 360) % 360)); this.inspector(); }));
     a.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => { set(() => (obj.color = b.dataset.color)); this.inspector(); }));
+    a.querySelectorAll("[data-rule]").forEach((b) => (b.onclick = () => { set(() => (obj.rule = b.dataset.rule), false); this.view.engine.updateDevices(true); this.inspector(); }));
     a.querySelectorAll("[data-look]").forEach((b) => (b.onclick = () => { set(() => (obj.look = b.dataset.look)); this.inspector(); }));
     a.querySelector("[data-dup]")?.addEventListener("click", () => {
       this.snapshot(); const c = clone(obj); c.id = uid(s.t === "room" ? "r" : "i");
@@ -588,10 +615,13 @@ export class AtelierEditor {
       <div class="field"><h3>${t("Walls")}</h3><div class="seg"><button data-walls="cut" class="${st.walls !== "full" ? "on" : ""}">${t("Cut walls")}</button><button data-walls="full" class="${st.walls === "full" ? "on" : ""}">${t("Full walls")}</button></div></div>
       <label class="sl"><span>${t("Height")}</span><b data-out="fh">${f.height} m</b><input type="range" data-fh min="2.4" max="4.5" step="0.05" value="${f.height}"></label>
       <label class="sl"><span>${t("North")}</span><b data-out="north">${p.north || 0}°</b><input type="range" data-north min="0" max="359" step="1" value="${p.north || 0}"></label>
+      <label class="sl"><span>${t("Overall brightness")}</span><b data-out="ex">${round(st.exposure || 1, 2)}×</b><input type="range" data-ex min="0.5" max="2" step="0.05" value="${st.exposure || 1}"></label>
       <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
+      <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves when the computer is free")}</span></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
+    this.drawShots(a.querySelector("[data-shots]"));
     const set = (fn, rebuild = true) => { this.snapshot(); fn(); this.changed(rebuild); };
     a.querySelector("[data-fname]").addEventListener("change", (e) => set(() => { f.name = e.target.value || f.name; this.drawFloors(); }, false));
     a.querySelector("[data-delfloor]")?.addEventListener("click", () => this.removeFloor());
@@ -599,10 +629,29 @@ export class AtelierEditor {
     a.querySelectorAll("[data-walls]").forEach((b) => (b.onclick = () => { set(() => (st.walls = b.dataset.walls)); this.homePanel(); }));
     a.querySelector("[data-fh]").addEventListener("change", (e) => set(() => (f.height = +e.target.value)));
     a.querySelector("[data-fh]").addEventListener("input", (e) => (a.querySelector('[data-out="fh"]').textContent = `${e.target.value} m`));
+    a.querySelector("[data-ex]").addEventListener("input", (e) => { a.querySelector('[data-out="ex"]').textContent = `${e.target.value}×`; st.exposure = +e.target.value; this.view.engine.request(false); });
+    a.querySelector("[data-ex]").addEventListener("change", () => this.changed(false));
     a.querySelector("[data-north]").addEventListener("input", (e) => { a.querySelector('[data-out="north"]').textContent = `${e.target.value}°`; p.north = +e.target.value; this.view.engine.fitSun(); });
     a.querySelector("[data-north]").addEventListener("change", () => this.changed(false));
     a.querySelector("[data-sun]").onclick = () => { set(() => (st.sun = st.sun === false)); this.homePanel(); this.view.hass = this._hass; this.view._sun = undefined; this.view.hass = this._hass; };
     a.querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { set(() => (st.quality = b.dataset.q), false); this.homePanel(); }));
+  }
+  async drawShots(el) {
+    if (!this.plan?.id || !el) return;
+    let list = [];
+    try { list = await ws(this._hass, { type: "roost_atelier/photos", plan_id: this.plan.id }); } catch { return; }
+    list = list.filter((p) => p.key.startsWith(`${this.plan.id}_${this.fi}_`));
+    if (!list.length) return;
+    this._shotUrls ||= new Map();
+    el.innerHTML = "";
+    for (const p of list) {
+      const rid = p.key.split("_").slice(2).join("_"), room = this.floor.rooms.find((r) => r.id === rid);
+      const k = `${p.key}@${p.updated}`;
+      if (!this._shotUrls.has(k)) { const r = await this._hass.fetchWithAuth(`/api/roost_atelier/photo/${p.key}`); if (!r.ok) continue; this._shotUrls.set(k, URL.createObjectURL(await r.blob())); }
+      const b = document.createElement("button"); b.className = "shot"; b.innerHTML = `<img src="${this._shotUrls.get(k)}" alt=""><span>${esc(room?.name || t(ROOM_TYPES[room?.type]?.name || "Room"))}</span>`;
+      b.onclick = () => { const d = document.createElement("div"); d.className = "dialog"; d.innerHTML = `<img src="${this._shotUrls.get(k)}" style="max-width:94vw;max-height:88vh;border-radius:16px">`; d.onclick = () => d.remove(); this.root.querySelector(".ed").appendChild(d); };
+      el.appendChild(b);
+    }
   }
   checkPanel() {
     const a = this.aside, issues = check(this.plan, this.floor);

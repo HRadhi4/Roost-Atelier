@@ -14,7 +14,7 @@ from .recognize import async_recognize
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_list, ws_get, ws_save, ws_delete, ws_recognize, ws_subscribe):
+    for cmd in (ws_list, ws_get, ws_save, ws_delete, ws_recognize, ws_subscribe, ws_photos):
         websocket_api.async_register_command(hass, cmd)
 
 
@@ -79,3 +79,13 @@ def ws_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConnection
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(f"{DOMAIN}_updated", forward)
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/photos", vol.Required("plan_id"): str})
+@websocket_api.async_response
+async def ws_photos(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Room photos made for a home."""
+    from .uploads import list_photos
+
+    prefix = "".join(c for c in msg["plan_id"] if c.isalnum() or c in "_-") + "_"
+    connection.send_result(msg["id"], await hass.async_add_executor_job(list_photos, hass, prefix))
