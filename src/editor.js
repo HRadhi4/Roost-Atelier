@@ -93,6 +93,12 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .list small{display:block;color:var(--muted);font-size:11px}
 .pv{height:190px;margin:2px 0 4px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 30%,#2a2f52,#12152a)}
 .pv3{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+.studio{position:absolute;bottom:16px;inset-inline-start:80px;z-index:6;display:flex;align-items:center;gap:8px;max-width:min(460px,70%);height:40px;padding:0 14px;border-radius:14px;background:rgba(20,24,49,.92);border:1px solid var(--border);color:var(--text);font:600 12px Inter,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer}
+.studio.hide{display:none}
+.studio span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.studio i{flex:0 0 90px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
+.studio b{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc1),var(--acc2));transition:width .4s}
+.studio.ok b{background:#2EC4B6}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .shots .shot{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
 .shots img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:var(--inset)}
@@ -116,6 +122,7 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
  .ed[data-layout=split] .three{border:0;border-top:1px solid var(--border)}
  aside{grid-row:3;max-height:38vh;border:0;border-top:1px solid var(--border);border-radius:20px 20px 0 0;min-width:0}
  aside:empty{display:none}
+ .studio{bottom:76px;inset-inline-start:10px;max-width:calc(100% - 20px)}
 }
 ${VIEW_CSS}
 `;
@@ -160,10 +167,10 @@ export class AtelierEditor {
     this.view.hass = this._hass;
     this.view.onPick = (hit) => { if (hit.item) this.select({ t: "item", id: hit.item }); else if (hit.room) this.select({ t: "room", id: hit.room }); };
     this.view.onDemo = (d) => this.select({ t: "dev", id: d.id });
-    // light is baked here (this computer), then room photos are made when nobody is using it
+    // light is baked here (this computer), then photos of the whole floor and every room are made in the background
     this.photographer = new RoomPhotographer(this);
     this.emitPhotos = () => { if (!this.sel && this.tool === "select") this.homePanel(); };
-    this.view.engine.on("bake", ({ state }) => { if (state === "ready") this.photographer.schedule(); else if (state === "baking") this.photographer.reset(); });
+    this.view.engine.on("bake", ({ state }) => { if (state === "ready") this.photographer.schedule(); else if (state === "baking" || state === "queued") this.photographer.reset(); });
     this.view.engine.on("hold", (hit) => { if (hit.device) this.select({ t: "dev", id: hit.device }); });
     let list = [];
     try { list = await ws(this._hass, { type: "roost_atelier/plans" }); } catch (e) { console.warn(e); }
@@ -654,7 +661,7 @@ export class AtelierEditor {
       <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
-      <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves when the computer is free")}</span></div></div>
+      <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves in the background once the light is ready")}</span></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
     const set = (fn, rebuild = true) => { this.snapshot(); fn(); this.changed(rebuild); };
@@ -681,9 +688,10 @@ export class AtelierEditor {
     el.innerHTML = "";
     for (const p of list) {
       const rid = p.key.split("_").slice(2).join("_"), room = this.floor.rooms.find((r) => r.id === rid);
+      if (rid !== "all" && !room) continue;
       const k = `${p.key}@${p.updated}`;
       if (!this._shotUrls.has(k)) { const r = await this._hass.fetchWithAuth(`/api/roost_atelier/photo/${p.key}`); if (!r.ok) continue; this._shotUrls.set(k, URL.createObjectURL(await r.blob())); }
-      const b = document.createElement("button"); b.className = "shot"; b.innerHTML = `<img src="${this._shotUrls.get(k)}" alt=""><span>${esc(room?.name || t(ROOM_TYPES[room?.type]?.name || "Room"))}</span>`;
+      const b = document.createElement("button"); b.className = "shot"; b.innerHTML = `<img src="${this._shotUrls.get(k)}" alt=""><span>${esc(rid === "all" ? t("Whole floor") : room?.name || t(ROOM_TYPES[room?.type]?.name || "Room"))}</span>`;
       b.onclick = () => { const d = document.createElement("div"); d.className = "dialog"; d.innerHTML = `<img src="${this._shotUrls.get(k)}" style="max-width:94vw;max-height:88vh;border-radius:16px">`; d.onclick = () => d.remove(); this.root.querySelector(".ed").appendChild(d); };
       el.appendChild(b);
     }

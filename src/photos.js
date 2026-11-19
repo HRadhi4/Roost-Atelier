@@ -1,60 +1,49 @@
-// The integration's own photographer: once the light is baked and nobody is using the computer, it walks
-// into each room, makes a realistic photo (light tracing + local AI clean-up) and keeps it in Home Assistant.
-// Any touch stops it straight away; it carries on later.
-import { ROOM_TYPES } from "./model.js";
+// The integration's own photographer: once the light is worked out it makes realistic photos of the whole
+// floor and of every room in the background (light tracing + local AI clean-up) and keeps them in Home Assistant.
+// A bar shows how far it is. Photos already made after the latest light are kept.
 import { t } from "./i18n.js";
+import { Studio, shotsFor } from "./studio.js";
 
 export class RoomPhotographer {
   constructor(editor) {
-    this.ed = editor; this.busy = false; this.done = new Set();
-    const stop = () => this.cancel();
-    for (const ev of ["pointerdown", "keydown", "wheel"]) editor.root.addEventListener(ev, stop, true);
+    this.ed = editor;
+    this.bar = document.createElement("button"); this.bar.className = "studio hide";
+    this.bar.innerHTML = `<ha-icon icon="mdi:camera-iris"></ha-icon><span></span><i><b></b></i>`;
+    this.bar.onclick = () => { this.ed.select(null); this.ed.homePanel(); };
+    editor.ed.appendChild(this.bar);
   }
-  // the home changed or was baked again: photos need remaking
-  reset() { this.done.clear(); this.cancel(); }
-  schedule(delay = 120000) {
-    clearTimeout(this._t);
-    this._t = setTimeout(() => this.run(), delay);
+  get studio() {
+    return (this._studio ||= new Studio(this.ed.view.engine, {
+      save: (key, blob) => this.ed._hass.fetchWithAuth(`/api/roost_atelier/photo/${this.ed.plan.id}_${this.ed.fi}_${key}`, { method: "POST", body: blob, headers: { "Content-Type": "image/jpeg" } }),
+      onProgress: (p) => this.show(p),
+    }));
   }
-  cancel() {
-    clearTimeout(this._t);
-    if (!this.busy) return;
-    this.aborted = true; this.busy = false;
-    const e = this.ed.view.engine; e.setPhoto(false); e.opts.hotspots = true; e.userMoved = false; e.frame(this._view || "3d");
-    this.ed.view.root.querySelector(".hot").style.display = ""; this.uncover();
-    this.schedule(180000);
+  show(p) {
+    const b = this.bar; clearTimeout(this._hide);
+    if (p.state === "working") {
+      b.classList.remove("hide", "ok");
+      b.querySelector("span").textContent = `${t("Photos")} ${Math.min(p.done + 1, p.total)}/${p.total} · ${p.name || ""}${p.ai ? " · AI" : ""} · ${Math.round(p.f * 100)}%`;
+      b.querySelector("b").style.width = `${Math.round(p.f * 100)}%`;
+      if (p.saved) this.ed.emitPhotos?.();
+    } else if (p.state === "done") {
+      b.classList.remove("hide"); b.classList.add("ok"); b.querySelector("span").textContent = t("All photos ready"); b.querySelector("b").style.width = "100%";
+      this.ed.emitPhotos?.(); this._hide = setTimeout(() => b.classList.add("hide"), 6000);
+    } else b.classList.add("hide");
   }
+  // the home changed or is being lit again: photos need remaking
+  reset() { this.studio.cancel(); }
+  cancel() { this.studio.cancel(); }
+  schedule(delay = 4000) { clearTimeout(this._t); this._t = setTimeout(() => this.run(), delay); }
   async run() {
     const ed = this.ed, e = ed.view.engine;
-    if (this.busy || !e.baked || !ed.plan?.id || document.hidden) return;
-    if (!(await e.photoReady())) return; // needs a WebGPU graphics chip for the AI clean-up
-    // rooms that already have a photo made after the latest light bake are left alone
+    if (this.studio.running || !e.baked || !ed.plan?.id) return;
+    // photos made after the latest light bake are kept
+    const done = new Set();
     try {
       const at = Date.parse(e.bakeMgr.data?.meta.at || 0) / 1000, list = await ed._hass.connection.sendMessagePromise({ type: "roost_atelier/photos", plan_id: ed.plan.id });
-      for (const p of list) { const [, fi, ...rid] = p.key.slice(ed.plan.id.length).split("_"); if (+fi === ed.fi && p.updated > at) this.done.add(`${fi}:${rid.join("_")}`); }
+      for (const p of list) { const rest = p.key.slice(ed.plan.id.length + 1), cut = rest.indexOf("_"); if (+rest.slice(0, cut) === ed.fi && p.updated > at) done.add(rest.slice(cut + 1)); }
     } catch { /* offline */ }
-    const rooms = ed.floor.rooms.filter((r) => !ROOM_TYPES[r.type]?.outdoor && !this.done.has(`${ed.fi}:${r.id}`));
-    if (!rooms.length) return;
-    this.busy = true; this.aborted = false; this._view = e.view;
-    ed.view.root.querySelector(".hot").style.display = "none";
-    // the photos are made behind a still picture of the view, so the screen doesn't flicker while they build up
-    this.uncover(); this.cover = document.createElement("div"); this.cover.className = "pcover";
-    this.cover.innerHTML = `<img src="${e.snapshot()}" alt=""><span>${t("Making room photos · touch to stop")}</span>`; e.host.appendChild(this.cover);
-    for (const r of rooms) {
-      if (this.aborted) return;
-      e.walkRoom = r; e.frame("walk", true); e.opts.hotspots = false;
-      await wait(400);
-      const shot = await e.takePhoto(() => this.aborted);
-      if (!shot || this.aborted) return;
-      try {
-        await ed._hass.fetchWithAuth(`/api/roost_atelier/photo/${ed.plan.id}_${ed.fi}_${r.id}`, { method: "POST", body: shot, headers: { "Content-Type": "image/jpeg" } });
-        this.done.add(`${ed.fi}:${r.id}`);
-        ed.emitPhotos?.();
-      } catch { /* offline: try again later */ }
-    }
-    this.busy = false;
-    e.setPhoto(false); e.opts.hotspots = true; ed.view.root.querySelector(".hot").style.display = ""; e.frame(this._view || "3d"); this.uncover();
+    const shots = shotsFor(ed.floor, t).filter((s) => !done.has(s.key));
+    if (shots.length) this.studio.run(shots);
   }
-  uncover() { this.cover?.remove(); this.cover = null; }
 }
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));

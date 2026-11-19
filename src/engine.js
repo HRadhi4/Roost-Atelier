@@ -360,7 +360,7 @@ export class AtelierEngine {
     this.bounds = b;
   }
   applyWalls() {
-    const mode = this.view === "walk" ? "full" : (this.plan?.settings?.walls || this.opts.walls);
+    const mode = this.view === "walk" ? "full" : (this._wallsOverride || this.plan?.settings?.walls || this.opts.walls);
     this.wallsG.traverse((o) => {
       if (!o.isMesh) return;
       if (o.userData.wall && mode === "cut" && o.userData.y0 >= CUT) { o.visible = false; return; }
@@ -627,23 +627,29 @@ export class AtelierEngine {
 
   // ---------------------------------------------------------------- views
   center() { const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }; return new THREE.Vector3((b.x0 + b.x1) / 2, 0, (b.y0 + b.y1) / 2); }
-  frame(view, instant = false) {
-    this.view = view; const c = this.center(), b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }, r = Math.max(b.x1 - b.x0, (b.y1 - b.y0) * this.camera.aspect * 0.8, 6);
-    let pos, target = c.clone(), fov = 32;
-    if (view === "top") { const half = Math.tan((30 * Math.PI) / 360); pos = new THREE.Vector3(c.x, Math.max((b.x1 - b.x0) / this.camera.aspect, b.y1 - b.y0) * 1.12 / (2 * half), c.z + 0.01); fov = 30; }
+  // where the camera stands for a view (also used by the background photo studio, with its own camera)
+  pose(view, walkRoom, aspect = this.camera.aspect) {
+    const c = this.center(), b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 };
+    let pos, target = c.clone(), fov = 32, room = null;
+    if (view === "top") { const half = Math.tan((30 * Math.PI) / 360); pos = new THREE.Vector3(c.x, Math.max((b.x1 - b.x0) / aspect, b.y1 - b.y0) * 1.12 / (2 * half), c.z + 0.01); fov = 30; }
     else if (view === "walk") {
-      const room = this.walkRoom || this.floor.rooms.find((x) => x.type === "living") || this.floor.rooms[0];
+      room = walkRoom || this.floor.rooms.find((x) => x.type === "living") || this.floor.rooms[0];
       const [x, y] = centroid(room.pts), bb = room.pts;
       const far = bb.reduce((m, p) => (Math.hypot(p[0] - x, p[1] - y) > Math.hypot(m[0] - x, m[1] - y) ? p : m), bb[0]);
       // eye level, looking straight ahead so walls stay upright like in a professional interior photo
       pos = new THREE.Vector3(x + (far[0] - x) * 0.72, 1.35, y + (far[1] - y) * 0.72); target = new THREE.Vector3(x - (far[0] - x) * 0.4, 1.35, y - (far[1] - y) * 0.4); fov = 60;
-      this.walkRoomId = room.id; this.kbActive = true;
     } else {
       // far enough that the whole home fits, seen from the south-east at about 45°
-      const R = 0.5 * Math.hypot(b.x1 - b.x0, b.y1 - b.y0) + 0.5, v = (fov * Math.PI) / 360, hh = Math.atan(Math.tan(v) * this.camera.aspect);
-      const dist = (R / Math.sin(Math.min(v, hh))) * (this.camera.aspect < 1 ? 0.95 : 0.8);
+      const R = 0.5 * Math.hypot(b.x1 - b.x0, b.y1 - b.y0) + 0.5, v = (fov * Math.PI) / 360, hh = Math.atan(Math.tan(v) * aspect);
+      const dist = (R / Math.sin(Math.min(v, hh))) * (aspect < 1 ? 0.95 : 0.8);
       pos = new THREE.Vector3(c.x + dist * 0.38, dist * 0.72, c.z + dist * 0.62);
     }
+    return { pos, target, fov, room };
+  }
+  frame(view, instant = false) {
+    this.view = view;
+    const { pos, target, fov, room } = this.pose(view, this.walkRoom);
+    if (view === "walk" && room) { this.walkRoomId = room.id; this.kbActive = true; }
     this.controls.enabled = view !== "walk";
     this.controls.maxPolarAngle = view === "top" ? 0.15 : Math.PI * 0.47;
     this.controls.minPolarAngle = 0;

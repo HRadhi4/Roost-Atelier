@@ -7,7 +7,7 @@ import { denoise, aiAvailable } from "./ai/denoise.js";
 
 // The tracer mixes up colours on objects made of several materials, so it gets its own copy of the
 // home where every surface is a separate object with one material.
-function photoScene(src) {
+export function photoScene(src, { sun = true } = {}) {
   const out = new THREE.Scene();
   src.updateMatrixWorld(true);
   src.traverseVisible((o) => {
@@ -25,7 +25,7 @@ function photoScene(src) {
           add(part, o.material[grp.materialIndex]);
         }
       } else add(o.geometry, o.material);
-    } else if (o.isLight && !o.isAmbientLight && !o.isHemisphereLight && o.intensity > 0) {
+    } else if (o.isLight && !o.isAmbientLight && !o.isHemisphereLight && o.intensity > 0 && (sun || !o.isDirectionalLight)) {
       const l = o.clone(false);
       // with baked light the live lamps only carry half their light (their shine); photos need all of it
       if (o.isPointLight && src.userData.baked) l.intensity *= 2;
