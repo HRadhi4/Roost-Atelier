@@ -26,7 +26,7 @@ const thumbs = new Map();
 function floorThumb(name) { if (!thumbs.has(name)) { const c = swatchCanvas(name); const s = document.createElement("canvas"); s.width = s.height = 64; s.getContext("2d").drawImage(c, 0, 0, 64, 64); thumbs.set(name, s.toDataURL("image/jpeg", 0.8)); } return thumbs.get(name); }
 
 const CSS = `
-:host{display:block;height:100%;position:relative}
+:host{display:block;height:100vh;height:100dvh;position:relative}
 .ed{--bg:#0B0D17;--panel:rgba(20,24,49,.92);--border:#242A4D;--text:#EEF0FF;--muted:#9AA3D9;--inset:#1D2244;--track:#262C52;--grid:rgba(154,163,217,.08);--wall:#C9CEF0;--acc1:#6D4BFF;--acc2:#8B6CFF;
   position:absolute;inset:0;display:grid;grid-template-columns:64px 1fr 300px;grid-template-rows:56px 1fr;background:var(--bg);color:var(--text);font:500 13px/1.35 Inter,var(--paper-font-body1_-_font-family,system-ui,sans-serif);overflow:hidden;-webkit-tap-highlight-color:transparent;user-select:none}
 .ed.light{--bg:#EEF1FA;--panel:rgba(255,255,255,.95);--border:#E2E5F2;--text:#161936;--muted:#5E668F;--inset:#EEF0FA;--track:#DDE1F0;--grid:rgba(94,102,143,.10);--wall:#2A2F45}
