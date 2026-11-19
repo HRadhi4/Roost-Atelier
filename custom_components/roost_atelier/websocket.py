@@ -9,12 +9,13 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
+from .storage import Conflict
 from .recognize import async_recognize
 
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_list, ws_get, ws_save, ws_delete, ws_recognize, ws_subscribe, ws_photos):
+    for cmd in (ws_list, ws_get, ws_save, ws_delete, ws_recognize, ws_subscribe, ws_photos, ws_versions, ws_version, ws_deleted, ws_undelete):
         websocket_api.async_register_command(hass, cmd)
 
 
@@ -39,12 +40,53 @@ def ws_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg:
 
 
 @websocket_api.require_admin
-@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/save", vol.Required("plan"): dict})
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/save", vol.Required("plan"): dict,
+                                  vol.Optional("base"): vol.Any(int, None), vol.Optional("force", default=False): bool})
 @callback
 def ws_save(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    plan = _store(hass).save(msg["plan"])
-    hass.bus.async_fire(f"{DOMAIN}_updated", {"plan_id": plan["id"]})
+    try:
+        plan = _store(hass).save(msg["plan"], msg.get("base"), msg["force"])
+    except Conflict as err:
+        connection.send_error(msg["id"], "conflict", f"changed elsewhere:{err.args[0]}")
+        return
+    hass.bus.async_fire(f"{DOMAIN}_updated", {"plan_id": plan["id"], "updated": plan["updated"]})
     connection.send_result(msg["id"], {"id": plan["id"], "updated": plan["updated"]})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/versions", vol.Required("plan_id"): str})
+@callback
+def ws_versions(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    connection.send_result(msg["id"], _store(hass).versions(msg["plan_id"]))
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/version", vol.Required("plan_id"): str, vol.Required("updated"): int})
+@callback
+def ws_version(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    plan = _store(hass).version(msg["plan_id"], msg["updated"])
+    if plan is None:
+        connection.send_error(msg["id"], "not_found", "That version is no longer kept")
+        return
+    connection.send_result(msg["id"], plan)
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/deleted"})
+@callback
+def ws_deleted(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    connection.send_result(msg["id"], _store(hass).deleted_list())
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/undelete", vol.Required("plan_id"): str})
+@callback
+def ws_undelete(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    plan = _store(hass).undelete(msg["plan_id"])
+    if plan is None:
+        connection.send_error(msg["id"], "not_found", "That home is no longer kept")
+        return
+    connection.send_result(msg["id"], {"id": plan["id"]})
 
 
 @websocket_api.require_admin
@@ -75,7 +117,7 @@ def ws_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConnection
 
     @callback
     def forward(event) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], {"plan_id": event.data.get("plan_id")}))
+        connection.send_message(websocket_api.event_message(msg["id"], {"plan_id": event.data.get("plan_id"), "updated": event.data.get("updated")}))
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(f"{DOMAIN}_updated", forward)
     connection.send_result(msg["id"])

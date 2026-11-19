@@ -15,6 +15,11 @@ import { ItemPreview } from "./preview.js";
 
 const LIVE_KEYS = new Set(["lumens", "kelvin", "gain", "power"]);
 const ws = (hass, msg) => hass.connection.sendMessagePromise(msg);
+const PENDING = "roost-atelier-pending-";
+function writePending(id, v) { try { localStorage.setItem(PENDING + id, JSON.stringify(v)); } catch (e) { /* full: Home Assistant still has the last save */ } }
+function readPending(id) { try { return JSON.parse(localStorage.getItem(PENDING + id) || "null"); } catch (e) { return null; } }
+function clearPending(id) { try { localStorage.removeItem(PENDING + id); } catch (e) { /* fine */ } }
+function when(ms) { if (!ms) return ""; const d = new Date(ms < 1e12 ? ms * 1000 : ms); return d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const ICON_ROOM = Object.fromEntries(Object.entries(ROOM_TYPES).map(([k, v]) => [k, v.icon]));
 const DEV_COL = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
@@ -111,6 +116,10 @@ h3.sub{margin:8px 0 0;font-size:12px;color:var(--muted);text-transform:uppercase
 .issue ha-icon{color:#F5B041}.issue.ok ha-icon{color:#5FBF77}
 .ghost{position:fixed;z-index:20;pointer-events:none;transform:translate(-50%,-50%);padding:8px 12px;border-radius:12px;background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .menu{position:absolute;top:52px;inset-inline-start:12px;width:320px;max-height:70vh;overflow:auto;padding:12px;border-radius:18px;background:var(--panel);border:1px solid var(--border);box-shadow:0 18px 50px rgba(0,0,0,.4);z-index:10;display:flex;flex-direction:column;gap:10px}
+.dialog .col{display:flex;flex-direction:column;gap:8px;margin-top:14px}.dialog .col button{min-height:44px}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;padding:10px 16px;border-radius:14px;background:var(--panel);border:1px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;max-width:80%}
+.ed.unsaved .homes::after{content:"";width:8px;height:8px;border-radius:50%;background:#F5B041;margin-inline-start:4px}
+.menu .muted{color:var(--muted);font-size:13px;margin:0}
 .dialog{position:fixed;inset:0;background:rgba(5,6,14,.55);display:grid;place-items:center;z-index:30}
 .dialog>div{width:min(360px,90vw);padding:18px;border-radius:20px;background:var(--panel);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px}
 @media (max-width:900px){
@@ -169,7 +178,7 @@ export class AtelierEditor {
     if (this.view) this.view.hass = h;
     if (first) this.start();
   }
-  pause(p) { this.view?.engine.setVisible(!p); }
+  pause(p) { this.view?.engine.setVisible(!p); if (p && this._unsaved) this.save(); }
   async start() {
     this.view = new AtelierView(this.root.querySelector(".three"), { editing: true, canBake: true, onMoreInfo: () => {} });
     this.view.hass = this._hass;
@@ -183,14 +192,28 @@ export class AtelierEditor {
     let list = [];
     try { list = await ws(this._hass, { type: "roost_atelier/plans" }); } catch (e) { console.warn(e); }
     this.plans = list;
+    this.watch();
+    this._leave = (e) => { if (this._unsaved) { this.save(); e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", this._leave);
     const last = localStorage.getItem("roost-atelier-last");
     const id = list.find((p) => p.id === last)?.id || list[0]?.id;
     if (id) await this.open(id); else this.load(SAMPLES[0].make(), true);
     if (!id) this.homesMenu(true);
   }
-  async open(id) { const p = await ws(this._hass, { type: "roost_atelier/plan", plan_id: id }); this.load(validate(p)); }
+  async open(id) {
+    const p = await ws(this._hass, { type: "roost_atelier/plan", plan_id: id });
+    // changes that never reached Home Assistant (closed tab, lost connection) are kept on this device
+    const left = readPending(id);
+    if (left && left.base === p.updated) { this.load(validate(left.plan)); this._base = p.updated; this.markUnsaved(); this.save(); this.toast(t("Brought back changes that were not saved")); return; }
+    this.load(validate(p));
+    if (left) this.ask(t("This device has changes to this home that were not saved, but it was changed elsewhere since."), [
+      [t("Keep the saved home"), () => clearPending(id)],
+      [t("Use this device's changes"), () => { this.load(validate(left.plan)); this._base = p.updated; this.markUnsaved(); this.save(true); }],
+    ]);
+  }
   load(plan, unsaved = false) {
     this.plan = plan; this.fi = 0; this.floor = plan.floors[0]; this.sel = null; this.undoStack = []; this.redoStack = []; this._fitted = false; this._userView = false;
+    this._base = plan.updated ?? null; this._unsaved = false; this._tries = 0; clearTimeout(this._retry); this.ed.classList.remove("unsaved");
     this.root.querySelector("h1").textContent = plan.name;
     if (plan.id) localStorage.setItem("roost-atelier-last", plan.id);
     this.drawFloors(); this.view.setPlan(plan, 0); this.view.engine._framed = false; this.view.engine.frame("3d", true);
@@ -210,17 +233,107 @@ export class AtelierEditor {
     if (rebuild && item && this.sel?.t === "item") { const it = this.find(this.sel); if (it && this.view.engine.replaceItem(it)) rebuild = false; }
     if (this.sel?.t === "item") this.preview?.set(this.find(this.sel));
     if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan, this.fi); }; if (this._dragging && now - (this._lastRb || 0) < 450) this._rb = setTimeout(go, 450); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
-    this.setStatus(t("Saving")); clearTimeout(this._sv); this._sv = setTimeout(() => this.save(), 1200);
+    this.markUnsaved(); this.setStatus(t("Saving")); clearTimeout(this._sv); this._sv = setTimeout(() => this.save(), 1200);
     this.root.querySelector('[data-a="undo"]').toggleAttribute("disabled", !this.undoStack.length);
     this.root.querySelector('[data-a="redo"]').toggleAttribute("disabled", !this.redoStack.length);
   }
-  async save() {
-    clearTimeout(this._sv);
+  markUnsaved() { this._unsaved = true; this.ed.classList.add("unsaved"); }
+  async save(force = false) {
+    clearTimeout(this._sv); clearTimeout(this._retry);
+    if (this._saving) { this._again = true; return; }
+    this._saving = true;
+    const plan = this.plan, base = this._base;
+    if (plan.id) writePending(plan.id, { base, plan });
     try {
-      const res = await ws(this._hass, { type: "roost_atelier/save", plan: this.plan });
-      if (!this.plan.id) { this.plan.id = res.id; localStorage.setItem("roost-atelier-last", res.id); this.plans = await ws(this._hass, { type: "roost_atelier/plans" }); }
-      this.setStatus(t("Saved"));
-    } catch (e) { this.setStatus(t("Offline")); console.warn(e); }
+      const res = await ws(this._hass, { type: "roost_atelier/save", plan, base: plan.id ? base : null, force });
+      if (!plan.id) { plan.id = res.id; localStorage.setItem("roost-atelier-last", res.id); this.plans = await ws(this._hass, { type: "roost_atelier/plans" }); }
+      plan.updated = res.updated; this._base = res.updated; this._mine = res.updated; this._tries = 0;
+      if (plan === this.plan && !this._again) { this._unsaved = false; this.ed.classList.remove("unsaved"); clearPending(plan.id); this.setStatus(t("Saved")); }
+    } catch (e) {
+      if (e?.code === "conflict") { this.setStatus(t("Not saved")); this.conflict(); }
+      else {
+        // Home Assistant restarting or the connection dropped: keep trying, the changes are safe on this device meanwhile
+        this._tries = (this._tries || 0) + 1;
+        this.setStatus(t("Not saved, trying again"));
+        this._retry = setTimeout(() => this.save(force), Math.min(30000, 2000 * this._tries));
+        console.warn("Roost Atelier save:", e);
+      }
+    } finally {
+      this._saving = false;
+      if (this._again) { this._again = false; this.save(force); }
+    }
+  }
+  conflict() {
+    this.ask(t("This home was changed on another screen after you opened it."), [
+      [t("Load the other screen's version"), () => { clearPending(this.plan.id); this.open(this.plan.id); }],
+      [t("Keep mine and replace theirs"), () => this.save(true)],
+    ]);
+  }
+  // another screen saved this home while it is open here
+  async watch() {
+    try {
+      this._unwatch = await this._hass.connection.subscribeMessage((m) => {
+        if (!this.plan?.id || m.plan_id !== this.plan.id || !m.updated || m.updated === this._mine || m.updated === this._base) return;
+        if (!this._unsaved) { this.open(this.plan.id); this.toast(t("Updated from another screen")); }
+        else this.conflict();
+      }, { type: "roost_atelier/subscribe" });
+    } catch (e) { /* older Home Assistant: the save check still protects */ }
+  }
+  ask(text, choices) {
+    this.root.querySelector(".dialog.ask")?.remove();
+    const d = document.createElement("div"); d.className = "dialog ask";
+    d.innerHTML = `<div><b>${esc(text)}</b><div class="col">${choices.map((c, i) => `<button data-i="${i}" class="${i === 0 ? "" : "alt"}">${esc(c[0])}</button>`).join("")}</div></div>`;
+    this.root.querySelector(".ed").appendChild(d);
+    d.querySelectorAll("[data-i]").forEach((b) => (b.onclick = () => { d.remove(); choices[+b.dataset.i][1](); }));
+  }
+  toast(text) {
+    const el = document.createElement("div"); el.className = "toast"; el.textContent = text;
+    this.root.querySelector(".ed").appendChild(el); setTimeout(() => el.remove(), 3500);
+  }
+  // ------------------------------------------------------------ backups: a file, earlier versions, deleted homes
+  exportFile() {
+    const blob = new Blob([JSON.stringify({ roost_atelier: 1, saved: new Date().toISOString(), plan: this.plan }, null, 1)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = `${(this.plan.name || "home").replace(/[^\w\u0600-\u06FF -]+/g, "").trim() || "home"}.roost.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  }
+  importFile() {
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+    inp.onchange = async () => {
+      try {
+        const data = JSON.parse(await inp.files[0].text());
+        const plan = validate(data.plan || data);
+        if (!plan.floors?.length) throw new Error("no floors");
+        delete plan.id; delete plan.updated;
+        plan.name = plan.name || t("New home");
+        this.load(plan, true); this.toast(t("Home loaded from the file"));
+      } catch (e) { this.toast(t("That file is not a Roost Atelier home")); }
+    };
+    inp.click();
+  }
+  async versionsMenu() {
+    const m = this.root.querySelector(".menu"); if (!m) return;
+    let list = [];
+    try { list = await ws(this._hass, { type: "roost_atelier/versions", plan_id: this.plan.id }); } catch (e) { /* none */ }
+    m.innerHTML = `<h3>${t("Earlier versions")} · ${esc(this.plan.name)}</h3>${list.length ? `<div class="list">${list.map((v) => `<button data-v="${v.updated}"><ha-icon icon="mdi:history"></ha-icon><span>${esc(when(v.updated))}<small>${v.rooms} ${t("Rooms").toLowerCase()} · ${v.items} ${t("Furniture").toLowerCase()}</small></span></button>`).join("")}</div>` : `<p class="muted">${t("No earlier versions yet. One is kept each time you save, up to 10.")}</p>`}`;
+    m.querySelectorAll("[data-v]").forEach((b) => (b.onclick = async () => {
+      m.remove();
+      const p = await ws(this._hass, { type: "roost_atelier/version", plan_id: this.plan.id, updated: +b.dataset.v });
+      this.snapshot(); const id = this.plan.id, base = this._base;
+      this.plan = validate({ ...p, id, updated: base }); this.fi = 0; this.floor = this.plan.floors[0]; this.sel = null;
+      this.drawFloors(); this.changed(true); this.inspector(); this.toast(t("Earlier version brought back. Undo takes it away again."));
+    }));
+  }
+  async deletedMenu() {
+    const m = this.root.querySelector(".menu"); if (!m) return;
+    let list = [];
+    try { list = await ws(this._hass, { type: "roost_atelier/deleted" }); } catch (e) { /* none */ }
+    m.innerHTML = `<h3>${t("Deleted homes")}</h3>${list.length ? `<div class="list">${list.map((v) => `<button data-u="${esc(v.id)}"><ha-icon icon="mdi:delete-restore"></ha-icon><span>${esc(v.name)}<small>${t("Deleted")} ${esc(when(v.deleted_at))}</small></span></button>`).join("")}</div>` : `<p class="muted">${t("Nothing deleted.")}</p>`}`;
+    m.querySelectorAll("[data-u]").forEach((b) => (b.onclick = async () => {
+      m.remove();
+      const r = await ws(this._hass, { type: "roost_atelier/undelete", plan_id: b.dataset.u });
+      this.plans = await ws(this._hass, { type: "roost_atelier/plans" }); await this.open(r.id); this.toast(t("Home brought back"));
+    }));
   }
   setStatus(s) { this.root.querySelector(".status").textContent = s; }
 
@@ -812,11 +925,13 @@ export class AtelierEditor {
     const plans = this.plans || [];
     m.innerHTML = `${plans.length ? `<h3>${t("Homes")}</h3><div class="list">${plans.map((p) => `<button data-open="${p.id}" class="${p.id === this.plan?.id ? "on" : ""}"><ha-icon icon="mdi:home-outline"></ha-icon><span>${esc(p.name)}<small>${p.rooms ?? ""} ${t("Rooms").toLowerCase()}</small></span></button>`).join("")}</div>` : ""}
       <h3>${t("New home")} · ${t("Start from")}</h3><div class="list"><button data-new="blank"><ha-icon icon="mdi:vector-square"></ha-icon><span>${t("Blank")}</span></button>${SAMPLES.map((s) => `<button data-new="${s.id}"><ha-icon icon="mdi:floor-plan"></ha-icon><span>${esc(s.name)}<small>${s.size}</small></span></button>`).join("")}<button data-new="import"><ha-icon icon="mdi:file-image-plus-outline"></ha-icon><span>${t("From CAD or PDF")}<small>DXF · PDF · JPG · PNG</small></span></button></div>
+      <h3>${t("Backups")}</h3><div class="list"><button data-x="export"><ha-icon icon="mdi:file-download-outline"></ha-icon><span>${t("Save to a file")}<small>${t("A copy of this home on this device")}</small></span></button><button data-x="import"><ha-icon icon="mdi:file-upload-outline"></ha-icon><span>${t("Load from a file")}</span></button>${this.plan?.id ? `<button data-x="versions"><ha-icon icon="mdi:history"></ha-icon><span>${t("Earlier versions")}</span></button>` : ""}<button data-x="deleted"><ha-icon icon="mdi:delete-restore"></ha-icon><span>${t("Deleted homes")}</span></button></div>
       ${this.plan?.id ? `<div class="row"><button class="danger" data-delhome><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")} “${esc(this.plan.name)}”</button></div>` : ""}`;
     this.root.querySelector(".ed").appendChild(m);
     const close = (e) => { if (!m.contains(e.target) && !e.composedPath().includes(this.root.querySelector(".homes"))) { m.remove(); this.root.removeEventListener("pointerdown", close, true); } };
     setTimeout(() => this.root.addEventListener("pointerdown", close, true));
     m.querySelectorAll("[data-open]").forEach((b) => (b.onclick = async () => { m.remove(); await this.open(b.dataset.open); }));
+    m.querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => { const x = b.dataset.x; if (x === "export") { m.remove(); this.exportFile(); } else if (x === "import") { m.remove(); this.importFile(); } else if (x === "versions") this.versionsMenu(); else this.deletedMenu(); }));
     m.querySelectorAll("[data-new]").forEach((b) => (b.onclick = () => {
       m.remove(); const k = b.dataset.new;
       if (k === "import") { const p = newPlan(t("New home")); this.load(p, true); this.setTool("import"); return; }
@@ -824,7 +939,7 @@ export class AtelierEditor {
       this.load(p, true);
       if (k === "blank") this.setTool("room");
     }));
-    m.querySelector("[data-delhome]")?.addEventListener("click", () => this.confirm(`${t("Delete")} “${this.plan.name}”? This can't be undone.`, async () => {
+    m.querySelector("[data-delhome]")?.addEventListener("click", () => this.confirm(`${t("Delete")} “${this.plan.name}”? ${t("It can be brought back from Deleted homes.")}`, async () => {
       m.remove(); await ws(this._hass, { type: "roost_atelier/delete", plan_id: this.plan.id }); this.plans = await ws(this._hass, { type: "roost_atelier/plans" });
       if (this.plans[0]) await this.open(this.plans[0].id); else { this.load(newPlan(t("New home")), false); this.homesMenu(); }
     }));

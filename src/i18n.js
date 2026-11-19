@@ -16,6 +16,17 @@ const AR = {
   "Living room": "غرفة المعيشة", Dining: "الطعام", Kitchen: "المطبخ", Bedroom: "غرفة النوم", Bathroom: "الحمام", Hall: "الممر", Entrance: "المدخل", Office: "المكتب",
   Laundry: "الغسيل", Balcony: "الشرفة", Garden: "الحديقة", Majlis: "المجلس", Living: "المعيشة", Decor: "الديكور", Lights: "الإضاءة", Outdoor: "خارجي",
   "Check the home": "فحص المنزل", "Looks good": "كل شيء سليم", Recognise: "تعرّف", Add: "إضافة", Cancel: "إلغاء", Close: "إغلاق", Rename: "إعادة تسمية", Search: "بحث",
+  "Brought back changes that were not saved": "تمت استعادة تغييرات لم تُحفظ", "Not saved": "لم يُحفظ", "Not saved, trying again": "لم يُحفظ، تتم المحاولة مجدداً",
+  "This device has changes to this home that were not saved, but it was changed elsewhere since.": "على هذا الجهاز تغييرات لم تُحفظ، لكن المنزل تغيّر من جهاز آخر بعدها.",
+  "Keep the saved home": "الإبقاء على المنزل المحفوظ", "Use this device's changes": "استخدام تغييرات هذا الجهاز",
+  "This home was changed on another screen after you opened it.": "تغيّر هذا المنزل من شاشة أخرى بعد أن فتحته.",
+  "Load the other screen's version": "فتح نسخة الشاشة الأخرى", "Keep mine and replace theirs": "الإبقاء على نسختي واستبدال الأخرى",
+  "Updated from another screen": "تم التحديث من شاشة أخرى", Backups: "النسخ الاحتياطية", "Save to a file": "حفظ في ملف",
+  "A copy of this home on this device": "نسخة من هذا المنزل على هذا الجهاز", "Load from a file": "فتح من ملف", "Earlier versions": "نسخ سابقة",
+  "Deleted homes": "المنازل المحذوفة", "Home loaded from the file": "تم فتح المنزل من الملف", "That file is not a Roost Atelier home": "هذا الملف ليس منزلاً من Roost Atelier",
+  "No earlier versions yet. One is kept each time you save, up to 10.": "لا توجد نسخ سابقة بعد. تُحفظ نسخة عند كل حفظ، حتى 10 نسخ.",
+  "Earlier version brought back. Undo takes it away again.": "تمت استعادة النسخة السابقة. زر التراجع يلغيها.", Deleted: "حُذف", "Nothing deleted.": "لا شيء محذوف.",
+  "Home brought back": "تمت استعادة المنزل", "It can be brought back from Deleted homes.": "يمكن استعادته من المنازل المحذوفة.",
 };
 let lang = "en";
 export function setLang(l) { lang = /^ar/.test(l || "") ? "ar" : "en"; return lang; }
