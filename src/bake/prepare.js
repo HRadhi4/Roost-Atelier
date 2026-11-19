@@ -3,7 +3,7 @@
 // again later. The order is fixed, so the same home always gets the same numbers on every device.
 import * as THREE from "three";
 
-export const BAKE_VERSION = 8;
+export const BAKE_VERSION = 9;
 const PROBE = 0.06; // points closer than this (and facing the same way) share one light value
 
 const _avg = new Map();
@@ -118,7 +118,9 @@ export function prepare(engine) {
   const lights = [];
   for (const rec of engine.devices.values()) if (rec.kind === "light" && rec.lightPos) {
     const pr = LIGHT_PROFILE[rec.look] || LIGHT_PROFILE.flush;
-    lights.push({ id: rec.dv.id, p: rec.lightPos.toArray(), ...pr });
+    const em = rec.emitters || [{ p: rec.lightPos.toArray(), dir: [0, -1, 0], w: 1, ...pr }];
+    const c = rec.lightPos.toArray(), span = Math.max(0, ...em.map((e) => Math.hypot(e.p[0] - c[0], e.p[1] - c[1], e.p[2] - c[2])));
+    lights.push({ id: rec.dv.id, p: c, r: Math.max(...em.map((e) => e.r || 0.05)), span, em });
   }
   // windows and glass doors: openings in outside walls that let the sky in
   const windows = [];
@@ -136,7 +138,7 @@ function insidePoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length -
 // a short fingerprint of everything that changes the light (not the on/off states)
 export function bakeHash(floor, extra) {
   const keep = { h: floor.height, r: floor.rooms.map((r) => [r.pts, r.type, r.floor, r.wall]), o: floor.openings, i: floor.items.map((i) => [i.kind, i.x, i.y, i.rot, i.w, i.d, i.h, i.color, i.mount]),
-    l: floor.devices.filter((d) => (d.kind || "light") === "light" && !d.entity?.match(/^(cover|climate|media_player|lock|person|fan|vacuum|binary_sensor)\./)).map((d) => [d.x, d.y, d.look, d.kind]), extra, v: BAKE_VERSION };
+    l: floor.devices.filter((d) => (d.kind || "light") === "light" && !d.entity?.match(/^(cover|climate|media_player|lock|person|fan|vacuum|binary_sensor)\./)).map((d) => [d.x, d.y, d.look, d.kind, d.len, d.heads, d.rot, d.tilt, d.aim, d.style, d.tx, d.ty, d.tz]), extra, v: BAKE_VERSION };
   const s = JSON.stringify(keep); let h1 = 0x811c9dc5, h2 = 0x1234567;
   for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = Math.imul(h2 ^ c, 2246822519) ^ (h2 >>> 13); }
   return ((h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0"));

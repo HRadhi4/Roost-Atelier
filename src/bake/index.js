@@ -25,37 +25,44 @@ export function sunDir(az, el, northDeg = 0) {
 }
 
 // ---------------------------------------------------------------- shared shader pieces
-const U = { bakeTex: { value: null }, bakeW: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) }, bakeLayers: { value: 0 }, bakeRows: { value: 1 }, bakeWidth: { value: TEXW }, bakeRoomGain: { value: new Array(33).fill(1) }, bakeNLights: { value: 0 }, bakeLampCap: { value: 1e9 } };
+const U = { bakeTex: { value: null }, bakeW: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) }, bakeLayers: { value: 0 }, bakeRows: { value: 1 }, bakeWidth: { value: TEXW }, bakeRoomGain: { value: new Array(33).fill(1) }, bakeKind: { value: new Array(MAXL).fill(0) }, bakeLampCap: { value: 1e9 } };
 let PATCHED_BEGIN = null;
 function patchedBegin() {
   if (PATCHED_BEGIN) return PATCHED_BEGIN;
-  const B = THREE.ShaderChunk.lights_fragment_begin, call = "RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );";
-  const i0 = B.indexOf("NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )"), i1 = B.indexOf(call, i0);
-  // lamps: their light on surfaces comes from the bake; they only add their shine (reflections) live
-  PATCHED_BEGIN = i0 < 0 || i1 < 0 ? B : B.slice(0, i1) + `{ vec3 bakedKeep = reflectedLight.directDiffuse; ${call} reflectedLight.directDiffuse = bakedKeep; }` + B.slice(i1 + call.length);
+  let B = THREE.ShaderChunk.lights_fragment_begin;
+  const call = "RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );";
+  // lamps (point and spot): their light on surfaces comes from the bake; they only add their shine (reflections) live
+  for (const key of ["NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )", "NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )"]) {
+    const i0 = B.indexOf(key), i1 = B.indexOf(call, i0);
+    if (i0 >= 0 && i1 >= 0) B = B.slice(0, i1) + `{ vec3 bakedKeep = reflectedLight.directDiffuse; ${call} reflectedLight.directDiffuse = bakedKeep; }` + B.slice(i1 + call.length);
+  }
+  PATCHED_BEGIN = B;
   return PATCHED_BEGIN;
 }
 const bakedCache = new Map();
-function bakedMaterial(m) {
-  if (bakedCache.has(m)) return bakedCache.get(m);
+function bakedMaterial(m, own) {
+  if (!own && bakedCache.has(m)) return bakedCache.get(m);
   const b = m.clone();
   b.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", `#include <common>
 attribute float bakeId; attribute float bakeRoom;
-uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33]; uniform int bakeNLights; uniform float bakeLampCap;
+uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33]; uniform float bakeKind[${MAXL}]; uniform float bakeLampCap;
 varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_vertex>
-{ int bid = int(bakeId + 0.5), bx = bid % bakeWidth, by = bid / bakeWidth; vec3 e = vec3(0.0), lamp = vec3(0.0);
-  for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; if (bakeW[l].x + bakeW[l].y + bakeW[l].z <= 0.0) continue; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) { vec3 v = t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; if (l < bakeNLights) lamp += v; else e += v; } }
+{ int bid = int(bakeId + 0.5), bx = bid % bakeWidth, by = bid / bakeWidth; vec3 e = vec3(0.0), lamp = vec3(0.0), accent = vec3(0.0);
+  for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; if (bakeW[l].x + bakeW[l].y + bakeW[l].z <= 0.0) continue; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) { vec3 v = t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; if (bakeKind[l] > 1.5) accent += v; else if (bakeKind[l] > 0.5) lamp += v; else e += v; } }
   // lamps add a soft pool and their colour, never a glare: their light is eased off as it gets strong
   float lumL = dot(lamp, vec3(0.2126, 0.7152, 0.0722)); lamp *= bakeLampCap / (bakeLampCap + lumL);
-  vBaked = (e + lamp) * bakeRoomGain[int(bakeRoom + 0.5)]; }`);
+  // focus lights stay focus lights: a much higher ceiling, so the painting really stands out
+  float lumA = dot(accent, vec3(0.2126, 0.7152, 0.0722)), capA = bakeLampCap * 5.0; accent *= capA / (capA + lumA);
+  vBaked = (e + lamp + accent) * bakeRoomGain[int(bakeRoom + 0.5)]; }`);
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vBaked;")
       .replace("#include <lights_fragment_begin>", patchedBegin())
       .replace("#include <lights_fragment_maps>", "#include <lights_fragment_maps>\niblIrradiance = vBaked;");
   };
   b.customProgramCacheKey = () => "roost-baked";
-  bakedCache.set(m, b); return b;
+  if (!own) bakedCache.set(m, b);
+  return b;
 }
 
 // ---------------------------------------------------------------- file format
@@ -243,7 +250,9 @@ export class BakeManager {
       r.geo.setAttribute("bakeRoom", new THREE.BufferAttribute(rm, 1));
       if (!r.mesh.userData.liveMaterial) r.mesh.userData.liveMaterial = r.mesh.material;
       const mats = r.mesh.userData.liveMaterial;
-      r.mesh.material = Array.isArray(mats) ? mats.map(bakedMaterial) : bakedMaterial(mats);
+      // each room's floor gets its own material, so it can carry that room's own reflections
+      const own = r.mesh.name === "floor" && !!r.mesh.userData.room;
+      r.mesh.material = Array.isArray(mats) ? mats.map((x) => bakedMaterial(x)) : bakedMaterial(mats, own);
     }
     this.layerIndex = meta.layers;
     this.active = true; e.baked = true;
@@ -276,7 +285,7 @@ export class BakeManager {
     });
     for (let i = 0; i < 33; i++) U.bakeRoomGain.value[i] = w.roomGain?.[i] ?? 1;
     this.Eavg = Eexp; this.Ebase = Ebase;
-    U.bakeNLights.value = meta.layers.filter((ly) => ly.t === "light").length;
+    meta.layers.forEach((ly, l) => (U.bakeKind.value[l] = ly.t === "light" ? (w.accents?.has(ly.id) ? 2 : 1) : 0));
   }
   sunKeyWeights(az, el) {
     const keys = this.data?.meta.layers.filter((l) => l.t === "sun") || [];

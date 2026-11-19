@@ -57,6 +57,10 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .dv.sel{border-color:#fff;box-shadow:0 0 0 3px var(--acc1)}
 .plan .dv ha-icon{--mdc-icon-size:16px}
 .plan .hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:12px;pointer-events:none;white-space:nowrap}
+.plan .ceil{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);font:600 12px Inter,sans-serif;cursor:pointer;z-index:2}
+.plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
+.ceilmode .plan .dv:not(.lamp){opacity:.18;pointer-events:none}
+.plan .dv.lamp{width:20px;height:20px}.plan .dv.lamp ha-icon{--mdc-icon-size:12px}
 .plan .zoom{position:absolute;bottom:12px;inset-inline-start:12px;display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--border)}
 .three{position:relative;border-inline-start:1px solid var(--border);min-width:0}
 aside{grid-row:2;border-inline-start:1px solid var(--border);background:var(--panel);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px;z-index:2}
@@ -99,6 +103,7 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .studio i{flex:0 0 90px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
 .studio b{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc1),var(--acc2));transition:width .4s}
 .studio.ok b{background:#2EC4B6}
+h3.sub{margin:8px 0 0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .shots .shot{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
 .shots img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:var(--inset)}
@@ -139,7 +144,7 @@ export class AtelierEditor {
         <div class="seg layout"><button data-l="plan" title="Plan"><ha-icon icon="mdi:floor-plan"></ha-icon></button><button data-l="split" title="Split"><ha-icon icon="mdi:view-split-vertical"></ha-icon></button><button data-l="three" title="${t("3D")}"><ha-icon icon="mdi:cube-outline"></ha-icon></button></div>
         <button data-a="settings" title="${t("Settings")}"><ha-icon icon="mdi:tune-variant"></ha-icon></button></header>
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
-        <div class="zoom"><button data-z="in"><ha-icon icon="mdi:plus"></ha-icon></button><button data-z="fit"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button><button data-z="out"><ha-icon icon="mdi:minus"></ha-icon></button></div></div>
+        <button class="ceil" data-ceiling title="Ceiling"><ha-icon icon="mdi:ceiling-light-outline"></ha-icon><span></span></button><div class="zoom"><button data-z="in"><ha-icon icon="mdi:plus"></ha-icon></button><button data-z="fit"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button><button data-z="out"><ha-icon icon="mdi:minus"></ha-icon></button></div></div>
         <div class="three"></div></main><aside></aside></div>`;
     this.ed = root.querySelector(".ed"); this.svg = root.querySelector("svg"); this.g = root.querySelector("svg .w"); this.devsEl = root.querySelector(".devs");
     this.planEl = root.querySelector(".plan"); this.aside = root.querySelector("aside");
@@ -149,6 +154,9 @@ export class AtelierEditor {
     root.querySelector('[data-a="undo"]').onclick = () => this.undo();
     root.querySelector('[data-a="redo"]').onclick = () => this.redo();
     root.querySelector('[data-a="settings"]').onclick = () => { this.sel = null; this.tool = "select"; this.drawNav(); this.inspector("settings"); this.draw(); };
+    // ceiling mode: furniture fades, only the lights stay, ready to place and line up
+    const cb = root.querySelector("[data-ceiling]"); cb.querySelector("span").textContent = t("Ceiling");
+    cb.onclick = () => { this.ceiling = !this.ceiling; cb.classList.toggle("on", this.ceiling); this.ed.classList.toggle("ceilmode", this.ceiling); this.draw(); };
     root.querySelectorAll("[data-z]").forEach((b) => (b.onclick = () => { const z = b.dataset.z; if (z === "fit") { this.fit(); this._userView = false; } else this.zoomAt(this.planEl.clientWidth / 2, this.planEl.clientHeight / 2, z === "in" ? 1.25 : 0.8); }));
     this.bindPlan();
     this.ro = new ResizeObserver(() => { if (!this._userView && this.plan) this.fit(); this.draw(); }); this.ro.observe(this.planEl);
@@ -281,7 +289,8 @@ export class AtelierEditor {
       const type = ROOM_TYPES[r.type] || ROOM_TYPES.other, fill = swatchColor("floor", r.floor || type.floor);
       out += `<polygon data-room="${r.id}" points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="${fill}" fill-opacity="${light ? 0.55 : 0.42}" stroke="none"/>`;
     }
-    // furniture footprints
+    // furniture footprints (faded in ceiling mode)
+    if (this.ceiling) out += `<g opacity=".22" pointer-events="none">`;
     for (const it of f.items) {
       const d = dims(it), L = LIBRARY[it.kind], on = s?.t === "item" && s.id === it.id;
       const isRound = /round|plant|tree|ottoman|bar_stool|pendant|chandelier/.test(it.kind);
@@ -291,6 +300,21 @@ export class AtelierEditor {
       if (!isRound && it.kind !== "rug") out += `<line x1="${-d.w / 2 + 0.05}" x2="${d.w / 2 - 0.05}" y1="${d.d / 2 - 0.04}" y2="${d.d / 2 - 0.04}" stroke="${light ? "#C9CEF0" : "#4A5190"}" stroke-width="${2 * px}"/>`;
       if (z > 34 && d.w * z > 46 && L) out += `<text transform="rotate(${it.rot || 0})" font-size="${10 * px}" text-anchor="middle" dominant-baseline="middle" fill="var(--muted)" pointer-events="none">${esc(t(L[0]))}</text>`;
       out += `</g>`;
+    }
+    if (this.ceiling) out += `</g>`;
+    // the shape of linear lights, tracks and where focus lights point
+    for (const d of f.devices) {
+      if ((d.kind || deviceKind(d.entity)) !== "light") continue;
+      const look = d.look || "flush", on = s?.t === "dev" && s.id === d.id, col = "#F5B041";
+      if (look === "track" || look === "linear") {
+        const len = d.len || (look === "track" ? 1.5 : 1.2), a = ((d.rot || 0) * Math.PI) / 180, ux = Math.cos(a), uy = -Math.sin(a);
+        out += `<line x1="${d.x - ux * len / 2}" y1="${d.y - uy * len / 2}" x2="${d.x + ux * len / 2}" y2="${d.y + uy * len / 2}" stroke="${look === "track" ? (light ? "#2A2F45" : "#C9CEF0") : col}" stroke-width="${(look === "track" ? 5 : 4) * px}" stroke-linecap="round" opacity="${on ? 1 : 0.85}" pointer-events="none"/>`;
+        if (look === "track") { const n = Math.max(1, Math.min(8, d.heads || 3)); for (let i = 0; i < n; i++) { const sx = (i - (n - 1) / 2) * (len / n); out += `<circle cx="${d.x + ux * sx}" cy="${d.y + uy * sx}" r="${4 * px}" fill="${col}" pointer-events="none"/>`; } }
+      }
+      if (look === "focus") {
+        const tx = d.tx ?? d.x + 0.8, ty = d.ty ?? d.y;
+        out += `<line x1="${d.x}" y1="${d.y}" x2="${tx}" y2="${ty}" stroke="${col}" stroke-width="${1.5 * px}" stroke-dasharray="${4 * px} ${3 * px}" pointer-events="none"/><circle data-aim="${d.id}" cx="${tx}" cy="${ty}" r="${(on ? 9 : 6) * px}" fill="${col}" fill-opacity=".35" stroke="${col}" stroke-width="${2 * px}" style="cursor:grab"/>`;
+      }
     }
     // walls
     let wallPath = "", wallThin = "";
@@ -352,6 +376,7 @@ export class AtelierEditor {
       const kind = d.kind || deviceKind(d.entity), [sx, sy] = this.toScreen(d.x, d.y);
       el.style.left = `${sx}px`; el.style.top = `${sy}px`; el.style.transform = `translate(-50%,-50%) scale(${Math.max(0.6, Math.min(1, z / 45))})`; el.style.setProperty("--c", DEV_COL[kind] || "#8B6CFF");
       el.classList.toggle("sel", s?.t === "dev" && s.id === d.id);
+      el.classList.toggle("lamp", kind === "light" && ["downlight", "focus", "track", "linear", "spots"].includes(d.look));
       el.querySelector("ha-icon").setAttribute("icon", KINDS[kind]?.icon || "mdi:circle");
       el.title = d.name || "";
     }
@@ -385,6 +410,8 @@ export class AtelierEditor {
     const start = { x: e.clientX, y: e.clientY, P, moved: false };
     if (this.tool === "room") { this.drag = { ...start, kind: "draw" }; this.drawRect = [this.snapPt(P), this.snapPt(P)]; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { this.drag = { ...start, kind: "addop" }; return; }
+    const aim = tgt.closest?.("[data-aim]");
+    if (aim) { const d = f.devices.find((x) => x.id === aim.dataset.aim); this.drag = { ...start, kind: "aim", obj: d }; this.selectQuiet({ t: "dev", id: d.id }); return; }
     if (ds) { const d = f.devices.find((x) => x.id === ds.dataset.dev); this.drag = { ...start, kind: "dev", obj: d, off: [d.x - P[0], d.y - P[1]] }; this.selectQuiet({ t: "dev", id: d.id }); return; }
     const a = tgt.closest?.("[data-v],[data-e],[data-rot],[data-op],[data-item],[data-room]");
     if (a?.dataset.v != null) { const r = this.find(this.sel); this.drag = { ...start, kind: "vertex", room: r, i: +a.dataset.v, links: this.linked(r.pts[+a.dataset.v]) }; return; }
@@ -461,7 +488,24 @@ export class AtelierEditor {
       return this.changed(true, true);
     }
     if (d.kind === "rot") { const it = d.obj; let a = (Math.atan2(-(P[0] - it.x), -(P[1] - it.y)) * 180) / Math.PI; it.rot = (Math.round(a / 15) * 15 + 360) % 360; if (settle(it, f.items)) d.ok = [it.x, it.y, it.rot]; else if (d.ok) [it.x, it.y, it.rot] = d.ok; return this.changed(true, true); }
-    if (d.kind === "dev") { d.obj.x = round(snap(P[0] + d.off[0]), 3); d.obj.y = round(snap(P[1] + d.off[1]), 3); return this.changed(); }
+    if (d.kind === "aim") { d.obj.tx = round(P[0], 3); d.obj.ty = round(P[1], 3); return this.changed(); }
+    if (d.kind === "dev") {
+      let x = round(snap(P[0] + d.off[0]), 3), y = round(snap(P[1] + d.off[1]), 3);
+      // lights line up with other lights and with the middle of their room (shown as guides)
+      if ((d.obj.kind || deviceKind(d.obj.entity)) === "light") {
+        const tol = 10 / this.z, others = f.devices.filter((o) => o !== d.obj && (o.kind || deviceKind(o.entity)) === "light");
+        const room = f.rooms.find((r) => inside([x, y], r.pts)), rb = room && bounds(room.pts);
+        const xs = [...others.map((o) => o.x), ...(rb ? [(rb.x0 + rb.x1) / 2] : [])], ys = [...others.map((o) => o.y), ...(rb ? [(rb.y0 + rb.y1) / 2] : [])];
+        const bx = xs.reduce((m, v) => (Math.abs(v - x) < Math.abs(m - x) ? v : m), Infinity), by = ys.reduce((m, v) => (Math.abs(v - y) < Math.abs(m - y) ? v : m), Infinity);
+        let g = "";
+        if (Math.abs(bx - x) < tol) { x = round(bx, 3); g += `M${x} ${rb ? rb.y0 : y - 3}V${rb ? rb.y1 : y + 3}`; }
+        if (Math.abs(by - y) < tol) { y = round(by, 3); g += `M${rb ? rb.x0 : x - 3} ${y}H${rb ? rb.x1 : x + 3}`; }
+        // equal spacing: if two other lights sit on the same line, offer the spot that makes three even steps
+        this.guide = g;
+      }
+      // a focus light keeps pointing at the same spot while it moves
+      d.obj.x = x; d.obj.y = y; return this.changed();
+    }
   }
   up(e) {
     const d = this.drag; this.drag = null; this._dragging = false; this.guide = "";
@@ -498,8 +542,10 @@ export class AtelierEditor {
   addThing(kind, P, isDevice) {
     this.snapshot();
     if (isDevice) {
+      const sub = kind.startsWith("light:") ? kind.slice(6) : null; if (sub) kind = "light";
       const d = { id: uid("d"), kind, entity: "", x: round(snap(P[0]), 3), y: round(snap(P[1]), 3), name: t(KINDS[kind].name) };
       if (kind === "light") d.look = "flush";
+      if (sub) { d.look = sub === "cove" ? "linear" : sub; if (sub === "cove") d.style = "cove"; d.name = t({ downlight: "Recessed spot", track: "Track light", linear: "Linear light", cove: "Hidden cove", focus: "Focus light" }[sub]); if (sub === "focus") this.aimAtWall(d); }
       if (kind === "ac") { const nw = nearestWall(this.floor, P, 3); if (nw) { const nx = (P[0] - nw.q[0]) / (nw.d || 1), ny = (P[1] - nw.q[1]) / (nw.d || 1); d.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); d.x = round(nw.q[0] + nx * (nw.w.thick / 2 + 0.13), 3); d.y = round(nw.q[1] + ny * (nw.w.thick / 2 + 0.13), 3); } }
       if (kind === "curtain" || kind === "door") { const o = this.floor.openings.filter((o) => (kind === "door" ? o.type === "door" : o.type === "window" || o.type === "slider")).sort((a, b) => Math.hypot(a.x - P[0], a.y - P[1]) - Math.hypot(b.x - P[0], b.y - P[1]))[0]; if (o) { d.x = o.x; d.y = o.y; } }
       this.floor.devices.push(d); this.sel = { t: "dev", id: d.id };
@@ -561,8 +607,9 @@ export class AtelierEditor {
       h += `<div class="field"><h3>${t("Name")}</h3><input type="text" data-k="name" value="${esc(obj.name)}"></div>`;
       h += `<div class="field"><h3>${t("Entity")}</h3><select data-k="entity"><option value="">${t("Not linked")}</option>${Object.keys(this._hass.states).filter((e) => K.domains.includes(e.split(".")[0])).sort().map((e) => `<option value="${e}" ${obj.entity === e ? "selected" : ""}>${esc(this._hass.states[e].attributes.friendly_name || e)}</option>`).join("")}</select></div>`;
       if (kind === "light") h += `<div class="field"><h3>${t("Look")}</h3><div class="chips">${Object.entries(LIGHT_LOOKS).map(([k, v]) => `<button data-look="${k}" class="${(obj.look || "flush") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div></div>` 
-        + slider("lumens", "Light output", 100, 5000, 50, obj.lumens || LUMENS[obj.look || "flush"], " lm")
+        + slider("lumens", obj.look === "track" ? "Light output (each head)" : obj.look === "linear" ? "Light output (per metre)" : "Light output", 100, 5000, 50, obj.lumens || LUMENS[obj.look || "flush"], " lm")
         + `<label class="sl"><span>${t("Warmth")}</span><b data-out="kelvin">${obj.kelvin || KELVIN[obj.look || "flush"]} K</b><input type="range" data-k="kelvin" min="2200" max="6500" step="100" value="${obj.kelvin || KELVIN[obj.look || "flush"]}" style="accent-color:${kelvinToHex(obj.kelvin || KELVIN[obj.look || "flush"])}"></label>`
+        + this.lampFields(obj, slider)
         + (obj.entity ? "" : `<div class="field"><h3>${t("Not smart: when is it on?")}</h3><div class="chips">${Object.entries(RULES).filter(([k]) => k !== "demo").map(([k, v]) => `<button data-rule="${k}" class="${(obj.rule || "on") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div>${obj.rule === "schedule" ? `<div class="row"><input type="text" data-k="from" value="${esc(obj.from || "18:00")}" style="width:90px"> – <input type="text" data-k="to" value="${esc(obj.to || "23:00")}" style="width:90px"></div>` : ""}</div>`);
       if (kind === "ac") h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><b>${obj.rot || 0}°</b><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
       if (kind === "person") h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["#6D4BFF", "#4E8CFF", "#E86FB0", "#FF7A59", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
@@ -590,7 +637,8 @@ export class AtelierEditor {
       const k = i.dataset.k, v = parseFloat(i.value), out = a.querySelector(`[data-out="${k}"]`); if (out) out.textContent = `${round(v, 2)}${{ power: "×", lumens: " lm", kelvin: " K", gain: "×" }[k] ?? " m"}`;
       set(() => {
         if (k === "rw" || k === "rd") { const b = bounds(obj.pts); for (const p of obj.pts) { if (k === "rw" && Math.abs(p[0] - b.x1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][0] = round(b.x0 + v, 3); p[0] = round(b.x0 + v, 3); } if (k === "rd" && Math.abs(p[1] - b.y1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][1] = round(b.y0 + v, 3); p[1] = round(b.y0 + v, 3); } } }
-        else obj[k] = v;
+        else if ((k === "wl" || k === "wt") && obj.x != null) { const rm = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)); if (rm) { const b = bounds(rm.pts); if (k === "wl") obj.x = round(b.x0 + v, 3); else obj.y = round(b.y0 + v, 3); } }
+        else obj[k] = k === "heads" ? Math.round(v) : v;
       }, !LIVE_KEYS.has(k));
       // light output, warmth and room brightness change instantly: no rebuild, no new light bake
       if (LIVE_KEYS.has(k)) { if (k === "kelvin") i.style.accentColor = kelvinToHex(v); this.view.engine.updateDevices(true); this.view.engine.request(false); }
@@ -613,13 +661,48 @@ export class AtelierEditor {
     a.querySelectorAll("[data-rotby]").forEach((b) => (b.onclick = () => { set(() => (obj.rot = (((obj.rot || 0) + +b.dataset.rotby) % 360 + 360) % 360)); this.inspector(); }));
     a.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => { set(() => (obj.color = b.dataset.color)); this.inspector(); }));
     a.querySelectorAll("[data-rule]").forEach((b) => (b.onclick = () => { set(() => (obj.rule = b.dataset.rule), false); this.view.engine.updateDevices(true); this.inspector(); }));
-    a.querySelectorAll("[data-look]").forEach((b) => (b.onclick = () => { set(() => (obj.look = b.dataset.look)); this.inspector(); }));
+    a.querySelectorAll("[data-look]").forEach((b) => (b.onclick = () => { set(() => { obj.look = b.dataset.look; if (obj.look === "focus" && obj.tx == null) this.aimAtWall(obj); }); this.inspector(); }));
+    a.querySelectorAll("[data-aimby]").forEach((b) => (b.onclick = () => { set(() => (obj.aim = ((((obj.aim ?? (obj.rot || 0) - 90) + +b.dataset.aimby) % 360) + 360) % 360)); this.inspector(); }));
+    a.querySelectorAll("[data-style]").forEach((b) => (b.onclick = () => { set(() => (obj.style = b.dataset.style)); this.inspector(); }));
+    a.querySelector("[data-grid]")?.addEventListener("click", () => {
+      const rows = Math.max(1, Math.min(10, +a.querySelector("[data-rows]").value || 1)), cols = Math.max(1, Math.min(10, +a.querySelector("[data-cols]").value || 1));
+      const room = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)); if (!room) return;
+      this.snapshot(); const b = bounds(room.pts), keep = { ...obj };
+      // an even grid: each light in the middle of its own equal part of the room
+      this.floor.devices = this.floor.devices.filter((x) => x !== obj);
+      let first = null;
+      for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
+        const c = { ...clone(keep), id: uid("d"), x: round(b.x0 + ((j + 0.5) * (b.x1 - b.x0)) / cols, 3), y: round(b.y0 + ((i + 0.5) * (b.y1 - b.y0)) / rows, 3) };
+        if (c.look === "focus") { delete c.tx; delete c.ty; }
+        if (inside([c.x, c.y], room.pts)) { this.floor.devices.push(c); first ||= c; }
+      }
+      this.sel = first ? { t: "dev", id: first.id } : null; this.changed(); this.inspector();
+    });
     a.querySelector("[data-dup]")?.addEventListener("click", () => {
       this.snapshot(); const c = clone(obj); c.id = uid(s.t === "room" ? "r" : "i");
       if (s.t === "room") { const b = bounds(c.pts); c.pts = c.pts.map(([x, y]) => [x + (b.x1 - b.x0), y]); this.floor.rooms.push(c); } else { c.x += 0.3; c.y += 0.3; this.floor.items.push(c); }
       this.sel = { t: s.t, id: c.id }; this.changed(true, false, s.t === "item"); this.inspector();
     });
   }
+  // the settings each kind of lamp needs, nothing more
+  lampFields(obj, slider) {
+    const look = obj.look || "flush", room = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)), b = room && bounds(room.pts);
+    const rot = `<div class="field"><h3>${t("Turn")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
+    let h = "";
+    if (look === "track") {
+      h += slider("len", "Length", 0.5, 6, 0.05, obj.len || 1.5) + slider("heads", "Heads", 1, 8, 1, obj.heads || 3, "") + slider("tilt", "Tilt", 0, 60, 1, obj.tilt ?? 25, "°") + rot;
+      h += `<div class="field"><h3>${t("Point the heads")}</h3><div class="row"><button data-aimby="-45"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-aimby="180"><ha-icon icon="mdi:swap-horizontal"></ha-icon></button><button data-aimby="45"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
+    }
+    if (look === "linear") {
+      h += `<div class="seg"><button data-style="strip" class="${obj.style !== "cove" ? "on" : ""}">${t("Strip")}</button><button data-style="cove" class="${obj.style === "cove" ? "on" : ""}">${t("Hidden cove")}</button></div>`;
+      h += slider("len", "Length", 0.3, 10, 0.05, obj.len || 1.2) + rot;
+    }
+    if (look === "focus") h += `<p class="tip">${t("Drag the small target on the plan onto the painting or wall it should light.")}</p>` + slider("tz", "Aim height", 0.2, 2.6, 0.05, obj.tz ?? 1.4);
+    if (b) h += slider("wl", "From the left wall", 0, round(b.x1 - b.x0, 2), 0.01, round(obj.x - b.x0, 2)) + slider("wt", "From the top wall", 0, round(b.y1 - b.y0, 2), 0.01, round(obj.y - b.y0, 2));
+    if (b && look !== "floor") h += `<div class="field"><h3>${t("Fill the room evenly")}</h3><div class="row"><input type="number" data-rows min="1" max="10" value="2" style="width:56px"> × <input type="number" data-cols min="1" max="10" value="3" style="width:56px"><button class="primary" data-grid><ha-icon icon="mdi:grid"></ha-icon>${t("Make the grid")}</button></div></div>`;
+    return h;
+  }
+  aimAtWall(obj) { const nw = nearestWall(this.floor, [obj.x, obj.y], 4); if (nw) { obj.tx = round(nw.q[0], 3); obj.ty = round(nw.q[1], 3); obj.tz = obj.tz ?? 1.4; } }
   libSvg(kind) { const L = LIBRARY[kind], k = 50 / Math.max(L[3], L[4] * 1.4), w = L[3] * k, d = L[4] * k; return `<svg viewBox="-30 -22 60 44"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`; }
   library() {
     const a = this.aside, items = Object.entries(LIBRARY).filter(([, L]) => L[1] === this.cat);
@@ -630,8 +713,9 @@ export class AtelierEditor {
   }
   deviceLibrary() {
     const a = this.aside;
-    a.innerHTML = `<h2><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p><div class="lib">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}"><ha-icon icon="${K.icon}" style="--mdc-icon-size:28px;color:${DEV_COL[k]}"></ha-icon><span>${t(K.name)}</span></div>`).join("")}</div>`;
-    a.querySelectorAll(".tile").forEach((el) => this.dragNew(el, el.dataset.kind, true, KINDS[el.dataset.kind].name));
+    const CEIL = [["light:downlight", "mdi:circle-small", "Recessed spot"], ["light:track", "mdi:dots-horizontal", "Track light"], ["light:linear", "mdi:minus-thick", "Linear light"], ["light:cove", "mdi:border-top-variant", "Hidden cove"], ["light:focus", "mdi:spotlight-beam", "Focus light"]];
+    a.innerHTML = `<h2><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p><h3 class="sub">${t("Ceiling lights")}</h3><div class="lib">${CEIL.map(([k, ic, n]) => `<div class="tile" data-kind="${k}" data-name="${n}"><ha-icon icon="${ic}" style="--mdc-icon-size:28px;color:#F5B041"></ha-icon><span>${t(n)}</span></div>`).join("")}</div><h3 class="sub">${t("Devices")}</h3><div class="lib">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}"><ha-icon icon="${K.icon}" style="--mdc-icon-size:28px;color:${DEV_COL[k]}"></ha-icon><span>${t(K.name)}</span></div>`).join("")}</div>`;
+    a.querySelectorAll(".tile").forEach((el) => this.dragNew(el, el.dataset.kind, true, el.dataset.name || KINDS[el.dataset.kind].name));
   }
   dragNew(el, kind, isDevice, label) {
     el.addEventListener("pointerdown", (e) => {

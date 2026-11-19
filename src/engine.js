@@ -19,6 +19,7 @@ import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
 import { deviceKind, lightLook, stateOf, kelvinToHex } from "./devices.js";
 import { BakeManager } from "./bake/index.js";
+import { emittersFor, lampModel, aimModel } from "./lights.js";
 import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -236,7 +237,7 @@ export class AtelierEngine {
   }
   clear() {
     for (const c of [...this.root.children]) { this.root.remove(c); c.traverse?.((o) => { if (o.geometry && !o.geometry.parameters?.shared) o.geometry.dispose?.(); }); }
-    for (const d of this.devices.values()) d.light && this.scene.remove(d.light);
+    for (const d of this.devices.values()) { if (d.light) { this.scene.remove(d.light); if (d.light.target) this.scene.remove(d.light.target); } }
     this.devices.clear(); this.anims.clear(); this.hot = [];
   }
   addRoom(r, H) {
@@ -383,12 +384,28 @@ export class AtelierEngine {
     if (kind === "light") {
       const look = dv.look || lightLook(dv);
       rec.look = look;
-      const mk = DEVICE_LOOKS[look] || DEVICE_LOOKS.flush;
-      g.add(mk({}));
-      if (look === "floor") { g.position.set(dv.x, 0, dv.y); rec.lightPos = new THREE.Vector3(dv.x, 1.45, dv.y); }
-      else { g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; rec.lightPos = new THREE.Vector3(dv.x, look === "pendant" ? H - 0.79 : look === "chandelier" ? H - 0.85 : H - 0.15, dv.y); }
-      const l = new THREE.PointLight("#ffd29a", 0, 9, 2);
-      l.position.copy(rec.lightPos); rec.light = l; this.scene.add(l);
+      const em = emittersFor(dv, look, H, this.floor.rooms.find((r) => inside([dv.x, dv.y], r.pts)));
+      let l;
+      if (em) {
+        // recessed spots, track lights, linear and cove lights, focus lights: exact emitters
+        const model = lampModel(dv, look); g.add(model); g.position.set(dv.x, H, dv.y); rec.mount = "ceiling";
+        const lip = model.getObjectByName("lip");
+        if (lip) { model.remove(lip); lip.material = solid("#F7F5F1", { rough: 0.95 }); lip.position.set(dv.x, H - 0.125, dv.y); lip.rotation.y = ((dv.rot || 0) * Math.PI) / 180; this.ceilings.add(lip); }
+        if (look === "track" || look === "linear") g.rotation.y = ((dv.rot || 0) * Math.PI) / 180;
+        aimModel(g, dv, look, em);
+        rec.emitters = em; rec.lmScale = em.reduce((a, e) => a + (e.w ?? 1), 0);
+        const c = em.reduce((a, e) => a.map((v, i) => v + e.p[i] / em.length), [0, 0, 0]), dir = new THREE.Vector3(...em.reduce((a, e) => a.map((v, i) => v + e.dir[i]), [0, 0, 0])).normalize();
+        rec.lightPos = new THREE.Vector3(...c);
+        if (em[0].cone) { l = new THREE.SpotLight("#ffd29a", 0, 0, Math.min(1.3, em[0].cone * 1.25), 0.6, 2); l.target.position.copy(rec.lightPos).add(dir); this.scene.add(l.target); rec.cone = em[0].cone; }
+        else l = new THREE.PointLight("#ffd29a", 0, 9, 2);
+      } else {
+        const mk = DEVICE_LOOKS[look] || DEVICE_LOOKS.flush;
+        g.add(mk({}));
+        if (look === "floor") { g.position.set(dv.x, 0, dv.y); rec.lightPos = new THREE.Vector3(dv.x, 1.45, dv.y); }
+        else { g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; rec.lightPos = new THREE.Vector3(dv.x, look === "pendant" ? H - 0.79 : look === "chandelier" ? H - 0.85 : H - 0.15, dv.y); }
+        l = new THREE.PointLight("#ffd29a", 0, 9, 2);
+      }
+      l.userData.lamp = true; l.position.copy(rec.lightPos); rec.light = l; this.scene.add(l);
     } else if (kind === "ac") {
       g.add(DEVICE_LOOKS.ac({})); g.position.set(dv.x, H - 0.45, dv.y); g.rotation.y = ((dv.rot || 0) * Math.PI) / 180; rec.mount = "wall";
       rec.air = this.airStream(g);
@@ -486,6 +503,7 @@ export class AtelierEngine {
       } else if (rec.kind === "person") { rec.obj.visible = s.on; this.shadowsDirty = true; }
     }
     if (lightsChanged || first) this.assignShadows(lightsOn);
+    if (lightsChanged && !first) this.reflectSoon(2000);
     this.updateHot();
     this.request(false);
   }
@@ -505,14 +523,42 @@ export class AtelierEngine {
   // live: the old simple lights; baked: the real candela (only for the shine, the light itself is baked)
   lightIntensity(rec) {
     const s = rec.s || {}; if (!rec.light) return;
-    if (this.baked || this.rebaking) { rec.light.distance = 0; rec.light.decay = 2; rec.light.intensity = ((s.lm || 0) / (4 * Math.PI)) * rec.f * 0.5; }
+    const lm = (s.lm || 0) * (rec.lmScale || 1);
+    if (this.baked || this.rebaking) { rec.light.distance = 0; rec.light.decay = 2; rec.light.intensity = (rec.cone ? lm / (2 * Math.PI * (1 - Math.cos(rec.cone))) : lm / (4 * Math.PI)) * rec.f * 0.5; }
     else { rec.light.distance = 9; rec.light.intensity = (s.intensity || 0) * rec.f * 0.6; }
+  }
+  // Real reflections on floors: once the light is ready, each room is photographed in all directions from its
+  // middle (a small cube picture) and its floor reflects that, blurred as much as the floor is matt.
+  // Done again only when the light changes (lamps, time of day), never every frame.
+  reflectSoon(ms = 1500) { clearTimeout(this._refT); if (this.baked && this.quality !== "low") this._refT = setTimeout(() => this.captureReflections(), ms); }
+  captureReflections() {
+    if (!this.baked || !this.rooms || this.busy) { if (this.baked) this.reflectSoon(1500); return; }
+    const size = this.quality === "high" ? 256 : 128;
+    this._pmrem ||= new THREE.PMREMGenerator(this.renderer);
+    this._refl ||= new Map();
+    // everything as it stands in the room: full walls and the ceiling
+    const prevOverride = this._wallsOverride, prevCeil = this.ceilings.visible;
+    this._wallsOverride = "full"; const v = this.view; this.view = "walk"; this.applyWalls(); this.view = v; this.ceilings.visible = true;
+    const tm = this.renderer.toneMapping; this.renderer.toneMapping = THREE.NoToneMapping;
+    for (const floor of this.rooms.children) {
+      if (floor.name !== "floor" || !floor.userData.room) continue;
+      const room = this.floor.rooms.find((r) => r.id === floor.userData.room); if (!room || ROOM_TYPES[room.type]?.outdoor) continue;
+      let rec = this._refl.get(room.id);
+      if (!rec) { const rt = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType }); rec = { rt, cam: new THREE.CubeCamera(0.05, 60, rt) }; this._refl.set(room.id, rec); }
+      const [cx, cz] = centroid(room.pts); rec.cam.position.set(cx, 1.2, cz);
+      floor.visible = false; rec.cam.update(this.renderer, this.scene); floor.visible = true;
+      rec.env?.dispose(); rec.env = this._pmrem.fromCubemap(rec.rt.texture);
+      const m = floor.material; if (m && !Array.isArray(m)) { const had = !!m.envMap; m.envMap = rec.env.texture; m.envMapIntensity = 1; if (!had) m.needsUpdate = true; }
+    }
+    this.renderer.toneMapping = tm;
+    this._wallsOverride = prevOverride; this.applyWalls(); this.ceilings.visible = prevCeil;
+    this.request(false);
   }
   // the overview cuts the walls and hides the ceilings: there the sun comes from the bake (which had them)
   cutView() { return this.view !== "walk" && (this.plan?.settings?.walls || this.opts.walls) === "cut"; }
   // called when stored light was put on the home
   onBaked() {
-    this.rebaking = false;
+    this.rebaking = false; this.reflectSoon(400);
     for (const rec of this.devices.values()) if (rec.light) { this.lightIntensity(rec); rec.light.castShadow = false; }
     this.hemi.intensity = 0; this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.fitSun(); this.shadowsDirty = true; this.request(false);
@@ -540,7 +586,8 @@ export class AtelierEngine {
     // the eye adapts to daylight colour too (like a camera's white balance), not only to lamps
     const hexOf = (c) => "#" + c.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
     const skyC = adapt(hexOf(sk.sky.map((v) => v ** (1 / 2.2))), 0.85), sunC = adapt(hexOf(sk.sun.map((v) => v ** (1 / 2.2))), 0.5);
-    mgr.update({ lights, windows, sky: skyC.map((v) => v * sk.L), sun: sunC.map((v) => v * sk.E), sunKeyW: mgr.sunKeyWeights(sk.az, sk.el), curtainAvg: cN ? cSum / cN : 1, room, roomGain: gains, cut: this.cutView() });
+    const accents = new Set(); for (const rec of this.devices.values()) if (rec.kind === "light" && rec.look === "focus") accents.add(rec.dv.id);
+    mgr.update({ accents, lights, windows, sky: skyC.map((v) => v * sk.L), sun: sunC.map((v) => v * sk.E), sunKeyW: mgr.sunKeyWeights(sk.az, sk.el), curtainAvg: cN ? cSum / cN : 1, room, roomGain: gains, cut: this.cutView() });
     // One steady exposure, set by the daylight only (never by the lamps), like a photographer who sets the camera
     // once for the room. At night it rests on a fixed evening level, so switching lamps never makes the picture jump.
     // Lamps then add a soft, capped pool and their warmth on top (see bakeLampCap): more lamps feel cosier, not glaring.
@@ -578,7 +625,7 @@ export class AtelierEngine {
   animate(id, fn) { this._anim ||= {}; if (this._anim[id]) this.anims.delete(this._anim[id]); this._anim[id] = fn; this.anims.add(fn); this.request(false); }
 
   // ---------------------------------------------------------------- sun and sky
-  setSun(sunState) { this.sunState = sunState; this.fitSun(); }
+  setSun(sunState) { this.sunState = sunState; this.fitSun(); this.reflectSoon(3000); }
   fitSun() {
     const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, r = Math.max(b.x1 - b.x0, b.y1 - b.y0);
     const s = this.sunState, north = ((this.plan?.north || 0) * Math.PI) / 180;
@@ -776,6 +823,17 @@ export class AtelierEngine {
       console.warn("Roost Atelier photo mode:", err); this.photo?.stop?.(); this.opts.photo = false;
       this.emit("photo", { progress: -2, error: String(err?.message || err) });
     }
+  }
+  // every lamp's emitters as lights for the photo tracer (tracks get all their heads, strips their length)
+  photoLamps() {
+    const out = [];
+    for (const rec of this.devices.values()) {
+      if (rec.kind !== "light" || !rec.s || !(rec.f > 0.01) || !rec.light) continue;
+      const pr = { pendant: { down: 0.75 }, chandelier: { down: 0.35 }, spots: { cone: 0.55 }, flush: { down: 1 }, floor: { down: 0.45 } }[rec.look] || { down: 1 };
+      const em = rec.emitters || [{ p: rec.lightPos.toArray(), dir: [0, -1, 0], w: 1, ...pr }];
+      for (const e of em) out.push({ p: e.p, dir: e.dir || [0, -1, 0], cone: e.cone, down: e.down ?? 1, lm: (rec.s.lm || 0) * rec.f * (e.w ?? 1), color: rec.light.color.clone() });
+    }
+    return out;
   }
   // the AI clean-up needs WebGPU
   async photoReady() { try { const { aiAvailable } = await import("./ai/denoise.js"); return await aiAvailable(); } catch { return false; } }

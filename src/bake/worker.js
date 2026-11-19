@@ -26,12 +26,14 @@ function blocked(px, py, pz, dx, dy, dz, far) {
   return !!S.bvh.raycastFirst(ray, THREE.DoubleSide, 0, far);
 }
 // emission of a lamp towards a direction (dy = vertical part of the direction from the lamp), per lumen
-function emission(L, dy) {
-  if (L.cone) { const c = Math.cos(L.cone); if (-dy < c) return 0; const k = Math.min(1, (-dy - c) / 0.08); return k / (2 * Math.PI * (1 - c)); }
-  const down = L.down, lam = Math.max(0, -dy) / Math.PI, omni = 1 / (4 * Math.PI);
+// how much light an emitter sends toward a direction (cosA: angle between its aim and that direction)
+function emission(E, cosA) {
+  if (E.cone) { const c = Math.cos(E.cone); if (cosA < c) return 0; const k = Math.min(1, (cosA - c) / Math.max(0.03, (1 - c) * 0.35)); return k / (2 * Math.PI * (1 - c)); }
+  const down = E.down ?? 1, lam = Math.max(0, cosA) / Math.PI, omni = 1 / (4 * Math.PI);
   return down * lam + (1 - down) * omni;
 }
 
+const DOWN = [0, -1, 0];
 function direct([v0, v1]) {
   const { pos, nrm, lights, sunDirs, L } = S, D = new Float32Array((v1 - v0) * L * 3), r = rng(v0 * 7 + 3);
   const SAMPLES = 8;
@@ -41,20 +43,23 @@ function direct([v0, v1]) {
     const ox = px + nx * 0.01, oy = py + ny * 0.01, oz = pz + nz * 0.01, base = (v - v0) * L * 3;
     lights.forEach((Lt, li) => {
       const cx = Lt.p[0] - px, cy = Lt.p[1] - py, cz = Lt.p[2] - pz, dist = Math.hypot(cx, cy, cz);
-      if (dist > 14 || cx * nx + cy * ny + cz * nz <= -Lt.r * 2) return;
+      if (dist > 14 + Lt.span || cx * nx + cy * ny + cz * nz <= -(Lt.r * 2 + Lt.span)) return;
+      // a lamp can have several emitters (track heads, points along a strip); each gets its share of samples
+      const em = Lt.em, n = em.length, S = Math.max(SAMPLES, n * 2), per = S / n;
       let e = 0;
-      for (let s = 0; s < SAMPLES; s++) {
-        // a point on the lamp (soft shadows come from its size)
-        const a = 2 * Math.PI * ((s + r()) / SAMPLES), rr = Lt.r * Math.sqrt(r());
-        const lx = Lt.p[0] + Math.cos(a) * rr, ly = Lt.p[1] + (r() - 0.5) * Lt.r * 0.5, lz = Lt.p[2] + Math.sin(a) * rr;
+      for (let s = 0; s < S; s++) {
+        const E = em[s % n];
+        // a point on the emitter (soft shadows come from its size; strips are spread along their length)
+        const a = 2 * Math.PI * r(), rr = E.r * Math.sqrt(r()), sl = E.u ? (r() * 2 - 1) * E.hl : 0;
+        const lx = E.p[0] + Math.cos(a) * rr + (E.u ? E.u[0] * sl : 0), ly = E.p[1] + (r() - 0.5) * E.r * 0.5, lz = E.p[2] + Math.sin(a) * rr + (E.u ? E.u[2] * sl : 0);
         let dx = lx - ox, dy = ly - oy, dz = lz - oz; const dd = Math.hypot(dx, dy, dz); if (dd < 0.02) continue;
         dx /= dd; dy /= dd; dz /= dd;
         const cos = dx * nx + dy * ny + dz * nz; if (cos <= 0) continue;
-        const em = emission(Lt, -dy); if (!em) continue;
+        const dir = E.dir || DOWN, em2 = emission(E, -(dir[0] * dx + dir[1] * dy + dir[2] * dz)); if (!em2) continue;
         if (blocked(ox, oy, oz, dx, dy, dz, dd - 0.03)) continue;
-        e += (em * cos) / Math.max(dd * dd, 0.04);
+        e += ((E.w ?? 1) * em2 * cos) / Math.max(dd * dd, 0.04);
       }
-      e /= SAMPLES; if (e) { const k = base + li * 3; D[k] = D[k + 1] = D[k + 2] = e; }
+      e /= per; if (e) { const k = base + li * 3; D[k] = D[k + 1] = D[k + 2] = e; }
     });
     // sky through each window, measured directly like a soft area light (no speckle)
     S.windows.forEach((w, wi) => {

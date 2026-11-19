@@ -7,7 +7,7 @@ import { denoise, aiAvailable } from "./ai/denoise.js";
 
 // The tracer mixes up colours on objects made of several materials, so it gets its own copy of the
 // home where every surface is a separate object with one material.
-export function photoScene(src, { sun = true, lampCap = 0 } = {}) {
+export function photoScene(src, { sun = true, lampCap = 0, lamps = null } = {}) {
   const out = new THREE.Scene();
   src.updateMatrixWorld(true);
   src.traverseVisible((o) => {
@@ -25,12 +25,10 @@ export function photoScene(src, { sun = true, lampCap = 0 } = {}) {
           add(part, o.material[grp.materialIndex]);
         }
       } else add(o.geometry, o.material);
-    } else if (o.isLight && !o.isAmbientLight && !o.isHemisphereLight && o.intensity > 0 && (sun || !o.isDirectionalLight)) {
+    } else if (o.isLight && !o.isAmbientLight && !o.isHemisphereLight && o.intensity > 0 && (sun || !o.isDirectionalLight) && !(lamps && o.userData.lamp)) {
       const l = o.clone(false);
       // with baked light the live lamps only carry half their light (their shine); photos need all of it
       if (o.isPointLight && src.userData.baked) l.intensity *= 2;
-      // the same eased-off lamp light as the live view: a soft pool, not a glare (about 1.2 m from the lamp)
-      if (o.isPointLight && lampCap > 0) { const E1 = l.intensity / 1.44; l.intensity *= lampCap / (lampCap + E1); }
       // the same white balance as the live view: warm lamps look warm, not orange
       if (o.isPointLight) { const c = l.color, lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, k = 0.55; c.setRGB(c.r + (lum - c.r) * k, c.g + (lum - c.g) * k, c.b + (lum - c.b) * k); } l.matrixAutoUpdate = false; l.matrix.copy(o.matrixWorld); l.matrixWorld.copy(o.matrixWorld);
       l.position.setFromMatrixPosition(o.matrixWorld);
@@ -38,6 +36,18 @@ export function photoScene(src, { sun = true, lampCap = 0 } = {}) {
       out.add(l);
     }
   });
+  // lamps from their exact emitters: spots as spot lights, the rest as soft lights facing their way
+  if (lamps) for (const L of lamps) {
+    const c = L.color.clone(), lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, k = 0.55; c.setRGB(c.r + (lum - c.r) * k, c.g + (lum - c.g) * k, c.b + (lum - c.b) * k);
+    let l, I;
+    if (L.cone) { I = L.lm / (2 * Math.PI * (1 - Math.cos(L.cone))); l = new THREE.SpotLight(c, I, 0, Math.min(1.4, L.cone * 1.15), 0.5, 2); }
+    else if (L.down >= 0.7) { I = L.lm / Math.PI; l = new THREE.SpotLight(c, I, 0, 1.5, 1, 2); }
+    else { I = L.lm / (4 * Math.PI); l = new THREE.PointLight(c, I, 0, 2); }
+    if (lampCap > 0) l.intensity *= lampCap / (lampCap + I / 1.44);
+    l.position.set(...L.p); l.updateMatrixWorld();
+    if (l.isSpotLight) { l.target.position.set(L.p[0] + L.dir[0], L.p[1] + L.dir[1], L.p[2] + L.dir[2]); out.add(l.target); l.target.updateMatrixWorld(); }
+    out.add(l);
+  }
   return out;
 }
 
@@ -79,7 +89,7 @@ export class PhotoMode {
     this.sky.topColor.set(day ? "#cfe0ff" : "#1a2050"); this.sky.bottomColor.set(day ? "#f2ebe0" : "#0b0d17"); this.sky.update();
     // rebuilt every time: lights, curtains and doors may have moved since the last photo
     e.scene.userData.baked = !!e.baked;
-    this.scene = photoScene(e.scene, { lampCap: e.baked ? e.bakeMgr.U.bakeLampCap.value : 0 });
+    this.scene = photoScene(e.scene, { lampCap: e.baked ? e.bakeMgr.U.bakeLampCap.value : 0, lamps: e.photoLamps() });
     this.cleaned?.dispose(); this.cleaned = null; this.cleaning = false;
     this.scene.environment = e.skyTexture || this.sky;
     // baked: the sky picture is scaled to the real sky brightness (cd/m²) so photo and live view agree

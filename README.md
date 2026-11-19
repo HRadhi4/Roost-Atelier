@@ -37,7 +37,8 @@ Roost Atelier lights your home **once**, then never has to render it again.
 - **Baked once, mixed live.** When the home is ready, the computer that opened the Atelier works out how every lamp, every window and the sun at several times of day light each surface, including light bouncing off walls, floors and furniture. Each one is kept as its own layer on your Home Assistant server. Switching, dimming or recolouring a lamp, opening a curtain or the sun moving just mixes those layers: instant, smooth, even on a tablet.
 - **Only when something moves.** Lamps, curtains, weather and the time of day never need a new bake. Moving a wall, a lamp or furniture does: it is redone by itself in the background on the next computer that opens the Atelier, and every screen picks it up.
 - **Real brightness.** Each lamp has its real output in lumens and its warmth in kelvin (or follows the bulb's own colour from Home Assistant). The sun and sky follow `sun.sun` and your weather entity (clear, cloudy, rain).
-- **Like a camera, not like a game.** Exposure adapts the way your eye does: a lamp-lit room at night stays a little darker and warmer than the same room in daylight, and sunny patches glow without the rest going black. Nothing is harsh.
+- **Calm and steady, easy on the eyes.** Like a photographer, the Atelier sets the exposure once from the daylight, never from the lamps, so switching lights never makes the picture jump. Day is bright and true, evening warm, night calm and lamp-lit. Lamps add a soft pool of light and their warmth: more lamps feel cosier, not glaring (one *Lamp glow* slider sets how strong). Sun patches glow without blinding.
+- **Every kind of ceiling light:** recessed spots in the gypsum, track lights (length, number of heads, tilt and where they point), linear lights and hidden coves that wash the ceiling, and **focus lights** you aim at a painting by dragging a target on the plan; they stay real accents with a clear pool.
 - **Lamps that aren't smart** take part too: always on, always off, on after sunset, or between set times.
 - **Match your real room.** Each room has a brightness slider, and *Match a photo of this room* reads the colour of the light in a photo and sets the lamps' warmth to it.
 
@@ -47,6 +48,8 @@ Roost Atelier lights your home **once**, then never has to render it again.
 - **On your dashboard:** the Roost 3D Home card from [Roost Cards](https://github.com/HRadhi4/Roost-card) shows the live 3D home with these photos.
 
 ### Easy to use
+- **Ceiling mode:** one button on the plan fades the furniture so only the lights remain. Lights line up with each other and with the middle of the room as you drag (guide lines show it), **Fill the room evenly** makes a grid (for example 3 × 4) in one tap, and you can type a light's exact distance from the walls.
+- **Real reflections:** glossy floors (tiles, marble, polished concrete, lacquered wood) reflect their own room; worked out once when the light changes, never every frame.
 - **Walk with the keys:** in Walk, the arrow keys (or W A S D) walk and turn; walls stop you. Tapping a spot on the plan walks you there.
 - **Type any size:** every slider also takes a typed number.
 - **See the piece you pick:** a small 3D model of the chosen furniture turns in the side panel and follows every change.

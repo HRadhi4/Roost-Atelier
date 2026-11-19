@@ -16,11 +16,11 @@ export const KINDS = {
   vacuum: { name: "Robot vacuum", icon: "mdi:robot-vacuum", domains: ["vacuum"] },
   sensor: { name: "Sensor", icon: "mdi:thermometer", domains: ["sensor", "binary_sensor"] },
 };
-export const LIGHT_LOOKS = { pendant: "Pendant", chandelier: "Chandelier", spots: "Spotlights", flush: "Ceiling light", floor: "Floor lamp" };
-const BASE = { pendant: 30, chandelier: 45, spots: 22, flush: 30, floor: 14 };
+export const LIGHT_LOOKS = { pendant: "Pendant", chandelier: "Chandelier", spots: "Spotlights", flush: "Ceiling light", floor: "Floor lamp", downlight: "Recessed spot", track: "Track light", linear: "Linear light", focus: "Focus light" };
+const BASE = { pendant: 30, chandelier: 45, spots: 22, flush: 30, floor: 14, downlight: 14, track: 12, linear: 16, focus: 10 };
 // typical real output of each kind of fitting, in lumens, and its warmth in kelvin
-export const LUMENS = { pendant: 900, chandelier: 2400, spots: 1200, flush: 1800, floor: 700 };
-export const KELVIN = { pendant: 2700, chandelier: 2700, spots: 3000, flush: 3000, floor: 2700 };
+export const LUMENS = { pendant: 900, chandelier: 2400, spots: 1200, flush: 1800, floor: 700, downlight: 600, track: 500, linear: 900, focus: 450 };
+export const KELVIN = { pendant: 2700, chandelier: 2700, spots: 3000, flush: 3000, floor: 2700, downlight: 3000, track: 3000, linear: 3000, focus: 3000 };
 // lamps that aren't smart: when they are on
 export const RULES = { demo: "Always on", on: "Always on", off: "Always off", night: "On after sunset", schedule: "On between set times" };
 function ruleOn(dv, ctx) {
