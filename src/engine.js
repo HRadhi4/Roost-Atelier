@@ -442,7 +442,7 @@ export class AtelierEngine {
         const model = lampModel(dv, look); g.add(model); g.position.set(dv.x, H, dv.y); rec.mount = "ceiling";
         const lip = model.getObjectByName("lip");
         if (lip) { model.remove(lip); lip.material = solid("#F7F5F1", { rough: 0.95 }); lip.position.set(dv.x, H - 0.125, dv.y); lip.rotation.y = ((dv.rot || 0) * Math.PI) / 180; this.ceilings.add(lip); }
-        if (look === "track" || look === "linear") g.rotation.y = ((dv.rot || 0) * Math.PI) / 180;
+        if (look === "track" || look === "linear" || look === "panel" || look === "downlight") g.rotation.y = ((dv.rot || 0) * Math.PI) / 180;
         aimModel(g, dv, look, em);
         rec.emitters = em; rec.lmScale = em.reduce((a, e) => a + (e.w ?? 1), 0);
         const c = em.reduce((a, e) => a.map((v, i) => v + e.p[i] / em.length), [0, 0, 0]), dir = new THREE.Vector3(...em.reduce((a, e) => a.map((v, i) => v + e.dir[i]), [0, 0, 0])).normalize();
@@ -451,7 +451,7 @@ export class AtelierEngine {
         else l = new THREE.PointLight("#ffd29a", 0, 9, 2);
       } else {
         const mk = DEVICE_LOOKS[look] || DEVICE_LOOKS.flush;
-        g.add(mk({}));
+        g.add(mk({ style: dv.style }));
         if (look === "floor") { g.position.set(dv.x, 0, dv.y); rec.lightPos = new THREE.Vector3(dv.x, 1.45, dv.y); }
         else { g.position.set(dv.x, H, dv.y); rec.mount = "ceiling"; rec.lightPos = new THREE.Vector3(dv.x, look === "pendant" ? H - 0.79 : look === "chandelier" ? H - 0.85 : H - 0.15, dv.y); }
         l = new THREE.PointLight("#ffd29a", 0, 9, 2);

@@ -111,6 +111,22 @@ with sync_playwright() as p:
     lv = page.evaluate("""() => { const ed = document.getElementById('panel').editor; ed.useFloor(1); const g = ed.view.engine.root.getObjectByName('levels'); const n = g ? g.children.length : 0; ed.useFloor(0); return n; }""")
     check("levels below are shown under the upper level", lv > 5, f"{lv} pieces")
 
+    # the plan's own buttons work when tapped on a phone in split view
+    page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.useFloor(0); ed.root.querySelector('[data-l=split]').click(); }")
+    page.set_viewport_size({"width": 400, "height": 820})
+    page.wait_for_timeout(600)
+    z0 = page.evaluate("() => document.getElementById('panel').editor.z")
+    box = page.evaluate("() => { const r = document.getElementById('panel').shadowRoot.querySelector('[data-z=in]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }")
+    page.mouse.click(box[0], box[1])
+    page.wait_for_timeout(200)
+    z1 = page.evaluate("() => document.getElementById('panel').editor.z")
+    check("zoom in button works in split view", z1 > z0, f"{z0} -> {z1}")
+    cb = page.evaluate("() => { const r = document.getElementById('panel').shadowRoot.querySelector('[data-ceiling]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }")
+    page.mouse.click(cb[0], cb[1])
+    page.wait_for_timeout(200)
+    check("ceiling button works in split view", page.evaluate("() => document.getElementById('panel').editor.ceiling === true"))
+    page.set_viewport_size({"width": 1200, "height": 800})
+
     serious = [e for e in errors if "favicon" not in e and "ha-icon" not in e]
     check("no errors in the browser", not serious, "; ".join(serious[:3]))
     browser.close()

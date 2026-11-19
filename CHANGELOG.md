@@ -2,6 +2,12 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.9.0 — 2026-11-19
+- **A photo of a room fills the room.** Furniture, ceiling lights, curtains, windows, doors, the air conditioner and the TV are found in the photo, counted and put where they are: tell it which wall you were facing and check the list before adding. Curtains get a window behind them, and lights, the AC, curtains and the TV are linked to the devices in the Home Assistant area with the room's name. Needs an AI provider in Home Assistant (for example Google Gemini).
+- **New ceiling lights:** twin recessed spots, square and round LED panels, magnetic slot lights with lit bars, woven basket pendants and candle chandeliers.
+- **New furniture:** wall cabinets, tall cabinets, an oven tower, hob with oven, sink cabinet, cooker hood, wall basin, LED mirror, towel rail, extractor fan, lounge chair, a TV on its feet, wall panelling, round and leaning mirrors.
+- **Fix:** the plan's buttons (zoom, fit, ceiling, sizes, print) work again in split view on a phone.
+
 ## 0.8.1 — 2026-11-19
 - **Edits redraw faster:** rooms that did not change keep their floor and ceiling shapes, and preparing the home for its stored light makes far fewer temporary lists.
 

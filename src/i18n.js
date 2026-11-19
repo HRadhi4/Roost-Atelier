@@ -1,5 +1,16 @@
 // Words in English and Arabic. Arabic switches the whole layout to right-to-left.
 const AR = {
+  "Twin spot": "سبوت مزدوج", "Square LED panel": "لوح LED مربع", "Round LED panel": "لوح LED دائري", "Magnetic slot light": "إضاءة مغناطيسية خطية", "LED panel": "لوح LED",
+  "Magnetic slot": "مجرى مغناطيسي", "Lit bars": "القطع المضيئة", Single: "مفرد", Twin: "مزدوج", Square: "مربع", Round: "دائري", Size: "الحجم",
+  "Metal dome": "قبة معدنية", "Woven basket": "سلة منسوجة", "Crystal ring": "حلقة كريستال", "Candle arms": "أذرع شموع",
+  "Wall cabinets": "خزائن علوية", "Tall cabinet": "خزانة طويلة", "Oven tower": "برج الأفران", "Hob and oven": "موقد وفرن", "Sink cabinet": "خزانة المغسلة", "Cooker hood": "شفاط",
+  "Wall basin": "مغسلة معلقة", "LED mirror": "مرآة بإضاءة", "Towel rail": "علاقة مناشف", "Extractor fan": "مروحة شفط", "Lounge chair": "كرسي استرخاء", "TV on its feet": "تلفاز على قاعدة",
+  "Wall panelling": "تقسيمات جدارية", "Round mirror": "مرآة دائرية", "Leaning mirror": "مرآة أرضية",
+  "Ceiling lights": "إضاءة السقف", "Smart devices": "الأجهزة الذكية", "Windows and doors": "النوافذ والأبواب", "Add to": "أضف إلى", Added: "تمت الإضافة", "linked to your devices": "مربوطة بأجهزتك",
+  "Which wall were you facing? (as drawn on the plan)": "أي جدار كنت تواجه؟ (كما في المخطط)", "Tap a line to leave it out. Everything can be moved afterwards.": "المس أي سطر لاستبعاده. يمكن تحريك كل شيء لاحقاً.",
+  "Looking at the photo… this takes about half a minute": "جارٍ قراءة الصورة… يستغرق ذلك نحو نصف دقيقة", "Nothing was recognised. Try a wider, brighter photo.": "لم يُتعرّف على شيء. جرّب صورة أوسع وأكثر إضاءة.",
+  "Draw the room first, then add what is in it from a photo.": "ارسم الغرفة أولاً، ثم أضف محتواها من صورة.",
+  "A photo of a room. Furniture, ceiling lights, curtains, windows, the AC and the TV are found and put in place.": "صورة لغرفة: يُتعرّف على الأثاث وإضاءة السقف والستائر والنوافذ والمكيف والتلفاز وتوضع في أماكنها.",
   "3D": "ثلاثي الأبعاد", Top: "من الأعلى", Walk: "تجوّل", Photo: "صورة واقعية", "Photo ready": "الصورة جاهزة", "Making photo": "جارٍ تحسين الصورة",
   Day: "نهار", Night: "ليل", Live: "مباشر", Home: "المنزل", Homes: "المنازل", "New home": "منزل جديد", "Start from": "ابدأ من", Blank: "فارغ",
   Rooms: "الغرف", Room: "غرفة", Doors: "الأبواب", Door: "باب", Window: "نافذة", Slider: "باب منزلق", Arch: "قوس", Furniture: "الأثاث", Devices: "الأجهزة",

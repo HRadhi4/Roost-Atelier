@@ -1,13 +1,13 @@
 // Import: a CAD drawing, a PDF or a picture of a plan becomes rooms, doors and windows;
 // a photo of a room becomes furniture, recognised by Home Assistant's own AI.
 import { t } from "./i18n.js";
-import { uid, round, centroid, inside, ROOM_TYPES } from "./model.js";
+import { round, ROOM_TYPES } from "./model.js";
 import { LIBRARY } from "./furniture.js";
 import { settle } from "./collide.js";
 import { fromDxf, fromImage, pdfToImage } from "./recon.js";
+import { CATALOG, place, label, group, entityPicker } from "./fromphoto.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const KIND_MAP = { stove: "kitchen_base", sink_cabinet: "kitchen_base", cabinet: "dresser", ac_split: null, curtain: null };
 const WORKER = new URL(`./pdf.worker.min.mjs?v=${__VERSION__}`, import.meta.url).href; // copied next to the chunks at build time
 
 export function importPanel(ed, a) {
@@ -16,7 +16,7 @@ export function importPanel(ed, a) {
     <div class="card"><b>${t("From CAD or PDF")}</b><span class="tip">DXF · PDF · JPG · PNG. Walls become rooms; gaps become doors and windows.</span>
       <label><button class="primary" data-pick-plan><ha-icon icon="mdi:upload"></ha-icon>Choose file</button><input type="file" data-plan accept=".dxf,.pdf,.png,.jpg,.jpeg,.webp" hidden></label>
       <div data-plan-out></div></div>
-    <div class="card"><b>${t("From a photo")}</b><span class="tip">A photo of a room. Each piece of furniture is named with its colour and size.</span>
+    <div class="card"><b>${t("From a photo")}</b><span class="tip">${t("A photo of a room. Furniture, ceiling lights, curtains, windows, the AC and the TV are found and put in place.")}</span>
       ${aiTasks.length ? `<select data-ai>${aiTasks.map((e) => `<option value="${e}">${esc(ed._hass.states[e].attributes.friendly_name || e)}</option>`).join("")}</select>` : `<span class="tip">Needs an AI Task in Home Assistant (Settings → Devices &amp; services → add an AI provider such as Google Gemini, OpenAI or Ollama).</span>`}
       <label><button class="primary" data-pick-photo ${aiTasks.length ? "" : "disabled"}><ha-icon icon="mdi:camera-plus-outline"></ha-icon>Choose photo</button><input type="file" data-photo accept="image/*" capture="environment" hidden></label>
       <div data-photo-out></div></div>`;
@@ -66,7 +66,7 @@ function show(ed, out, r, src, redo, opts) {
 function loadImage(file) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("Not an image")); i.src = URL.createObjectURL(file); }); }
 
 async function photoFile(ed, out, file, entity) {
-  out.innerHTML = `<span class="tip">Looking at the photo…</span>`;
+  out.innerHTML = `<span class="tip">${t("Looking at the photo… this takes about half a minute")}</span>`;
   try {
     const small = await shrink(file);
     const body = new FormData(); body.append("file", small, "room.jpg");
@@ -74,26 +74,43 @@ async function photoFile(ed, out, file, entity) {
     if (!resp.ok) throw new Error(await resp.text());
     const { file: name } = await resp.json();
     const res = await ed._hass.connection.sendMessagePromise({ type: "roost_atelier/recognize", file: name, entity_id: entity });
-    const items = res.items.map((x) => ({ ...x, kind: KIND_MAP[x.kind] === undefined ? x.kind : KIND_MAP[x.kind] })).filter((x) => x.kind && LIBRARY[x.kind]);
-    if (!items.length) { out.innerHTML = `<span class="tip">No furniture was recognised. Try a wider, brighter photo.</span>`; return; }
-    const room = ed.floor.rooms.find((r) => r.id === ed.sel?.id) || ed.floor.rooms.find((r) => !ROOM_TYPES[r.type]?.outdoor);
-    out.innerHTML = `<div class="list">${items.map((x, i) => `<button data-i="${i}" class="on"><span style="width:18px;height:18px;border-radius:6px;background:${esc(x.colour)};flex:none"></span><span>${esc(LIBRARY[x.kind][0])}<small>${[x.w, x.d, x.h].filter(Boolean).map((v) => round(v, 2)).join(" × ")}${x.w ? " m" : ""} · ${esc(x.material)}</small></span></button>`).join("")}</div>
-      <div class="row"><button class="primary" data-add><ha-icon icon="mdi:plus"></ha-icon>${t("Add")}${room ? ` → ${esc(room.name || ROOM_TYPES[room.type]?.name)}` : ""}</button></div>`;
-    out.querySelectorAll("[data-i]").forEach((b) => (b.onclick = () => b.classList.toggle("on")));
-    out.querySelector("[data-add]").onclick = () => {
-      const pick = [...out.querySelectorAll("[data-i].on")].map((b) => items[+b.dataset.i]); if (!pick.length) return;
-      ed.snapshot();
-      const [cx, cy] = room ? centroid(room.pts) : [0, 0], where = { left: -1, centre: 0, center: 0, right: 1 };
-      pick.forEach((x, n) => {
-        let px = cx + (where[x.where] ?? 0) * 1.2 + ((n % 3) - 1) * 0.3, py = cy + (Math.floor(n / 3) - 0.5) * 0.9;
-        if (room && !inside([px, py], room.pts)) [px, py] = [cx, cy];
-        const it = { id: uid("i"), kind: x.kind, x: round(px, 3), y: round(py, 3), rot: 0, color: /^#[0-9a-f]{6}$/i.test(x.colour) ? x.colour : undefined };
-        if (x.w) it.w = round(x.w, 2); if (x.d) it.d = round(x.d, 2); if (x.h) it.h = round(x.h, 2);
-        ed.floor.items.push(it); settle(it, ed.floor.items);
-      });
-      ed.changed(); out.innerHTML = `<span class="tip">${t("Done")} · ${pick.length}</span>`; ed.setTool("select");
-    };
+    reviewFound(ed, out, res.items || [], URL.createObjectURL(small));
   } catch (err) { out.innerHTML = `<span class="tip">${esc(err.message || err)}</span>`; console.warn(err); }
+}
+
+// what was found, grouped, each one on or off; which room and which wall the photo faces; then add
+export function reviewFound(ed, out, found, pic) {
+  found = found.filter((x) => CATALOG[x.kind]);
+  if (!found.length) { out.innerHTML = `<span class="tip">${t("Nothing was recognised. Try a wider, brighter photo.")}</span>`; return; }
+  const rooms = ed.floor.rooms.filter((r) => !ROOM_TYPES[r.type]?.outdoor);
+  if (!rooms.length) { out.innerHTML = `<span class="tip">${t("Draw the room first, then add what is in it from a photo.")}</span>`; return; }
+  const st = { room: (rooms.find((r) => r.id === ed.sel?.id) || rooms[0]).id, facing: "top", on: found.map(() => true) };
+  const pick = entityPicker(ed._hass);
+  const GROUPS = [["furniture", "Furniture", "mdi:sofa-outline"], ["lights", "Ceiling lights", "mdi:lightbulb-group-outline"], ["devices", "Smart devices", "mdi:home-automation"], ["openings", "Windows and doors", "mdi:window-closed-variant"]];
+  const draw = () => {
+    const room = rooms.find((r) => r.id === st.room);
+    out.innerHTML = `${pic ? `<img src="${pic}" style="width:100%;border-radius:14px;max-height:200px;object-fit:cover">` : ""}
+      <div class="field"><h3>${t("Room")}</h3><select data-room>${rooms.map((r) => `<option value="${r.id}" ${r.id === st.room ? "selected" : ""}>${esc(r.name || t(ROOM_TYPES[r.type]?.name || "Room"))}</option>`).join("")}</select></div>
+      <div class="field"><h3>${t("Which wall were you facing? (as drawn on the plan)")}</h3><div class="seg">${[["top", "mdi:arrow-up"], ["right", "mdi:arrow-right"], ["bottom", "mdi:arrow-down"], ["left", "mdi:arrow-left"]].map(([k, ic]) => `<button data-face="${k}" class="${st.facing === k ? "on" : ""}" title="${t(k)}"><ha-icon icon="${ic}"></ha-icon></button>`).join("")}</div></div>
+      ${GROUPS.map(([g, title, ic]) => { const rows = found.map((x, i) => [x, i]).filter(([x]) => group(x.kind) === g); return rows.length ? `<div class="field"><h3><ha-icon icon="${ic}" style="--mdc-icon-size:14px"></ha-icon> ${t(title)}</h3><div class="list">${rows.map(([x, i]) => `<button data-i="${i}" class="${st.on[i] ? "on" : ""}"><span style="width:18px;height:18px;border-radius:6px;background:${/^#[0-9a-f]{6}$/i.test(x.colour || "") ? x.colour : "#9a9a9a"};flex:none"></span><span>${x.count > 1 ? `${x.count} × ` : ""}${esc(label(x.kind, t))}<small>${esc(x.name || "")}${x.w ? ` · ${[x.w, x.d, x.h].filter(Boolean).map((v) => round(v, 2)).join(" × ")} m` : ""}</small></span></button>`).join("")}</div></div>` : ""; }).join("")}
+      <p class="tip">${t("Tap a line to leave it out. Everything can be moved afterwards.")}</p>
+      <div class="row"><button class="primary" data-add><ha-icon icon="mdi:plus"></ha-icon>${t("Add to")} ${esc(room.name || t(ROOM_TYPES[room.type]?.name || "Room"))}</button></div>`;
+    out.querySelector("[data-room]").onchange = (e) => { st.room = e.target.value; draw(); };
+    out.querySelectorAll("[data-face]").forEach((b) => (b.onclick = () => { st.facing = b.dataset.face; draw(); }));
+    out.querySelectorAll("[data-i]").forEach((b) => (b.onclick = () => { st.on[+b.dataset.i] = !st.on[+b.dataset.i]; b.classList.toggle("on", st.on[+b.dataset.i]); }));
+    out.querySelector("[data-add]").onclick = () => {
+      const chosen = found.filter((_, i) => st.on[i]); if (!chosen.length) return;
+      ed.snapshot();
+      const r = place(chosen, { room, facing: st.facing, floor: ed.floor, H: ed.floor.height || 2.8, entityFor: pick });
+      for (const it of r.items) { ed.floor.items.push(it); if (LIBRARY[it.kind]?.[6] === "floor") settle(it, ed.floor.items); }
+      ed.floor.devices.push(...r.devices); ed.floor.openings.push(...r.openings);
+      ed.changed();
+      const linked = r.devices.filter((d) => d.entity).length;
+      out.innerHTML = `<span class="tip">${t("Added")}: ${r.items.length} ${t("Furniture").toLowerCase()} · ${r.devices.length} ${t("Devices").toLowerCase()} · ${r.openings.length} ${t("Windows and doors").toLowerCase()}${linked ? ` · ${linked} ${t("linked to your devices")}` : ""}</span>`;
+      ed.setTool("select");
+    };
+  };
+  draw();
 }
 function shrink(file) {
   return loadImage(file).then((img) => { const s = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = img.width * s; c.height = img.height * s; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); return new Promise((r) => c.toBlob(r, "image/jpeg", 0.88)); });
