@@ -17,9 +17,12 @@ export function importPanel(ed, a) {
       <label><button class="primary" data-pick-plan><ha-icon icon="mdi:upload"></ha-icon>Choose file</button><input type="file" data-plan accept=".dxf,.pdf,.png,.jpg,.jpeg,.webp" hidden></label>
       <div data-plan-out></div></div>
     <div class="card"><b>${t("From a photo")}</b><span class="tip">${t("A photo of a room. Furniture, ceiling lights, curtains, windows, the AC and the TV are found and put in place.")}</span>
-      ${aiTasks.length ? `<select data-ai>${aiTasks.map((e) => `<option value="${e}">${esc(ed._hass.states[e].attributes.friendly_name || e)}</option>`).join("")}</select>` : `<span class="tip">Needs an AI Task in Home Assistant (Settings → Devices &amp; services → add an AI provider such as Google Gemini, OpenAI or Ollama).</span>`}
-      <label><button class="primary" data-pick-photo ${aiTasks.length ? "" : "disabled"}><ha-icon icon="mdi:camera-plus-outline"></ha-icon>Choose photo</button><input type="file" data-photo accept="image/*" capture="environment" hidden></label>
+      <select data-ai><option value="">${t("This device (free, private)")}</option>${aiTasks.map((e) => `<option value="${e}">${esc(ed._hass.states[e].attributes.friendly_name || e)}${t(" (more detail)")}</option>`).join("")}</select>
+      <span class="tip" data-ai-tip></span>
+      <label><button class="primary" data-pick-photo><ha-icon icon="mdi:camera-plus-outline"></ha-icon>${t("Choose photo")}</button><input type="file" data-photo accept="image/*" capture="environment" hidden></label>
       <div data-photo-out></div></div>`;
+  const tip = () => { const v = a.querySelector("[data-ai]").value; a.querySelector("[data-ai-tip]").textContent = v ? t("Uses your AI provider. Best at telling light types apart and at sizes.") : t("Runs on this device: the photo never leaves it. The first time it downloads its reading model (about 150 MB) once."); };
+  a.querySelector("[data-ai]").onchange = tip; tip();
   a.querySelector("[data-pick-plan]").onclick = () => a.querySelector("[data-plan]").click();
   a.querySelector("[data-pick-photo]").onclick = () => a.querySelector("[data-photo]").click();
   a.querySelector("[data-plan]").onchange = (e) => e.target.files[0] && planFile(ed, a.querySelector("[data-plan-out]"), e.target.files[0]);
@@ -69,13 +72,23 @@ async function photoFile(ed, out, file, entity) {
   out.innerHTML = `<span class="tip">${t("Looking at the photo… this takes about half a minute")}</span>`;
   try {
     const small = await shrink(file);
+    if (!entity) {
+      // on this device: no upload, no cloud
+      const { readPhotoLocally } = await import("./ai/detect.js");
+      const found = await readPhotoLocally(small, (p) => {
+        const tipEl = out.querySelector(".tip"); if (!tipEl) return;
+        tipEl.textContent = p.reading ? t("Looking at the photo…") : `${t("Getting the reading model ready (once)")} · ${Math.round((100 * p.loaded) / p.total)}%`;
+      });
+      reviewFound(ed, out, found, URL.createObjectURL(small));
+      return;
+    }
     const body = new FormData(); body.append("file", small, "room.jpg");
     const resp = await ed._hass.fetchWithAuth("/api/roost_atelier/upload", { method: "POST", body });
     if (!resp.ok) throw new Error(await resp.text());
     const { file: name } = await resp.json();
     const res = await ed._hass.connection.sendMessagePromise({ type: "roost_atelier/recognize", file: name, entity_id: entity });
     reviewFound(ed, out, res.items || [], URL.createObjectURL(small));
-  } catch (err) { out.innerHTML = `<span class="tip">${esc(err.message || err)}</span>`; console.warn(err); }
+  } catch (err) { out.innerHTML = `<span class="tip">${/fetch|network|Failed to load/i.test(String(err?.message)) ? t("Could not download the reading model. Check the internet connection and try again.") : esc(err.message || err)}</span>`; console.warn(err); }
 }
 
 // what was found, grouped, each one on or off; which room and which wall the photo faces; then add

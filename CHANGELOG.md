@@ -2,6 +2,10 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.10.0 — 2026-11-19
+- **Reading a room photo works with no setup.** A small AI now runs on your own phone or computer: it finds sofas, beds, tables, chairs, kitchen units, the fridge, bathroom fittings, ceiling lights, curtains, windows, the AC and the TV, counts them and sees where they are. The photo never leaves the device. The first time, it downloads its reading model (about 150 MB) once; after that it starts straight away.
+- If an AI provider is connected in Home Assistant (for example Google Gemini) you can pick it instead, for finer detail such as light types and sizes.
+
 ## 0.9.0 — 2026-11-19
 - **A photo of a room fills the room.** Furniture, ceiling lights, curtains, windows, doors, the air conditioner and the TV are found in the photo, counted and put where they are: tell it which wall you were facing and check the list before adding. Curtains get a window behind them, and lights, the AC, curtains and the TV are linked to the devices in the Home Assistant area with the room's name. Needs an AI provider in Home Assistant (for example Google Gemini).
 - **New ceiling lights:** twin recessed spots, square and round LED panels, magnetic slot lights with lit bars, woven basket pendants and candle chandeliers.

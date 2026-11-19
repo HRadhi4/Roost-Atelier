@@ -127,6 +127,14 @@ with sync_playwright() as p:
     check("ceiling button works in split view", page.evaluate("() => document.getElementById('panel').editor.ceiling === true"))
     page.set_viewport_size({"width": 1200, "height": 800})
 
+    # the local photo reader starts in the background; with no internet here it says so plainly instead of hanging
+    got = page.evaluate("""async () => { const w = new Worker('/custom_components/roost_atelier/frontend/chunks/detect-worker.js', { type: 'module' });
+      const c = document.createElement('canvas'); c.width = 64; c.height = 48; const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg'));
+      return await new Promise((res) => { const t = setTimeout(() => res({ type: 'timeout' }), 45000); w.onmessage = (e) => { if (e.data.type !== 'progress') { clearTimeout(t); res(e.data); } }; w.onerror = (e) => { clearTimeout(t); res({ type: 'crash', message: e.message }); };
+        w.postMessage({ id: 1, blob, base: '/custom_components/roost_atelier/frontend/ai/ort/' }); }); }""")
+    check("the local photo reader starts and answers", got.get("type") in ("error", "done"), str(got)[:160])
+    errors[:] = [e for e in errors if "huggingface" not in e and "Failed to fetch" not in e and "ERR_" not in e]
+
     serious = [e for e in errors if "favicon" not in e and "ha-icon" not in e]
     check("no errors in the browser", not serious, "; ".join(serious[:3]))
     browser.close()

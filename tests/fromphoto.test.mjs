@@ -111,3 +111,24 @@ const sl = linked.devices.filter((d) => d.style === "slot"); assert(sl[0].entity
 assert(!linked.devices.some((d) => d.entity === "light.kitchen"), "nothing from another room");
 void bounds;
 console.log("fromphoto: all passed");
+
+// the local AI's boxes become the same answers: one per kind, counted, with where they are
+const { boxesToFound, QUERIES } = await import("../src/ai/boxes.js");
+for (const k of Object.keys(QUERIES)) assert(CATALOG[k], `local AI answer ${k} is understood`);
+const bx = (kind, score, xmin, ymin, xmax, ymax) => ({ kind, score, box: { xmin, ymin, xmax, ymax } });
+const local = boxesToFound([
+  bx("sofa", 0.31, 1000, 700, 1560, 900), bx("sofa", 0.28, 1620, 700, 2200, 960), bx("armchair", 0.12, 1010, 705, 1550, 895),
+  bx("pendant_lamp", 0.2, 1780, 120, 1880, 330), bx("basket_pendant", 0.33, 1775, 118, 1885, 335),
+  bx("recessed_spot", 0.2, 160, 400, 230, 450), bx("recessed_spot", 0.19, 200, 470, 270, 520), bx("recessed_spot", 0.15, 900, 600, 940, 630),
+  bx("dining_table", 0.4, 300, 800, 1300, 1600), bx("curtain", 0.3, 1550, 80, 2212, 800), bx("door", 0.09, 0, 0, 100, 900),
+], 2212, 1659, () => "#aabbcc");
+const L = (k) => local.find((x) => x.kind === k);
+assert.equal(L("sofa").count, 2, "two sofas");
+assert(!L("armchair"), "the weaker guess on the same spot is dropped");
+assert(L("basket_pendant") && !L("pendant_lamp"), "the surer of two pendant guesses wins");
+assert.equal(L("twin_recessed_spot")?.count, 1, "two spots almost touching are one twin fitting"); assert.equal(L("recessed_spot")?.count, 1, "the lone spot stays single");
+assert.equal(L("basket_pendant").wall, "ceiling"); assert.equal(L("dining_table").depth, "near"); assert.equal(L("curtain").wall, "back");
+assert(!L("door"), "unsure guesses are left out");
+const lp = place(local, { room: R("liv"), facing: "top", floor });
+assert(lp.items.length >= 3 && lp.devices.length >= 3, "local answers place like cloud answers");
+console.log("local AI boxes: all passed");

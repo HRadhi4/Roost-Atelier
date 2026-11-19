@@ -38,7 +38,7 @@ It is part of the **Roost** family, alongside [Roost Cards](https://github.com/H
 
 ### Import
 - **From CAD, PDF or a picture of a plan** (DXF, PDF, JPG, PNG): walls become rooms, and gaps in the walls become doors and windows. Named furniture blocks in a DXF become furniture.
-- **From a photo of a room**: Home Assistant's own AI (any AI Task, such as Google Gemini, OpenAI or a local model) finds the furniture, ceiling lights (spots, twin spots, LED panels, slot lights, pendants, chandeliers), curtains, windows, the air conditioner and the TV, with their colours, sizes and counts. Say which wall you were facing, check the list, and everything is placed in the room, with lights, curtains, the AC and the TV linked to the devices in the matching Home Assistant area.
+- **From a photo of a room**: a small AI running on your own device (free and private; it downloads its model once, about 150 MB), or Home Assistant's own AI (any AI Task, such as Google Gemini or OpenAI) for finer detail, finds the furniture, ceiling lights (spots, twin spots, LED panels, slot lights, pendants, chandeliers), curtains, windows, the air conditioner and the TV, with their colours, sizes and counts. Say which wall you were facing, check the list, and everything is placed in the room, with lights, curtains, the AC and the TV linked to the devices in the matching Home Assistant area.
 
 ### Light that behaves like the real thing
 Roost Atelier lights your home **once**, then never has to render it again.
