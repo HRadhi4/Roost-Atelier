@@ -1,6 +1,7 @@
 // The expert eye: finds what a designer would point out, and fixes it in one tap where it can.
 import { ROOM_TYPES, area, bounds, inside, walls, openingsOn, round } from "./model.js";
 import { dims, LIBRARY } from "./furniture.js";
+import { overlaps, settle } from "./collide.js";
 
 const nameOf = (r) => r.name || ROOM_TYPES[r.type]?.name || "Room";
 function overlap(a, b) {
@@ -42,6 +43,11 @@ export function check(plan, floor) {
   // furniture outside every room, and walkways
   for (const it of f.items) {
     if (!f.rooms.some((r) => inside([it.x, it.y], r.pts))) out.push({ text: `${LIBRARY[it.kind]?.[0] || "A piece"} is outside the home.`, sel: { t: "item", id: it.id } });
+  }
+  // pieces sinking into each other
+  for (const [a, b] of overlaps(f.items)) {
+    const small = dims(a).w * dims(a).d < dims(b).w * dims(b).d ? a : b;
+    out.push({ text: `${LIBRARY[a.kind]?.[0] || "A piece"} and ${LIBRARY[b.kind]?.[0] || "a piece"} overlap.`, sel: { t: "item", id: small.id }, fix: () => settle(small, f.items, 0.05), fixLabel: "Move it apart" });
   }
   // doors blocked by furniture
   for (const o of f.openings.filter((x) => x.type === "door")) {

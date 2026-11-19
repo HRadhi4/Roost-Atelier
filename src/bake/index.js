@@ -194,7 +194,7 @@ export class BakeManager {
       const { E, L, sOff } = await runBake(prep, { sunDirs: keys.map((k) => sunDir(k.az, k.el, north)), signal: this.abort.signal, onProgress: (p) => this.setState("baking", p) });
       if (token !== this._token) return;
       const layers = [...prep.lights.map((l) => ({ t: "light", id: l.id })), ...prep.windows.map((w) => ({ t: "window", id: w.id })), { t: "sky" }, ...keys.map((k) => ({ t: "sun", az: k.az, el: k.el })), ...keys.map((k) => ({ t: "sundir", az: k.az, el: k.el }))];
-      const meta = { version: BAKE_VERSION, hash, n: prep.n, L, layers, rooms: prep.rooms, stats: stats(prep, E, L), seconds: Math.round((performance.now() - t0) / 100) / 10, at: new Date().toISOString() };
+      const meta = { version: BAKE_VERSION, hash, n: prep.n, verts: prep.verts, L, layers, rooms: prep.rooms, stats: stats(prep, E, L), seconds: Math.round((performance.now() - t0) / 100) / 10, at: new Date().toISOString() };
       const buf = encode(meta, E);
       this.data = decode(buf);
       this.apply(this.data, prep);
@@ -207,7 +207,15 @@ export class BakeManager {
   apply(parsed, prep) {
     const e = this.e;
     prep ||= prepare(e);
-    if (prep.n !== parsed.meta.n) { console.warn("Roost Atelier: stored light doesn't match this home, baking again"); this.data = null; return this.onBuilt(); }
+    if (prep.n !== parsed.meta.n || (parsed.meta.verts && prep.verts !== parsed.meta.verts)) {
+      // bake again here (never fetch the same file again in a loop)
+      console.warn("Roost Atelier: stored light doesn't match this home, baking again");
+      this.data = null;
+      if (this.e.opts.canBake === false) { this.setState("waiting"); return; }
+      clearTimeout(this._t); const token = (this._token = Symbol()); this.setState("queued");
+      this._t = setTimeout(() => this.bake(this.hashNow(), token), 300);
+      return;
+    }
     this.prep = prep;
     const { meta, bytes } = parsed;
     if (this.tex?.image?.data !== bytes) {

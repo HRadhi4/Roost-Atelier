@@ -31,10 +31,10 @@ export function apartment() {
     win(0, 2.5, 2.0), win(8.25, 0, 1.6), win(12.25, 0, 2.2), win(14.5, 2.5, 1.6), win(7.75, 9, 1.8), win(4.25, 9, 0.7, { sill: 1.5, height: 0.6 }), win(12.25, 9, 0.8, { sill: 1.5, height: 0.6 }),
   ];
   f.items = [
-    item("rug", 3.1, 2.6, 0), item("sofa_l", 3.2, 3.9, 180), item("coffee_table", 3.1, 2.55, 0), item("armchair", 5.4, 2.0, -100),
-    item("tv_unit", 3.1, 0.35, 0), item("tv", 3.1, 0.14, 0, { z: 1.05 }), item("plant", 0.55, 0.55), item("floor_lamp", 5.85, 4.4),
-    item("dining_table", 5.0, 4.1, 90, { w: 1.6 }), item("dining_chair", 4.55, 3.55, 90), item("dining_chair", 4.55, 4.65, 90), item("dining_chair", 5.45, 3.55, -90), item("dining_chair", 5.45, 4.65, -90),
-    item("kitchen_base", 8.25, 0.4, 0, { w: 3.1 }), item("kitchen_base", 9.6, 2.2, 90, { w: 2.0 }), item("fridge", 6.95, 0.45, 0), item("kitchen_island", 8.2, 3.0, 0, { w: 1.8 }),
+    item("rug", 3.45, 2.85, 0), item("sofa_l", 3.2, 3.575, 180), item("coffee_table", 3.65, 2.65, 0), item("armchair", 5.4, 2.0, -100),
+    item("tv_unit", 3.1, 0.35, 0), item("tv", 3.1, 0.14, 0, { z: 1.05 }), item("plant", 0.55, 0.55), item("floor_lamp", 1.45, 4.3),
+    item("dining_table", 5.55, 4.1, 90, { w: 1.6 }), item("dining_chair", 5.1, 3.55, 90), item("dining_chair", 5.1, 4.65, 90), item("dining_chair", 6.0, 3.55, -90), item("dining_chair", 6.0, 4.65, -90),
+    item("kitchen_base", 8.675, 0.4, 0, { w: 2.45 }), item("kitchen_base", 9.6, 2.2, 90, { w: 2.0 }), item("fridge", 6.95, 0.45, 0), item("kitchen_island", 8.2, 3.0, 0, { w: 1.8 }),
     item("bar_stool", 7.7, 3.7, 180), item("bar_stool", 8.7, 3.7, 180), item("pendant_lamp", 8.2, 3.0, 0, { mount: "ceiling" }),
     item("bed_double", 12.25, 1.25, 0), item("nightstand", 11.05, 0.35), item("nightstand", 13.45, 0.35), item("wardrobe", 14.15, 3.8, -90, { w: 1.8 }), item("rug", 12.25, 2.4, 0, { w: 2.2, d: 1.4, color: "#B7A68F" }),
     item("console", 1.5, 8.7, 180, { w: 1.1 }), item("plant_small", 2.6, 8.6), item("mirror", 0.05, 7.0, 90, { z: 1.0 }),
@@ -44,7 +44,7 @@ export function apartment() {
     item("bench", 4.5, -0.8, 0), item("plant", 0.5, -0.8), item("plant", 6.0, -0.8),
   ];
   f.devices = [
-    dev("light", 3.1, 2.5, { look: "pendant", name: "Living light" }), dev("light", 8.2, 2.0, { look: "spots", name: "Kitchen light" }),
+    dev("light", 3.65, 2.65, { look: "pendant", name: "Living light" }), dev("light", 8.2, 2.0, { look: "spots", name: "Kitchen light" }),
     dev("light", 12.25, 2.5, { look: "flush", name: "Bedroom light" }), dev("light", 1.5, 7.0, { look: "flush", name: "Entrance light" }),
     dev("light", 8.75, 5.7, { look: "spots", name: "Hall light" }), dev("ac", 6.2, 2.0, { name: "Living AC", rot: -90 }), dev("ac", 14.35, 1.2, { name: "Bedroom AC", rot: -90 }),
     dev("tv", 3.1, 0.14, { name: "TV" }), dev("curtain", 0, 2.5, { name: "Living curtains" }), dev("curtain", 12.25, 0, { name: "Bedroom curtains" }),
@@ -83,11 +83,11 @@ export function villa() {
     win(3.5, 0, 2.4), win(0, 3, 2.0), win(16.5, 0, 1.8), win(19, 3, 1.6), win(19, 8, 1.6), win(10.5, 12, 2.0), win(5.5, 10, 0.7, { sill: 1.6, height: 0.5 }),
   ];
   f.items = [
-    item("majlis_seat", 3.5, 0.5, 0, { w: 6.0 }), item("majlis_seat", 0.5, 3.0, 90, { w: 4.8 }), item("majlis_seat", 6.5, 3.0, -90, { w: 4.8 }), item("rug", 3.5, 3.0, 0, { w: 4.4, d: 3.6, color: "#8E2F2F" }),
+    item("majlis_seat", 3.5, 0.5, 0, { w: 5.2 }), item("majlis_seat", 0.5, 3.0, 90, { w: 4.8 }), item("majlis_seat", 6.5, 3.0, -90, { w: 4.8 }), item("rug", 3.5, 3.0, 0, { w: 4.4, d: 3.6, color: "#8E2F2F" }),
     item("coffee_table", 3.5, 3.0, 0, { w: 1.6 }),
     item("sofa_l", 10.2, 4.2, 180, { w: 3.4 }), item("tv_unit", 10.5, 0.35, 0, { w: 2.6 }), item("tv", 10.5, 0.14, 0, { z: 1.1, w: 1.9 }), item("rug", 10.5, 2.8, 0, { w: 3.6, d: 2.4 }),
     item("coffee_table", 10.4, 2.8), item("armchair", 7.8, 2.0, 90), item("plant", 13.4, 0.6),
-    item("kitchen_base", 16.5, 0.4, 0, { w: 4.6 }), item("kitchen_base", 18.6, 3.0, -90, { w: 4.4 }), item("kitchen_island", 16.2, 3.2, 0, { w: 2.4 }), item("fridge", 14.5, 0.45),
+    item("kitchen_base", 16.9, 0.4, 0, { w: 3.8 }), item("kitchen_base", 18.6, 3.0, -90, { w: 4.4 }), item("kitchen_island", 16.2, 3.2, 0, { w: 2.4 }), item("fridge", 14.5, 0.45),
     item("dining_table", 16.5, 8.0, 0, { w: 2.4 }), ...[15.6, 16.5, 17.4].flatMap((x) => [item("dining_chair", x, 7.35, 0), item("dining_chair", x, 8.65, 180)]),
     item("console", 2, 9.7, 180, { w: 1.4 }), item("plant", 0.5, 9.4), item("plant", 3.5, 9.4),
     item("bed_double", 10.5, 10.95, 180), item("nightstand", 9.3, 11.65), item("nightstand", 11.7, 11.65), item("wardrobe", 7.35, 10.0, 90, { w: 2.2 }),

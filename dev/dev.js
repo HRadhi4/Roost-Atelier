@@ -1,3 +1,4 @@
+import { prepare } from "../src/bake/prepare.js"; window.prepare = prepare;
 import { AtelierView, VIEW_CSS } from "../src/view.js";
 import { SAMPLES } from "../src/samples.js";
 const st = document.createElement("style"); st.textContent = VIEW_CSS; document.head.appendChild(st);

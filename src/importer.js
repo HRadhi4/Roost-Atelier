@@ -3,6 +3,7 @@
 import { t } from "./i18n.js";
 import { uid, round, centroid, inside, ROOM_TYPES } from "./model.js";
 import { LIBRARY } from "./furniture.js";
+import { settle } from "./collide.js";
 import { fromDxf, fromImage, pdfToImage } from "./recon.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -88,7 +89,7 @@ async function photoFile(ed, out, file, entity) {
         if (room && !inside([px, py], room.pts)) [px, py] = [cx, cy];
         const it = { id: uid("i"), kind: x.kind, x: round(px, 3), y: round(py, 3), rot: 0, color: /^#[0-9a-f]{6}$/i.test(x.colour) ? x.colour : undefined };
         if (x.w) it.w = round(x.w, 2); if (x.d) it.d = round(x.d, 2); if (x.h) it.h = round(x.h, 2);
-        ed.floor.items.push(it);
+        ed.floor.items.push(it); settle(it, ed.floor.items);
       });
       ed.changed(); out.innerHTML = `<span class="tip">${t("Done")} · ${pick.length}</span>`; ed.setTool("select");
     };

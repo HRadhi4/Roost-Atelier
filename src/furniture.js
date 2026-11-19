@@ -30,12 +30,14 @@ function sofa(o, arms = true) {
   return g;
 }
 function sofaL(o) {
-  const g = sofa({ ...o, w: o.w }, true), f = fabric(o.color), ch = o.d2 || 1.6;
-  // chaise on the right
+  // the whole corner sofa stays inside its footprint: o.d is the chaise length, the back sofa is 0.95 deep
+  const D = 0.95, ch = Math.max(D + 0.3, o.d), g = new THREE.Group(), f = fabric(o.color);
+  const back = sofa({ ...o, d: D }, true); back.position.z = -ch / 2 + D / 2; g.add(back);
+  // chaise on the right, running from the back to the front of the footprint
   const c = new THREE.Group();
   B(c, 0.9, 0.22, ch, 0.05, f, 0, 0.1, 0); B(c, 0.86, 0.15, ch - 0.06, 0.06, f, 0, 0.31, 0.02); B(c, 0.18, 0.34, ch, 0.07, f, 0.36, 0.3, 0);
   legs(c, 0.8, ch - 0.1, 0.1, 0.06, wood("walnut"));
-  c.position.set(o.w / 2 - 0.45, 0, -o.d / 2 + ch / 2);
+  c.position.set(o.w / 2 - 0.45, 0, 0);
   g.add(c);
   return g;
 }
@@ -127,7 +129,24 @@ function wardrobe(o) { const g = new THREE.Group(), wd = wood(o.wood || "white")
 function dresser(o) { const g = new THREE.Group(), wd = wood(o.wood || "walnut"); B(g, o.w, o.h - 0.12, o.d, 0.015, wd, 0, 0.12, 0); legs(g, o.w, o.d, 0.12, 0.05, metal("#1B1B1F"), 0.012); for (let i = 0; i < 3; i++) B(g, o.w - 0.04, (o.h - 0.18) / 3 - 0.01, 0.01, 0.003, wood(o.wood || "walnut", "#d3cabe"), 0, 0.14 + i * ((o.h - 0.18) / 3), o.d / 2); return g; }
 function desk(o) { const g = new THREE.Group(); B(g, o.w, 0.04, o.d, 0.01, wood(o.wood || "oak"), 0, 0.72, 0); for (const s of [-1, 1]) { B(g, 0.04, 0.72, 0.04, 0.005, metal("#1B1B1F"), s * (o.w / 2 - 0.04), 0, o.d / 2 - 0.05); B(g, 0.04, 0.72, 0.04, 0.005, metal("#1B1B1F"), s * (o.w / 2 - 0.04), 0, -o.d / 2 + 0.05); } B(g, 0.55, 0.32, 0.02, 0.008, solid("#0B0B0E", { rough: 0.3 }), 0, 0.84, -o.d / 2 + 0.12); C(g, 0.02, 0.04, 0.12, metal("#1B1B1F"), 0, 0.76, -o.d / 2 + 0.12, 8); return g; }
 function officeChair(o) { const g = new THREE.Group(), f = fabric(o.color || "#45464C"); for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; const l = B(g, 0.03, 0.03, 0.3, 0.01, metal("#1B1B1F"), Math.sin(a) * 0.15, 0.04, Math.cos(a) * 0.15); l.rotation.y = a; } C(g, 0.02, 0.025, 0.4, chrome(), 0, 0.06, 0, 10); B(g, 0.5, 0.08, 0.48, 0.03, f, 0, 0.46, 0); const b = B(g, 0.46, 0.5, 0.05, 0.03, f, 0, 0.58, -0.24); b.rotation.x = -0.12; return g; }
-function bookshelf(o) { const g = new THREE.Group(), wd = wood(o.wood || "oak"); for (const s of [-1, 1]) B(g, 0.025, o.h, o.d, 0.005, wd, s * (o.w / 2 - 0.0125), 0, 0); const n = 5; for (let i = 0; i <= n; i++) B(g, o.w, 0.025, o.d, 0.005, wd, 0, i * (o.h - 0.025) / n, 0); const cols = ["#7A3B3B", "#3E5A7A", "#D8CFC0", "#4D6B4F", "#C9A040", "#2F2F35"]; for (let i = 0; i < n; i++) { let x = -o.w / 2 + 0.04; while (x < o.w / 2 - 0.08) { const bw = 0.025 + Math.random() * 0.03, bh = 0.18 + Math.random() * 0.1; B(g, bw, bh, o.d - 0.06, 0.003, solid(cols[(Math.random() * cols.length) | 0], { rough: 0.7 }), x + bw / 2, i * (o.h - 0.025) / n + 0.025, 0); x += bw + 0.003; if (Math.random() < 0.08) x += 0.12; } } return g; }
+function bookshelf(o) {
+  const g = new THREE.Group(), wd = wood(o.wood || "oak");
+  for (const s of [-1, 1]) B(g, 0.025, o.h, o.d, 0.005, wd, s * (o.w / 2 - 0.0125), 0, 0);
+  const n = 5; for (let i = 0; i <= n; i++) B(g, o.w, 0.025, o.d, 0.005, wd, 0, i * (o.h - 0.025) / n, 0);
+  // the same books every time for the same shelf (seeded by its id), as simple blocks
+  let seed = [...String(o.id || "shelf")].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) || 7;
+  const rnd = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; };
+  const cols = ["#7A3B3B", "#3E5A7A", "#D8CFC0", "#4D6B4F", "#C9A040", "#2F2F35"].map((c) => solid(c, { rough: 0.7 }));
+  for (let i = 0; i < n; i++) {
+    let x = -o.w / 2 + 0.04;
+    while (x < o.w / 2 - 0.08) {
+      const bw = 0.025 + rnd() * 0.03, bh = 0.18 + rnd() * 0.1;
+      g.add(mesh(new THREE.BoxGeometry(bw, bh, o.d - 0.06), cols[(rnd() * cols.length) | 0], x + bw / 2, i * (o.h - 0.025) / n + 0.025 + bh / 2, 0));
+      x += bw + 0.003; if (rnd() < 0.08) x += 0.12;
+    }
+  }
+  return g;
+}
 function plant(o) {
   const g = new THREE.Group(), s = o.h / 1.2;
   C(g, 0.2 * s, 0.15 * s, 0.38 * s, solid(o.pot || "#D8CFC2", { rough: 0.75 }), 0, 0, 0, 24);
@@ -213,7 +232,7 @@ function person(o) {
 // kind: [name, category, builder, default w, d, h, mount ("floor" | "wall" | "ceiling"), default elevation]
 export const LIBRARY = {
   sofa: ["Sofa", "Living", (o) => sofa(o), 2.2, 0.95, 0.8, "floor"],
-  sofa_l: ["Corner sofa", "Living", sofaL, 2.8, 0.95, 0.8, "floor"],
+  sofa_l: ["Corner sofa", "Living", sofaL, 2.8, 1.6, 0.8, "floor"],
   armchair: ["Armchair", "Living", armchair, 0.8, 0.8, 0.8, "floor"],
   coffee_table: ["Coffee table", "Living", coffeeTable, 1.2, 0.65, 0.4, "floor"],
   coffee_round: ["Round coffee table", "Living", (o) => coffeeTable({ ...o, round: true }), 0.9, 0.9, 0.4, "floor"],
@@ -230,7 +249,7 @@ export const LIBRARY = {
   dining_chair: ["Dining chair", "Dining", diningChair, 0.46, 0.5, 0.86, "floor"],
   bar_stool: ["Bar stool", "Dining", barStool, 0.4, 0.4, 0.75, "floor"],
   bed_double: ["Double bed", "Bedroom", (o) => bed(o), 1.8, 2.1, 1.05, "floor"],
-  bed_single: ["Single bed", "Bedroom", (o) => bed(o), 1.0, 2.05, 1.05, "floor"],
+  bed_single: ["Single bed", "Bedroom", (o) => bed(o), 1.1, 2.05, 1.05, "floor"],
   nightstand: ["Bedside table", "Bedroom", nightstand, 0.5, 0.4, 0.54, "floor"],
   wardrobe: ["Wardrobe", "Bedroom", wardrobe, 1.8, 0.6, 2.2, "floor"],
   dresser: ["Chest of drawers", "Bedroom", dresser, 1.2, 0.5, 0.85, "floor"],

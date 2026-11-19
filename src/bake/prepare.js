@@ -3,7 +3,7 @@
 // again later. The order is fixed, so the same home always gets the same numbers on every device.
 import * as THREE from "three";
 
-export const BAKE_VERSION = 6;
+export const BAKE_VERSION = 7;
 const PROBE = 0.06; // points closer than this (and facing the same way) share one light value
 
 const _avg = new Map();
@@ -45,6 +45,8 @@ function roleOf(o) {
 export function prepare(engine) {
   const recv = [], seenGeo = new Set();
   const roots = [engine.rooms, engine.ceilings, engine.wallsG, engine.items];
+  // doors are measured closed, whatever they are doing right now, so every device counts the same points
+  const leaves = []; engine.wallsG.traverse((o) => { if (o.name === "leaf") { leaves.push([o, o.rotation.y]); o.rotation.y = 0; } });
   engine.scene.updateMatrixWorld(true);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
   for (const root of roots) root.traverse((o) => {
@@ -64,6 +66,8 @@ export function prepare(engine) {
     recv.push({ mesh: o, geo: o.geometry, matrix: o.matrixWorld.clone(), occlude: r.occlude });
   });
 
+  for (const [o, r] of leaves) o.rotation.y = r;
+  engine.scene.updateMatrixWorld(true);
   // count vertices, give out ids
   let n = 0;
   for (const r of recv) { r.base = n; n += r.geo.attributes.position.count; }

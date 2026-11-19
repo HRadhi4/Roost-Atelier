@@ -8,6 +8,7 @@ import { FLOORS, WALLS, FABRICS, swatchColor, swatchCanvas } from "./materials.j
 import { KINDS, LIGHT_LOOKS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex } from "./devices.js";
 import { matchPhoto } from "./calibrate.js";
 import { RoomPhotographer } from "./photos.js";
+import { settle } from "./collide.js";
 import { AtelierView, VIEW_CSS } from "./view.js";
 import { check } from "./check.js";
 
@@ -432,9 +433,11 @@ export class AtelierEditor {
         void back;
       }
       it.x = x; it.y = y;
+      // solid furniture: slide out of anything it would sink into, or stay where it last fitted
+      if (settle(it, f.items)) d.ok = [it.x, it.y, it.rot]; else if (d.ok) [it.x, it.y, it.rot] = d.ok;
       return this.changed(true, true);
     }
-    if (d.kind === "rot") { const it = d.obj; let a = (Math.atan2(-(P[0] - it.x), -(P[1] - it.y)) * 180) / Math.PI; it.rot = (Math.round(a / 15) * 15 + 360) % 360; return this.changed(true, true); }
+    if (d.kind === "rot") { const it = d.obj; let a = (Math.atan2(-(P[0] - it.x), -(P[1] - it.y)) * 180) / Math.PI; it.rot = (Math.round(a / 15) * 15 + 360) % 360; if (settle(it, f.items)) d.ok = [it.x, it.y, it.rot]; else if (d.ok) [it.x, it.y, it.rot] = d.ok; return this.changed(true, true); }
     if (d.kind === "dev") { d.obj.x = round(snap(P[0] + d.off[0]), 3); d.obj.y = round(snap(P[1] + d.off[1]), 3); return this.changed(); }
   }
   up(e) {
@@ -477,7 +480,7 @@ export class AtelierEditor {
     } else {
       const L = LIBRARY[kind], it = { id: uid("i"), kind, x: round(snap(P[0]), 3), y: round(snap(P[1]), 3), rot: 0 };
       if (L[6] === "ceiling") it.mount = "ceiling";
-      this.floor.items.push(it); this.sel = { t: "item", id: it.id };
+      this.floor.items.push(it); settle(it, this.floor.items); this.sel = { t: "item", id: it.id };
     }
     this.tool = "select"; this.drawNav(); this.changed(); this.inspector();
   }
