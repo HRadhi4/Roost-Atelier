@@ -11,6 +11,7 @@ import { RoomPhotographer } from "./photos.js";
 import { settle } from "./collide.js";
 import { AtelierView, VIEW_CSS } from "./view.js";
 import { check } from "./check.js";
+import { ItemPreview } from "./preview.js";
 
 const LIVE_KEYS = new Set(["lumens", "kelvin", "gain", "power"]);
 const ws = (hass, msg) => hass.connection.sendMessagePromise(msg);
@@ -86,6 +87,8 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .card{padding:12px;border-radius:16px;background:var(--inset);display:flex;flex-direction:column;gap:8px}
 .list button{width:100%;justify-content:flex-start;height:auto;min-height:48px;padding:8px 12px;border-radius:14px;background:var(--inset);margin-bottom:6px;text-align:start}
 .list small{display:block;color:var(--muted);font-size:11px}
+.pv{height:190px;margin:2px 0 4px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 30%,#2a2f52,#12152a)}
+.pv3{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .shots .shot{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
 .shots img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:var(--inset)}
@@ -181,9 +184,12 @@ export class AtelierEditor {
   undo() { if (!this.undoStack.length) return; this.redoStack.push(JSON.stringify(this.plan)); this.restore(this.undoStack.pop()); }
   redo() { if (!this.redoStack.length) return; this.undoStack.push(JSON.stringify(this.plan)); this.restore(this.redoStack.pop()); }
   restore(json) { const id = this.plan.id; this.plan = JSON.parse(json); this.plan.id = id; this.fi = Math.min(this.fi, this.plan.floors.length - 1); this.floor = this.plan.floors[this.fi]; if (this.sel && !this.find(this.sel)) this.sel = null; this.changed(true); this.inspector(); }
-  changed(rebuild = true, light = false) {
+  changed(rebuild = true, light = false, item = false) {
     this.draw();
     if (light && this.sel?.t === "item") { const it = this.find(this.sel); if (it && this.view.engine.moveItem(it)) rebuild = false; }
+    // a change to one piece of furniture only redraws that piece, not the whole home
+    if (rebuild && item && this.sel?.t === "item") { const it = this.find(this.sel); if (it && this.view.engine.replaceItem(it)) rebuild = false; }
+    if (this.sel?.t === "item") this.preview?.set(this.find(this.sel));
     if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan, this.fi); }; if (this._dragging && now - (this._lastRb || 0) < 450) this._rb = setTimeout(go, 450); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
     this.setStatus(t("Saving")); clearTimeout(this._sv); this._sv = setTimeout(() => this.save(), 1200);
     this.root.querySelector('[data-a="undo"]').toggleAttribute("disabled", !this.undoStack.length);
@@ -488,7 +494,7 @@ export class AtelierEditor {
       if (L[6] === "ceiling") it.mount = "ceiling";
       this.floor.items.push(it); settle(it, this.floor.items); this.sel = { t: "item", id: it.id };
     }
-    this.tool = "select"; this.drawNav(); this.changed(); this.inspector();
+    this.tool = "select"; this.drawNav(); this.changed(true, false, !isDevice); this.inspector();
   }
 
   // ------------------------------------------------------------ the right side
@@ -528,6 +534,7 @@ export class AtelierEditor {
     } else if (s.t === "item") {
       const L = LIBRARY[obj.kind], d = dims(obj);
       h += head("mdi:sofa-outline", t(L?.[0] || obj.kind));
+      h += `<div class="pv" title="${esc(t("Drag to turn"))}"></div>`;
       h += slider("w", "Width", 0.2, 6, 0.05, d.w) + slider("d", "Depth", 0.05, 4, 0.05, d.d) + slider("h", "Height", 0.05, 3, 0.05, d.h);
       if (d.mount === "wall") h += slider("z", "Sill", 0, 2.4, 0.05, d.z);
       h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
@@ -547,11 +554,12 @@ export class AtelierEditor {
       h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
     }
     a.innerHTML = h;
+    const pv = a.querySelector(".pv"); if (pv) (this.preview ||= new ItemPreview()).mount(pv, obj);
     this.bindInspector(obj, s);
   }
   bindInspector(obj, s) {
     const a = this.aside;
-    const set = (fn, rebuild = true) => { if (!this._editing) { this.snapshot(); this._editing = true; } clearTimeout(this._edT); this._edT = setTimeout(() => (this._editing = false), 700); fn(); this.changed(rebuild); };
+    const set = (fn, rebuild = true) => { if (!this._editing) { this.snapshot(); this._editing = true; } clearTimeout(this._edT); this._edT = setTimeout(() => (this._editing = false), 700); fn(); this.changed(rebuild, false, s.t === "item"); };
     a.querySelector("[data-close]")?.addEventListener("click", () => this.select(null));
     a.querySelector("[data-del]")?.addEventListener("click", () => this.remove(s));
     a.querySelectorAll("input[type=text][data-k]").forEach((i) => i.addEventListener("input", () => set(() => (obj[i.dataset.k] = i.value), false)));
@@ -587,7 +595,7 @@ export class AtelierEditor {
     a.querySelector("[data-dup]")?.addEventListener("click", () => {
       this.snapshot(); const c = clone(obj); c.id = uid(s.t === "room" ? "r" : "i");
       if (s.t === "room") { const b = bounds(c.pts); c.pts = c.pts.map(([x, y]) => [x + (b.x1 - b.x0), y]); this.floor.rooms.push(c); } else { c.x += 0.3; c.y += 0.3; this.floor.items.push(c); }
-      this.sel = { t: s.t, id: c.id }; this.changed(); this.inspector();
+      this.sel = { t: s.t, id: c.id }; this.changed(true, false, s.t === "item"); this.inspector();
     });
   }
   libSvg(kind) { const L = LIBRARY[kind], k = 50 / Math.max(L[3], L[4] * 1.4), w = L[3] * k, d = L[4] * k; return `<svg viewBox="-30 -22 60 44"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`; }

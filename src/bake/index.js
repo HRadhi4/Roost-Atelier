@@ -46,7 +46,7 @@ attribute float bakeId; attribute float bakeRoom;
 uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33];
 varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_vertex>
 { int bid = int(bakeId + 0.5), bx = bid % bakeWidth, by = bid / bakeWidth; vec3 e = vec3(0.0);
-  for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) e += t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; }
+  for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; if (bakeW[l].x + bakeW[l].y + bakeW[l].z <= 0.0) continue; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) e += t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; }
   vBaked = e * bakeRoomGain[int(bakeRoom + 0.5)]; }`);
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vBaked;")
       .replace("#include <lights_fragment_begin>", patchedBegin())

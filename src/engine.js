@@ -42,6 +42,8 @@ export function pickQuality(renderer) {
   const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 4;
   if (/SwiftShader|llvmpipe|Mali-(4|T)|Adreno \(TM\) [345]\d\d/i.test(gpu) || cores <= 4 || mem <= 2) return "low";
   if (/Mali|Adreno|PowerVR|Apple GPU/i.test(gpu) || /Android|iPad|iPhone/i.test(navigator.userAgent)) return "medium";
+  // graphics built into the processor (most laptops and mini PCs): lighter effects keep it smooth
+  if (/Intel|Iris|UHD Graphics|HD Graphics|Radeon\(TM\) Graphics|Radeon Graphics|Radeon Vega|Vega \d/i.test(gpu)) return "medium";
   return "high";
 }
 
@@ -113,6 +115,18 @@ export class AtelierEngine {
     this.renderer.domElement.addEventListener("pointerdown", (e) => this.pointerDown(e));
     this.renderer.domElement.addEventListener("pointerup", (e) => this.pointerUp(e));
     this.renderer.domElement.addEventListener("pointermove", (e) => this.walkLook(e));
+    // arrow keys (or W A S D) walk through the home; only after the 3D view was used, so they don't steal keys elsewhere
+    this.keys = new Set(); this._fc = 0;
+    const WK = { ArrowUp: "f", KeyW: "f", ArrowDown: "b", KeyS: "b", ArrowLeft: "l", KeyA: "l", ArrowRight: "r", KeyD: "r" };
+    this._kd = (e) => {
+      const k = WK[e.code]; if (!k || this.view !== "walk" || !this.kbActive || !this.alive || !this.host.isConnected) return;
+      if (e.composedPath().some((n) => n.matches?.("input,select,textarea,[contenteditable]"))) return;
+      e.preventDefault(); if (!this.keys.has(k)) { this.keys.add(k); this.interacting(true); this.request(true); }
+    };
+    this._ku = (e) => { const k = WK[e.code]; if (!k || !this.keys.delete(k)) return; if (!this.keys.size) this.interacting(false); };
+    this._blur = () => { if (this.keys.size) { this.keys.clear(); this.interacting(false); } };
+    this._pd = (e) => { this.kbActive = e.composedPath().includes(this.renderer.domElement); };
+    window.addEventListener("keydown", this._kd); window.addEventListener("keyup", this._ku); window.addEventListener("blur", this._blur); window.addEventListener("pointerdown", this._pd, true);
     this._t = performance.now();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
@@ -138,7 +152,7 @@ export class AtelierEngine {
   resize() {
     const w = this.host.clientWidth || 300, h = this.host.clientHeight || 200;
     this.size = [w, h];
-    const r = this.lowRes ? this.baseRatio() * 0.6 : this.baseRatio();
+    const r = this.baseRatio() * (this.scale || 1) * (this.lowRes ? 0.6 : 1);
     this.renderer.setPixelRatio(r); this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(r); this.composer.setSize(w, h);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
@@ -149,8 +163,11 @@ export class AtelierEngine {
   interacting(on) {
     this.busy = on; this.photo?.stop();
     clearTimeout(this._idle);
-    if (on) { if (!this.lowRes) { this.lowRes = true; this.resize(); } }
-    else this._idle = setTimeout(() => { this.lowRes = false; this.resize(); if (this.opts.photo) this.startPhoto(); }, 250);
+    // while moving: lower resolution and no soft shadows or glow; the full picture returns when still
+    if (on) { if (!this.lowRes) { this.lowRes = true; this.fx(false); this.resize(); } }
+    else this._idle = setTimeout(() => { this.lowRes = false; this.fx(true); this.resize(); if (this.opts.photo) this.startPhoto(); }, 250);
+  }
+  fx(on) { if (this.ao) this.ao.enabled = on; if (this.bloom) this.bloom.enabled = on; this.request(false);
   }
   request(camMoved) { this.dirty = true; if (camMoved) { this.camMoved = true; this.photo?.stop(); } }
   loop() {
@@ -161,10 +178,22 @@ export class AtelierEngine {
     if (this.tween) this.stepTween(dt);
     const damping = this.controls.enabled && this.controls.update();
     if (this.anims.size) { for (const a of [...this.anims]) if (a(dt) === false) this.anims.delete(a); this.dirty = true; }
+    if (this.view === "walk" && this.keys.size) this.stepWalk(dt);
     if (this.baked) { this.bakeWeights(dt); }
     if (this.photo?.active) { try { this.photo.step(); } catch (err) { console.warn("Roost Atelier photo mode:", err); this.photo.stop(); this.opts.photo = false; this.emit("photo", { progress: -2, error: String(err?.message || err) }); } return; }
     if (!this.dirty && !damping) return;
+    // moving things alone (AC air, a fan, the TV) are drawn at most 30 times a second
+    if (this.anims.size && !this.busy && !this.tween && !this.camMoved && !damping && now - (this._lastR || 0) < 32) return;
     this.dirty = false;
+    // if the computer can't keep up, draw fewer pixels; give them back when it can
+    const gap = now - (this._lastR || 0); this._lastR = now;
+    if (gap < 120) {
+      this._ft = this._ft ? this._ft * 0.9 + gap * 0.1 : gap;
+      if (++this._fc % 30 === 0) {
+        if (this._ft > 40 && (this.scale || 1) > 0.5) { this.scale = Math.max(0.5, (this.scale || 1) * 0.85); this.resize(); }
+        else if (this._ft < 21 && (this.scale || 1) < 1) { this.scale = Math.min(1, (this.scale || 1) / 0.85); this.resize(); }
+      }
+    }
     if (this.shadowsDirty) { this.renderer.shadowMap.needsUpdate = true; this.shadowsDirty = false; }
     this.composer.render();
     if (this.camMoved || this.anims.size) { this.camMoved = false; this.projectHotspots(); }
@@ -293,6 +322,16 @@ export class AtelierEngine {
     g.traverse((o) => { if (o.isMesh) o.userData.item = it.id; });
     Object.assign(g.userData, { item: it.id, w: d.w, d: d.d, h: d.h, color: it.color });
     this.items.add(g);
+  }
+  // change one piece (size, colour, a new piece) without rebuilding the whole home
+  replaceItem(it) {
+    if (!this.items || !this.floor?.items.includes(it)) return false;
+    const old = this.items.children.find((c) => c.userData.item === it.id); if (old) this.items.remove(old);
+    this.addItem(it, this.H);
+    for (const o of this.floor.items) if (o !== it) this.moveItem(o);
+    // the light is worked out again once you stop changing things
+    clearTimeout(this._rebake); this._rebake = setTimeout(() => this.bakeMgr.onBuilt(), 1500);
+    this.shadowsDirty = true; this.request(false); return true;
   }
   // move one piece without rebuilding the whole home (smooth dragging)
   moveItem(it) {
@@ -585,7 +624,7 @@ export class AtelierEngine {
       const far = bb.reduce((m, p) => (Math.hypot(p[0] - x, p[1] - y) > Math.hypot(m[0] - x, m[1] - y) ? p : m), bb[0]);
       // eye level, looking straight ahead so walls stay upright like in a professional interior photo
       pos = new THREE.Vector3(x + (far[0] - x) * 0.72, 1.35, y + (far[1] - y) * 0.72); target = new THREE.Vector3(x - (far[0] - x) * 0.4, 1.35, y - (far[1] - y) * 0.4); fov = 60;
-      this.walkRoomId = room.id;
+      this.walkRoomId = room.id; this.kbActive = true;
     } else {
       // far enough that the whole home fits, seen from the south-east at about 45°
       const R = 0.5 * Math.hypot(b.x1 - b.x0, b.y1 - b.y0) + 0.5, v = (fov * Math.PI) / 360, hh = Math.atan(Math.tan(v) * this.camera.aspect);
@@ -611,6 +650,24 @@ export class AtelierEngine {
     this.camera.fov = tw.f0 + (tw.f1 - tw.f0) * k; this.camera.updateProjectionMatrix(); this.camera.lookAt(this.controls.target);
     this.request(true);
     if (tw.t >= 1) this.tween = null;
+  }
+  // one step of walking with the keys; walls and closed doors stop you
+  stepWalk(dt) {
+    const k = this.keys, fast = 1.4, turn = (k.has("l") ? 1 : 0) - (k.has("r") ? 1 : 0), go = (k.has("f") ? 1 : 0) - (k.has("b") ? 1 : 0);
+    if (this.tween) this.tween = null;
+    const dir = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+    if (turn) dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), turn * 1.7 * dt);
+    if (go) {
+      const flat = new THREE.Vector3(dir.x, 0, dir.z).normalize().multiplyScalar(go), step = fast * dt;
+      this._walkRay ||= new THREE.Raycaster();
+      const from = new THREE.Vector3(this.camera.position.x, 1.0, this.camera.position.z);
+      this._walkRay.set(from, flat); this._walkRay.far = step + 0.3;
+      const hit = this._walkRay.intersectObjects([this.wallsG], true).some((h) => { let o = h.object; while (o) { if (!o.visible) return false; o = o.parent; } return !h.object.material?.transparent; });
+      if (!hit) this.camera.position.addScaledVector(flat, step);
+    }
+    this.controls.target.copy(this.camera.position).add(dir); this.camera.lookAt(this.controls.target);
+    const room = this.roomOf(this.camera.position); if (room && room !== this.walkRoomId) { this.walkRoomId = room; this.walkRoom = this.floor.rooms.find((r) => r.id === room); }
+    this.request(true);
   }
   home() { this.userMoved = false; this.frame(this.view === "walk" ? "3d" : this.view || "3d"); }
   walkTo(roomId) { this.walkRoom = this.floor.rooms.find((r) => r.id === roomId); this.frame("walk"); }
@@ -709,7 +766,8 @@ export class AtelierEngine {
   snapshot() { this.composer.render(); return this.renderer.domElement.toDataURL("image/jpeg", 0.92); }
 
   dispose() {
-    this.bakeMgr.dispose();
+    this.bakeMgr.dispose(); clearTimeout(this._rebake);
+    window.removeEventListener("keydown", this._kd); window.removeEventListener("keyup", this._ku); window.removeEventListener("blur", this._blur); window.removeEventListener("pointerdown", this._pd, true);
     this.alive = false; this.resizeObs.disconnect(); this.photo?.dispose(); this.controls.dispose(); this.composer.dispose?.();
     this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer.domElement.remove();
   }
