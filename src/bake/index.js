@@ -103,6 +103,8 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
   if (signal?.aborted) throw new Error("cancelled");
   done = 0.7; onProgress?.(0.7);
   const nb = neighbours(prep);
+  { const near = neighbours(prep, 0.25, 0.02, 24), Ds = smooth(D, near, L), soft = lights.length + windows.length + 1;
+    for (let k = 0; k < n; k++) for (let l = 0; l < soft; l++) { const i = (k * L + l) * 3; D[i] = Ds[i]; D[i + 1] = Ds[i + 1]; D[i + 2] = Ds[i + 2]; } }
   let E = D, G = null;
   for (let p = 0; p < PASSES; p++) {
     G = new Float32Array(n * L * 3);
@@ -123,21 +125,24 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
   return { E: F, L: L2, sOff };
 }
 // points close together on the same kind of surface share their bounced light (removes speckle)
-function neighbours(prep) {
-  const { n, pos, nrm } = prep, cell = 0.3, map = new Map(), key = (x, y, z) => `${x},${y},${z}`;
+function neighbours(prep, R = 0.55, sig = 0.09, MAX = 40) {
+  const { n, pos, nrm } = prep, cell = R, map = new Map(), key = (x, y, z) => `${x},${y},${z}`;
   for (let k = 0; k < n; k++) { const c = key(Math.floor(pos[k * 3] / cell), Math.floor(pos[k * 3 + 1] / cell), Math.floor(pos[k * 3 + 2] / cell)); (map.get(c) || map.set(c, []).get(c)).push(k); }
   const start = new Int32Array(n + 1), list = [], wts = [];
   for (let k = 0; k < n; k++) {
     start[k] = list.length;
     const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2], cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
-    let cnt = 0;
-    for (let i = -1; i <= 1 && cnt < 28; i++) for (let j = -1; j <= 1 && cnt < 28; j++) for (let l = -1; l <= 1 && cnt < 28; l++) {
+    // all nearby points facing the same way, the closest ones kept (not just the first found, which made blotches)
+    const cand = [];
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let l = -1; l <= 1; l++) {
       for (const q of map.get(key(cx + i, cy + j, cz + l)) || []) {
-        const dd = (pos[q * 3] - x) ** 2 + (pos[q * 3 + 1] - y) ** 2 + (pos[q * 3 + 2] - z) ** 2; if (dd > 0.3 * 0.3) continue;
+        const dd = (pos[q * 3] - x) ** 2 + (pos[q * 3 + 1] - y) ** 2 + (pos[q * 3 + 2] - z) ** 2; if (dd > R * R) continue;
         const dn = nrm[q * 3] * nrm[k * 3] + nrm[q * 3 + 1] * nrm[k * 3 + 1] + nrm[q * 3 + 2] * nrm[k * 3 + 2]; if (dn < 0.9) continue;
-        list.push(q); wts.push(Math.exp(-dd / 0.03)); if (++cnt >= 28) break;
+        cand.push([dd, q]);
       }
     }
+    if (cand.length > MAX) { cand.sort((a, b) => a[0] - b[0]); cand.length = MAX; }
+    for (const [dd, q] of cand) { list.push(q); wts.push(Math.exp(-dd / sig)); }
   }
   start[n] = list.length;
   return { start, list: Int32Array.from(list), wts: Float32Array.from(wts) };

@@ -3,7 +3,7 @@
 // again later. The order is fixed, so the same home always gets the same numbers on every device.
 import * as THREE from "three";
 
-export const BAKE_VERSION = 7;
+export const BAKE_VERSION = 8;
 const PROBE = 0.06; // points closer than this (and facing the same way) share one light value
 
 const _avg = new Map();

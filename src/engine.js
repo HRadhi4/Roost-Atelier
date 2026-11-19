@@ -12,6 +12,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
 import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES } from "./model.js";
 import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "./materials.js";
@@ -141,15 +142,18 @@ export class AtelierEngine {
   baseRatio() { return Math.min(window.devicePixelRatio || 1, { low: 1, medium: 1.5, high: 2 }[this.quality]); }
   setupComposer() {
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // the soft-shadow pass draws the home itself, so the plain drawing pass only runs when it is off
+    this.renderPass = new RenderPass(this.scene, this.camera); this.composer.addPass(this.renderPass);
     if (this.quality !== "low") {
       this.ao = new N8AOPass(this.scene, this.camera, 2, 2);
       Object.assign(this.ao.configuration, { aoRadius: 0.6, distanceFalloff: 0.6, intensity: 2.2, halfRes: this.quality === "medium", denoiseSamples: this.quality === "medium" ? 4 : 8, screenSpaceRadius: false });
       this.ao.setQualityMode(this.quality === "medium" ? "Low" : "Medium");
-      this.composer.addPass(this.ao);
+      this.composer.addPass(this.ao); this.renderPass.enabled = false;
     }
     if (this.quality === "high") { this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.25, 0.4, 0.92); this.composer.addPass(this.bloom); }
     this.composer.addPass(new OutputPass());
+    // smooth edges (no jagged stair-steps on walls and furniture)
+    this.smaa = new SMAAPass(); this.composer.addPass(this.smaa);
   }
   resize() {
     const w = this.host.clientWidth || 300, h = this.host.clientHeight || 200;
@@ -169,7 +173,7 @@ export class AtelierEngine {
     if (on) { if (!this.lowRes) { this.lowRes = true; this.fx(false); this.resize(); } }
     else this._idle = setTimeout(() => { this.lowRes = false; this.fx(true); this.resize(); if (this.opts.photo) this.startPhoto(); }, 250);
   }
-  fx(on) { if (this.ao) this.ao.enabled = on; if (this.bloom) this.bloom.enabled = on; this.request(false);
+  fx(on) { if (this.ao) { this.ao.enabled = on; this.renderPass.enabled = !on; } if (this.bloom) this.bloom.enabled = on; this.request(false);
   }
   request(camMoved) { this.dirty = true; if (camMoved) { this.camMoved = true; this.photo?.stop(); } }
   loop() {
