@@ -96,13 +96,18 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .dialog{position:fixed;inset:0;background:rgba(5,6,14,.55);display:grid;place-items:center;z-index:30}
 .dialog>div{width:min(360px,90vw);padding:18px;border-radius:20px;background:var(--panel);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px}
 @media (max-width:900px){
- .ed{grid-template-columns:1fr;grid-template-rows:56px 1fr auto 64px}
+ .ed{grid-template-columns:minmax(0,1fr);grid-template-rows:56px minmax(0,1fr) auto 64px}
+ header{gap:4px;padding:0 6px;overflow-x:auto;scrollbar-width:none}
+ header h1{max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+ header .status{display:none}
+ main{min-width:0}
+ .ed:not(.sheet) aside{display:none}
  nav{grid-row:4;flex-direction:row;border:0;border-top:1px solid var(--border);padding:8px;overflow-x:auto}
  nav .sep{width:1px;height:auto;margin:6px 4px}
  main{grid-row:2;grid-template-columns:1fr}
  .ed[data-layout=split] main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
  .ed[data-layout=split] .three{border:0;border-top:1px solid var(--border)}
- aside{grid-row:3;max-height:42vh;border:0;border-top:1px solid var(--border);border-radius:20px 20px 0 0}
+ aside{grid-row:3;max-height:38vh;border:0;border-top:1px solid var(--border);border-radius:20px 20px 0 0;min-width:0}
  aside:empty{display:none}
 }
 ${VIEW_CSS}
@@ -145,6 +150,7 @@ export class AtelierEditor {
   pause(p) { this.view?.engine.setVisible(!p); }
   async start() {
     this.view = new AtelierView(this.root.querySelector(".three"), { editing: true, canBake: true, onMoreInfo: () => {} });
+    this.view.hass = this._hass;
     this.view.onPick = (hit) => { if (hit.item) this.select({ t: "item", id: hit.item }); else if (hit.room) this.select({ t: "room", id: hit.room }); };
     this.view.onDemo = (d) => this.select({ t: "dev", id: d.id });
     // light is baked here (this computer), then room photos are made when nobody is using it
@@ -488,6 +494,9 @@ export class AtelierEditor {
   // ------------------------------------------------------------ the right side
   inspector(mode) {
     const a = this.aside, s = this.sel, obj = this.find(s);
+    // on narrow screens the panel is a sheet that opens only for a selection, a tool or the settings
+    this.ed.classList.toggle("sheet", !!obj || this.tool !== "select" || mode === "settings");
+    requestAnimationFrame(() => this.view?.engine.resize());
     if (this.tool === "furniture") return this.library();
     if (this.tool === "devices") return this.deviceLibrary();
     if (this.tool === "import") return this.importPanel();

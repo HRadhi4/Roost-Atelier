@@ -36,6 +36,7 @@ function direct([v0, v1]) {
   const { pos, nrm, lights, sunDirs, L } = S, D = new Float32Array((v1 - v0) * L * 3), r = rng(v0 * 7 + 3);
   const SAMPLES = 8;
   for (let v = v0; v < v1; v++) {
+    if ((v - v0) % 1500 === 0) postMessage({ cmd: "progress", phase: 0, f: (v - v0) / (v1 - v0) });
     const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2], nx = nrm[v * 3], ny = nrm[v * 3 + 1], nz = nrm[v * 3 + 2];
     const ox = px + nx * 0.01, oy = py + ny * 0.01, oz = pz + nz * 0.01, base = (v - v0) * L * 3;
     lights.forEach((Lt, li) => {
@@ -102,6 +103,7 @@ function trace([v0, v1]) {
   const ground = S.sunDirs.map((sd) => (0.22 / Math.PI) * Math.max(0, sd[1]));
   const t1 = new THREE.Vector3(), t2 = new THREE.Vector3();
   for (let v = v0; v < v1; v++) {
+    if ((v - v0) % 1500 === 0) postMessage({ cmd: "progress", phase: 1, f: (v - v0) / (v1 - v0) });
     const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2], nx = nrm[v * 3], ny = nrm[v * 3 + 1], nz = nrm[v * 3 + 2];
     // a frame around the normal for cosine-weighted directions
     t1.set(Math.abs(nx) > 0.9 ? 0 : 1, Math.abs(nx) > 0.9 ? 1 : 0, 0).cross(d.set(nx, ny, nz)).normalize(); t2.copy(d).cross(t1);

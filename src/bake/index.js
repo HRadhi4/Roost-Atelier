@@ -89,15 +89,19 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
     const on = (ev) => { if (ev.data.cmd === "error") { w.removeEventListener("message", on); rej(new Error(ev.data.error)); } else if (ev.data.cmd === want) { w.removeEventListener("message", on); res(ev.data); } };
     w.addEventListener("message", on); w.addEventListener("error", (e) => rej(new Error(e.message || "worker failed")), { once: true }); if (msg) w.postMessage(msg);
   });
+  // smooth progress: direct light is the first 25%, tracing the bounces the next 45%, mixing the last 30%
+  const prog = workers.map(() => [0, 0]);
+  workers.forEach((w, i) => w.addEventListener("message", (ev) => { if (ev.data.cmd !== "progress") return; prog[i][ev.data.phase] = ev.data.f; const avg = (k) => prog.reduce((s, p) => s + p[k], 0) / W; onProgress?.(Math.min(0.69, 0.25 * avg(0) + 0.45 * avg(1))); }));
   const D = new Float32Array(n * L * 3);
   let done = 0; const step = (k) => { done += k; onProgress?.(Math.min(0.99, done)); };
   await Promise.all(workers.map(async (w, i) => {
     const traced = ask(w, null, "traced");
     const r = await ask(w, { cmd: "init", pos, nrm, alb, index, lights, windows, sunDirs, range: ranges[i], rays: RAYS, rep, vpos }, "direct");
-    D.set(r.D, ranges[i][0] * L * 3); step(0.25 / W);
-    await traced; step(0.45 / W);
+    D.set(r.D, ranges[i][0] * L * 3);
+    await traced;
   }));
   if (signal?.aborted) throw new Error("cancelled");
+  done = 0.7; onProgress?.(0.7);
   const nb = neighbours(prep);
   let E = D, G = null;
   for (let p = 0; p < PASSES; p++) {
