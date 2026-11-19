@@ -4,7 +4,7 @@
 <script type="module">
 // A pretend Home Assistant: just enough for the card and the Atelier page.
 import { SAMPLES } from "./samples.bundle.js";
-const plan = { ...SAMPLES[0].make(), id: "home1", updated: 1000 }; window.SAMPLES = SAMPLES;
+const plan = { ...SAMPLES[0].make(), id: "home1", updated: 1000 }; window.SAMPLES = SAMPLES; window.T = await import("./samples.bundle.js");
 const log = (window.calls = []);
 window.store = { plan, versions: [], deleted: [] };
 window.fail = { save: 0, conflict: false };

@@ -54,6 +54,9 @@ Roost Atelier lights your home **once**, then never has to render it again.
 ### Control everything from the 3D home
 - **Tap any device** to get a small pop-up with its controls right next to it (lights, ACs, curtains, TVs, fans, locks). Walking through a room, a side panel lists everything in that room. Prefer one-tap switching? Set *Tapping a device* to *Turns it on or off*.
 
+### Rooms in 360°
+- **Make 360° views** (home settings) renders a realistic all-round picture of every room. A dashboard card set to **One room in 360°** shows it: drag to look around, and tap the lights, AC, curtains and TV right where they are.
+
 ### Realistic photos with local AI
 - **Photo mode** traces light bounce by bounce, then a **local AI denoiser** (Intel Open Image Denoise, the same kind of AI that professional renderers use) cleans the picture. It runs on your own computer's graphics through WebGPU; nothing leaves your home.
 - **Photos of the whole floor and every room, by themselves.** Once the light is ready, the Atelier makes a finished photo of the whole floor and of each room in the background, on its own hidden canvas, so you keep working. A bar shows how far it is. The photos are kept in Home Assistant (Settings → Room photos) and made again when you change the home.

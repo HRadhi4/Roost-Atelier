@@ -167,3 +167,11 @@ export function validate(plan) {
   plan.settings = { quality: "auto", walls: "cut", sun: true, ...(plan.settings || {}) };
   return plan;
 }
+
+// where a 360° view of a room is taken from: the middle of the room (or the nearest spot inside it), at eye height
+export function panoSpot(room, eye = 1.5) {
+  if (room.pano) return [room.pano[0], eye, room.pano[1]];
+  let [x, y] = centroid(room.pts);
+  if (!inside([x, y], room.pts)) { const b = bounds(room.pts); let best = null; for (let i = 1; i < 10; i++) for (let j = 1; j < 10; j++) { const p = [b.x0 + ((b.x1 - b.x0) * i) / 10, b.y0 + ((b.y1 - b.y0) * j) / 10]; if (inside(p, room.pts)) { const d = Math.hypot(p[0] - x, p[1] - y); if (!best || d < best[2]) best = [...p, d]; } } if (best) [x, y] = best; }
+  return [x, eye, y];
+}

@@ -984,8 +984,11 @@ export class AtelierEditor {
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
       <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves in the background once the light is ready")}</span></div></div>
+      <div class="field"><h3>${t("360° views")}</h3><p class="tip">${t("A realistic all-round picture of every room, for the room cards on your dashboard. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-pano ${this.view.engine.baked ? "" : "disabled"}><ha-icon icon="mdi:panorama-sphere-outline"></ha-icon>${t("Make 360° views")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
+    this.drawPanos(a.querySelector("[data-panos]"));
+    a.querySelector("[data-pano]")?.addEventListener("click", () => this.photographer.panos());
     const set = (fn, rebuild = true) => { this.snapshot(); fn(); this.changed(rebuild); };
     a.querySelector("[data-fname]").addEventListener("change", (e) => set(() => { f.name = e.target.value || f.name; this.drawFloors(); }, false));
     a.querySelector("[data-delfloor]")?.addEventListener("click", () => this.removeFloor());
@@ -1020,6 +1023,30 @@ export class AtelierEditor {
       b.onclick = () => { const d = document.createElement("div"); d.className = "dialog"; d.innerHTML = `<img src="${this._shotUrls.get(k)}" style="max-width:94vw;max-height:88vh;border-radius:16px">`; d.onclick = () => d.remove(); this.root.querySelector(".ed").appendChild(d); };
       el.appendChild(b);
     }
+  }
+  async drawPanos(el) {
+    if (!this.plan?.id || !el) return;
+    let list = [];
+    try { list = await ws(this._hass, { type: "roost_atelier/photos", plan_id: this.plan.id }); } catch { return; }
+    const pre = `${this.plan.id}_${this.fi}_pano_`;
+    this._shotUrls ||= new Map();
+    for (const p of list.filter((x) => x.key.startsWith(pre))) {
+      const room = this.floor.rooms.find((r) => r.id === p.key.slice(pre.length)); if (!room) continue;
+      const k = `${p.key}@${p.updated}`;
+      if (!this._shotUrls.has(k)) { const r = await this._hass.fetchWithAuth(`/api/roost_atelier/photo/${p.key}`); if (!r.ok) continue; this._shotUrls.set(k, URL.createObjectURL(await r.blob())); }
+      const b = document.createElement("button"); b.className = "shot"; b.innerHTML = `<img src="${this._shotUrls.get(k)}" alt=""><span>${esc(room.name || t(ROOM_TYPES[room.type]?.name || "Room"))}</span>`;
+      b.onclick = () => this.showPano(this._shotUrls.get(k), room.id);
+      el.appendChild(b);
+    }
+  }
+  async showPano(url, roomId) {
+    const { PanoViewer, PANO_CSS } = await import("./pano.js");
+    const d = document.createElement("div"); d.className = "dialog";
+    d.innerHTML = `<style>${PANO_CSS}</style><div style="width:min(96vw,1100px);height:min(80vh,640px);border-radius:22px;overflow:hidden;position:relative" data-host></div><button data-x style="position:absolute;top:16px;right:16px;background:var(--panel)"><ha-icon icon="mdi:close"></ha-icon></button>`;
+    this.root.querySelector(".ed").appendChild(d);
+    const v = new PanoViewer(d.querySelector("[data-host]"), { image: url, plan: this.plan, floorIndex: this.fi, roomId, onMoreInfo: (e) => this.panelEl.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: e }, bubbles: true, composed: true })) });
+    v.hass = this._hass;
+    d.querySelector("[data-x]").onclick = () => { v.dispose(); d.remove(); };
   }
   checkPanel() {
     const a = this.aside, issues = check(this.plan, this.floor);

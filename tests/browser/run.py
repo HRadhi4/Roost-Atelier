@@ -155,6 +155,31 @@ with sync_playwright() as p:
     check("walking in a room shows the side panel instead", res["side"] and res["popGone"], str(res))
     check("the AC pop-up has temperature and modes", res["ac"] and "climate.set_temperature" in res["called2"], str(res))
 
+    # a 360° picture lines up with the real room: red ahead (-z), green to the right (+x), and a device button on the red wall
+    pano = page.evaluate("""async () => { const { THREE, WebGLPathTracer, EquirectCamera, PanoViewer, PANO_CSS, DenoiseMaterial, FullScreenQuad } = window.T;
+      const sc = new THREE.Scene(), box = (c, x, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2 })); m.position.set(x, 1.5, z); sc.add(m); };
+      box('#ff0000', 0, -5); box('#00ff00', 5, 0); box('#0000ff', -5, 0); box('#ffff00', 0, 5);
+      const cv = document.createElement('canvas'), r = new THREE.WebGLRenderer({ canvas: cv, preserveDrawingBuffer: true }); r.setSize(256, 128, false);
+      const pt = new WebGLPathTracer(r); pt.tiles.set(1, 1); pt.minSamples = 1; pt.renderDelay = 0; pt.fadeDuration = 0; pt.dynamicLowRes = false;
+      const cam = new EquirectCamera(); cam.position.set(0, 1.5, 0); cam.updateMatrixWorld(); pt.setScene(sc, cam);
+      for (let i = 0; i < 400 && pt.samples < 4; i++) { pt.renderSample(); await new Promise((res) => setTimeout(res, 20)); }
+      const sm = new FullScreenQuad(new DenoiseMaterial({ map: null, blending: THREE.NoBlending })); sm.material.map = pt._pathTracer.target.texture; sm.material.sigma = 3.5; sm.material.threshold = 0.18; sm.material.kSigma = 1.2; r.setRenderTarget(null); sm.render(r);
+      const url = cv.toDataURL('image/png');
+      const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'; document.body.appendChild(host);
+      const st = document.createElement('style'); st.textContent = PANO_CSS; document.head.appendChild(st);
+      const plan = { floors: [{ height: 3, rooms: [{ id: 'r', name: 'Test', type: 'living', pts: [[-4, -4], [4, -4], [4, 4], [-4, 4]], pano: [0, 0] }], openings: [], items: [], devices: [{ id: 'd1', kind: 'tv', entity: 'media_player.tv', x: 0, y: -3.9 }] }] };
+      const v = new PanoViewer(host, { image: url, plan, roomId: 'r' }); v.hass = { states: { 'media_player.tv': { state: 'off', attributes: {} } } };
+      await new Promise((res) => setTimeout(res, 800));
+      const px = () => { const g = v.renderer.getContext(), a = new Uint8Array(4); v.renderer.render(v.scene, v.cam); g.readPixels(g.drawingBufferWidth / 2, g.drawingBufferHeight / 2, 1, 1, g.RGBA, g.UNSIGNED_BYTE, a); return [...a.slice(0, 3)]; };
+      v.yaw = 0; v.pitch = 0; v.cam.rotation.set(0, 0, 0, 'YXZ'); v.cam.updateMatrixWorld(); const ahead = px();
+      v.cam.rotation.set(0, -Math.PI / 2, 0, 'YXZ'); v.cam.updateMatrixWorld(); const right = px();
+      v.look(0, 0); await new Promise((res) => setTimeout(res, 100));
+      const hs = host.querySelector('.hs'); const hx = hs && !hs.classList.contains('hide') ? parseFloat(hs.style.left) : -1;
+      const c2 = document.createElement('canvas'); c2.width = 256; c2.height = 128; const im = new Image(); im.src = url; await im.decode(); const x2 = c2.getContext('2d'); x2.drawImage(im, 0, 0); const mid = [...x2.getImageData(128, 64, 1, 1).data].slice(0, 3), q = [...x2.getImageData(192, 64, 1, 1).data].slice(0, 3); const bg = !!v.scene.background; v.dispose(); host.remove(); return { ahead, right, hx, mid, q, bg, samples: pt.samples }; }""")
+    red = pano["ahead"][0] > 150 and pano["ahead"][1] < 90; green = pano["right"][1] > 150 and pano["right"][0] < 90
+    check("a 360° view looks the right way round", red and green, str(pano))
+    check("a device's button sits where the device is in the 360° view", abs(pano["hx"] - 200) < 20, str(pano["hx"]))
+
     # the local photo reader starts in the background; with no internet here it says so plainly instead of hanging
     got = page.evaluate("""async () => { const w = new Worker('/custom_components/roost_atelier/frontend/chunks/detect-worker.js', { type: 'module' });
       const c = document.createElement('canvas'); c.width = 64; c.height = 48; const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg'));

@@ -2,6 +2,10 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.12.0 — 2026-11-19
+- **360° views of every room.** In the home settings, *Make 360° views* goes through each room and makes a realistic all-round picture from the middle of the room, with the real light. It runs on this computer in the background (a few minutes per room) and keeps them in Home Assistant.
+- **A room card in 360°.** Set the card's view to *One room in 360°* and pick the room: drag to look around, pinch or scroll to zoom, and every light, AC, curtain and TV of that room sits where it really is. Tap one for its controls.
+
 ## 0.11.0 — 2026-11-19
 - **Tap a device to control it.** On the dashboard card, tapping a light, AC, curtain, TV, fan or lock opens a small pop-up next to it with what that device needs: on and off, brightness and warmth for lights, temperature and modes for the AC, open, stop, close and how open for curtains, volume, play and source for the TV, speed for fans. *More* opens the full details.
 - **Walking in a room shows a side panel** with the device you tapped and everything else in that room, each with its own controls.

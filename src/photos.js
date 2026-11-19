@@ -2,7 +2,7 @@
 // floor and of every room in the background (light tracing + local AI clean-up) and keeps them in Home Assistant.
 // A bar shows how far it is. Photos already made after the latest light are kept.
 import { t } from "./i18n.js";
-import { Studio, shotsFor } from "./studio.js";
+import { Studio, shotsFor, panosFor } from "./studio.js";
 
 export class RoomPhotographer {
   constructor(editor) {
@@ -22,13 +22,21 @@ export class RoomPhotographer {
     const b = this.bar; clearTimeout(this._hide);
     if (p.state === "working") {
       b.classList.remove("hide", "ok");
-      b.querySelector("span").textContent = `${t("Photos")} ${Math.min(p.done + 1, p.total)}/${p.total} · ${p.name || ""}${p.ai ? " · AI" : ""} · ${Math.round(p.f * 100)}%`;
+      b.querySelector("span").textContent = `${p.name?.startsWith("360°") ? "" : t("Photos") + " "}${Math.min(p.done + 1, p.total)}/${p.total} · ${p.name || ""}${p.ai ? " · AI" : ""} · ${Math.round(p.f * 100)}%`;
       b.querySelector("b").style.width = `${Math.round(p.f * 100)}%`;
       if (p.saved) this.ed.emitPhotos?.();
     } else if (p.state === "done") {
       b.classList.remove("hide"); b.classList.add("ok"); b.querySelector("span").textContent = t("All photos ready"); b.querySelector("b").style.width = "100%";
       this.ed.emitPhotos?.(); this._hide = setTimeout(() => b.classList.add("hide"), 6000);
     } else b.classList.add("hide");
+  }
+  // the 360° views of every room, on request (they take longer than the photos)
+  async panos() {
+    const ed = this.ed, e = ed.view.engine;
+    if (!e.baked || !ed.plan?.id) { ed.toast?.(t("Waiting for the light to be ready")); return; }
+    this.studio.cancel(); clearTimeout(this._t);
+    await new Promise((r) => setTimeout(r, 50));
+    this.studio.run(panosFor(ed.floor, t));
   }
   // the home changed or is being lit again: photos need remaking
   reset() { this.studio.cancel(); }
