@@ -89,7 +89,7 @@ class RoostAtelierCardEditor extends HTMLElement {
       { name: "tap", label: "Tapping a device", selector: { select: { mode: "box", options: [{ value: "controls", label: "Shows its controls" }, { value: "toggle", label: "Turns it on or off" }] } } },
       { name: "photo", label: t("Photo") + " (idle)", selector: { boolean: {} } },
       { name: "quality", label: t("Quality"), selector: { select: { mode: "dropdown", options: ["auto", "low", "medium", "high"].map((v) => ({ value: v, label: t(v[0].toUpperCase() + v.slice(1)) })) } } },
-      { name: "language", label: "Language", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Auto" }, { value: "en", label: "English" }, { value: "ar", label: "العربية" }] } } },
+      { name: "language", label: "Language", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Auto" }, { value: "en", label: "English" }, { value: "ar", label: "العربية" }, { value: "es", label: "Español" }, { value: "ru", label: "Русский" }, { value: "zh", label: "简体中文" }] } } },
     ];
   }
 }

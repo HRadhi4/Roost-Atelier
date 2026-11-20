@@ -1,4 +1,5 @@
-// Words in English and Arabic. Arabic switches the whole layout to right-to-left.
+// Words in English, Arabic, Spanish, Russian and Simplified Chinese. Arabic switches the whole layout to right-to-left.
+import { ES, RU, ZH, AR_MORE } from "./lang/words.js";
 const AR = {
   "Anti-glare spot": "سبوت مضاد للوهج", "Square spot (AR111)": "سبوت مربع (AR111)", "Surface spot": "سبوت سطحي", "Ceiling light": "إضاءة سقفية", "Aluminium profile": "بروفايل ألمنيوم", "Linear pendant": "إضاءة خطية معلقة", "Neon flex": "نيون فليكس", "Filament bulb pendant": "لمبة فلمنت معلقة", "Glass globe pendant": "كرة زجاج معلقة", "Wall light": "إضاءة جدارية", "Bedside reading light": "إضاءة قراءة بجانب السرير", "Table lamp": "أباجورة طاولة", "Desk lamp": "إضاءة مكتب", "Floor lamp": "إضاءة أرضية", "Wall washer": "ماسح جدار", "Step light": "إضاءة درج", "Garden bollard": "عمود حديقة (بولارد)", "Ground uplight": "إضاءة أرضية مغروسة", "Floodlight": "كشاف", "Lines and tracks": "خطوط ومسارات", "Hanging lights": "إضاءة معلقة", "Wall, table and floor": "جدار وطاولة وأرضية", "Recessed": "غاطس", "Anti-glare": "مضاد للوهج", "Square frame": "إطار مربع", "Surface can": "سطحي", "Up": "أعلى", "Down": "أسفل", "Reading arm": "ذراع قراءة", "Table height": "ارتفاع الطاولة", "Lean": "الميلان", "White": "أبيض", "Black": "أسود", "Brass": "نحاسي", "Glass globe": "كرة زجاجية", "Filament bulb": "لمبة فلمنت", "Hanging bar": "شريط معلق", "Hangs down": "ينزل بمقدار", "Devices from Home Assistant": "الأجهزة من Home Assistant", "Place them now": "ضعها الآن", "Placed from Home Assistant": "وُضعت من Home Assistant", "room": "غرفة", "rooms": "غرف", "Everything from Home Assistant is already in its room": "كل الأجهزة في غرفها بالفعل", "Leave out": "استبعد", "Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.": "يوضع كل جهاز في الغرفة التي تحمل اسم منطقته في Home Assistant، والأجهزة الجديدة توضع تلقائياً.", "These areas have devices but no room with the same name. Choose a room:": "هذه المناطق فيها أجهزة لكن لا توجد غرفة بالاسم نفسه. اختر غرفة:", "Choose photos": "اختر صوراً", "Already there": "موجود مسبقاً", "Choose one photo of each room, or several at once: they are read one after another. What is already in a room is not added again.": "اختر صورة لكل غرفة أو عدة صور معاً، تُقرأ واحدة تلو الأخرى، وما هو موجود في الغرفة لا يُضاف مجدداً.",
   "Dashboard pictures": "صور لوحة التحكم", "Make dashboard pictures": "اصنع صور لوحة التحكم", Preview: "معاينة", "Whole home": "المنزل كاملاً", Rooms: "الغرف", "Previous room": "الغرفة السابقة", "Next room": "الغرفة التالية",
@@ -60,9 +61,16 @@ const AR = {
   "Line up": "محاذاة", "Spread evenly": "توزيع متساوٍ", "Select several": "تحديد عدة قطع", "Tap more pieces to add them": "انقر قطعاً أخرى لإضافتها", "Done selecting": "انتهى التحديد",
   "Left edges": "الحواف اليسرى", "Right edges": "الحواف اليمنى", "Top edges": "الحواف العليا", "Bottom edges": "الحواف السفلى", "Centres, up and down": "المراكز عمودياً", "Centres, side to side": "المراكز أفقياً", "Side to side": "أفقياً", "Up and down": "عمودياً",
 };
+Object.assign(AR, AR_MORE);
+const WORDS = { ar: AR, es: ES, ru: RU, zh: ZH };
+export const LANGS = [["auto", "Auto"], ["en", "English"], ["ar", "العربية"], ["es", "Español"], ["ru", "Русский"], ["zh", "简体中文"]];
+const PICK = "roost-atelier-lang";
+export function savedLang() { try { return localStorage.getItem(PICK) || "auto"; } catch { return "auto"; } }
+export function saveLang(l) { try { localStorage.setItem(PICK, l); } catch {} }
 let lang = "en";
-export function setLang(l) { lang = /^ar/.test(l || "") ? "ar" : "en"; return lang; }
+export function setLang(l) { const m = /^(ar|es|ru|zh)/.exec(String(l || "").toLowerCase()); lang = m ? m[1] : "en"; return lang; }
 export const getLang = () => lang;
 export const isRtl = () => lang === "ar";
-export function t(s) { return lang === "ar" ? AR[s] || s : s; }
-export function langFor(hass, override) { return setLang(override && override !== "auto" ? override : hass?.locale?.language || hass?.language || "en"); }
+export function t(s) { return lang === "en" ? s : WORDS[lang][s] || s; }
+export function langFor(hass, override) { const o = override && override !== "auto" ? override : savedLang(); return setLang(o && o !== "auto" ? o : hass?.locale?.language || hass?.language || "en"); }
+export const allWords = () => WORDS;

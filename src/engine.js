@@ -7,6 +7,12 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 
 // Real skies photographed as panoramas (day, sunset, night): they light the rooms and show in reflections
+// average brightness of a sky picture (to scale it to the real sky)
+function skyMean(d) {
+  let sum = 0, cnt = 0; const half = d instanceof Uint16Array, f = (v) => (half ? THREE.DataUtils.fromHalfFloat(v) : v);
+  for (let i = 0; i < d.length; i += 4 * 37) { sum += 0.2126 * f(d[i]) + 0.7152 * f(d[i + 1]) + 0.0722 * f(d[i + 2]); cnt++; }
+  return sum / Math.max(1, cnt);
+}
 export const ENV_BASE = { url: new URL("../env/", import.meta.url).href };
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -247,7 +253,7 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
     // the same home again (a save that changed nothing here, another level edited): nothing to rebuild
-    const { time: _time, ...looks } = plan.settings || {}, sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], looks, plan.north]);
+    const { time: _time, hdr: _hdr, ...looks } = plan.settings || {}, sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], looks, plan.north]);
     void _time;
     if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; this.fitSun(); this.request(true); return; }
     this._sig = sig;
@@ -810,6 +816,36 @@ export class AtelierEngine {
     const sn = this.skyNow || { E: 0, L: 0, sun: [1, 1, 1] }, live = this.sun.intensity > 0, ex = Math.max(1e-6, this.renderer.toneMappingExposure);
     const OUT = Math.min(0.1, 10.7 / (ex * (sn.E * 0.5 * Math.max(0.25, Math.sin(((sn.el || 0) * Math.PI) / 180)) + Math.PI * (sn.L || 0)) + 1e-6));
     GARDEN.gEnvK.value = OUT; GARDEN.gSunCol.value.setRGB(...sn.sun).multiplyScalar(live ? 0 : sn.E * 0.5 * OUT); GARDEN.gFill.value.setRGB(fill * 0.7, fill * 0.8, fill);
+
+    this.skyBackdrop(ex);
+  }
+  // "Real sky" setting: a real sky photo (HDR panorama) all round the house, seen past the garden and through the windows,
+  // metered like the garden so noon is bright, the evening glows and the night is dark
+  skyBackdrop(ex) {
+    const want = this.plan?.settings?.hdr !== false && this.view !== "top";
+    const el = this.skyNow?.el ?? 30, name = el > 40 ? "qwantani_noon_puresky" : el > 14 ? "qwantani_afternoon_puresky" : el > -5 ? "qwantani_sunset_puresky" : "qwantani_night_puresky";
+    const sky = want ? this.backSky(name) : null, tex = sky?.tex || null;
+    if (this.scene.background !== tex) { this.scene.background = tex; this.dirty = true; }
+    if (!tex) return;
+    const day = Math.max(0, Math.min(1, (el + 4) / 14));
+    this.scene.backgroundIntensity = (0.12 + 0.7 * day) / (ex * (sky.mean || 1));
+  }
+  // the sky photo for the backdrop: Home Assistant fetches it once from Poly Haven; until then (or offline) the built-in one
+  backSky(name) {
+    this._back ||= {};
+    const got = this._back[name];
+    if (got?.tex) return got;
+    if (!got && this.skySource) {
+      this._back[name] = { loading: true };
+      Promise.resolve().then(() => this.skySource(name)).then((buf) => {
+        if (!buf) throw new Error("no sky");
+        const d = new HDRLoader().parse(buf), tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
+        tex.mapping = THREE.EquirectangularReflectionMapping; tex.colorSpace = THREE.LinearSRGBColorSpace; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.flipY = true; tex.needsUpdate = true;
+        this._back[name] = { tex, mean: skyMean(d.data) }; this.dirty = true; this.request?.(false);
+      }).catch(() => { this._back[name] = { failed: true }; this.dirty = true; });
+    }
+    if (!this._skyWanted) { this._skyWanted = true; this.loadSky(this.skyKind || "day"); }
+    return this.skyTexture ? { tex: this.skyTexture, mean: this.skyMean } : null;
   }
   assignShadows(on) {
     const max = { low: 0, medium: 2, high: 4 }[this.quality], size = { low: 256, medium: 512, high: 1024 }[this.quality];
@@ -880,16 +916,14 @@ export class AtelierEngine {
   loadSky(kind) {
     this._skies ||= {};
     // the live view keeps its soft studio light; the panorama lights the photo, as in a studio render
-    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; this.skyMean = this._skies[kind].mean; this._skyWait?.(); this._skyWait = null; };
+    const apply = () => { if (this.skyKind !== kind) return; this.skyTexture = this._skies[kind].equirect; this.skyMean = this._skies[kind].mean; this._skyWait?.(); this._skyWait = null; this.dirty = true; this.request?.(false); };
     if (this._skies[kind]?.equirect) return apply();
     if (this._skies[kind]) return;
     this._skies[kind] = {};
     new HDRLoader().load(`${ENV_BASE.url}${kind}.hdr`, (tex) => {
       tex.mapping = THREE.EquirectangularReflectionMapping;
       // average brightness of the sky picture (to scale it to the real sky in photos)
-      let sum = 0, cnt = 0; const d = tex.image.data, half = d instanceof Uint16Array;
-      for (let i = 0; i < d.length; i += 4 * 37) { const f = (v) => (half ? THREE.DataUtils.fromHalfFloat(v) : v); sum += 0.2126 * f(d[i]) + 0.7152 * f(d[i + 1]) + 0.0722 * f(d[i + 2]); cnt++; }
-      this._skies[kind] = { equirect: tex, mean: sum / Math.max(1, cnt) };
+      this._skies[kind] = { equirect: tex, mean: skyMean(tex.image.data) };
       apply();
     }, undefined, () => { delete this._skies[kind]; });
   }

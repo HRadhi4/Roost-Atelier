@@ -263,7 +263,10 @@ const UI = {
   play: P("M7 4l13 8-13 8z"),
   plus: P("M12 5v14M5 12h14"),
   power: P("M12 3v9M7 6a8 8 0 1 0 10 0"),
-  "power-socket": R(3, 3, 18, 18, 4) + P("M9 8v4M15 8v4M10 16h4"),
+  // a sun peeping out behind a cloud
+  "weather-partly-cloudy": P("M9 3v1.5M3.5 9H5M5.1 5.1l1 1M12.9 5.1l-1 1") + P("M6.3 11.2A3.5 3.5 0 1 1 12.4 8") + P("M8 20h9a3.5 3.5 0 0 0 .4-7A5 5 0 0 0 8 13.2 3.4 3.4 0 0 0 8 20z"),
+  // a UK socket (BS 1363): an earth pin slot at the top, two flat slots below, and its switch
+  "power-socket": R(2, 4, 20, 16, 2.5) + R(6.8, 7.5, 1.6, 3.6, 0.4) + R(4.6, 13.5, 3.6, 1.6, 0.4) + R(9.4, 13.5, 3.6, 1.6, 0.4) + R(15, 8, 4, 7, 1) + P("M17 10.2v2.6"),
   "printer-outline": P("M6 9V3h12v6M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2") + R(6, 14, 12, 7, 0.5),
   radar: DEVS.radar,
   redo: P("M20 9h-11a5 5 0 0 0 0 10h4M16 5l4 4-4 4"),

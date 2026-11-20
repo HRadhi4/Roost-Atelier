@@ -2,6 +2,12 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.18.0 — 2026-11-20
+- **Languages**: Arabic, Spanish, Russian and Simplified Chinese, besides English. Pick one in the home settings (Language); Auto follows Home Assistant. Arabic turns the whole page right-to-left.
+- **Real sky**: a real sky photo all round the house (noon, afternoon, sunset or night, to match the time of day), downloaded once by Home Assistant. On by default; turn it off in the home settings.
+- **An icon for everything**: every piece of furniture, light, device and stairs has its own drawn icon; the name shows when you rest the mouse on it. Sockets are drawn to the UK standard.
+- **35 more pieces of furniture** (from the IKEA range): sideboard, display cabinet, cube shelf, bunk bed, cot, dressing table, dishwasher, microwave, tumble dryer, sun lounger, parasol, barbecue and more, with new Hall and Laundry groups.
+
 ## 0.17.0 — 2026-11-20
 - **Dashboard pictures are no longer black.** On some graphics chips the AI clean-up lost its connection; it now reconnects, and if it still can't, the picture is kept as traced. A black picture is never saved.
 - **Time of day**: Now, morning, noon, golden hour or night, in the home settings.
