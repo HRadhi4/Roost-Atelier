@@ -2,6 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.19.3 — 2026-11-21
+- The plan's buttons (sizes, print, zoom) and the Ceiling button show their icons in place again, instead of piled on top of each other.
+
 ## 0.19.2 — 2026-11-21
 - **Dashboard pictures on any computer.** When the graphics chip stops tracing, or the picture comes out black, the photo and the 360° view are drawn the plain 3D way with the home's stored light, on the 3D view's own drawing surface (no new one is asked for, which a struggling chip may refuse). Tracing that stops moving is noticed in seconds instead of waiting forever.
 

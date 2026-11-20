@@ -75,7 +75,7 @@ nav button{width:48px;height:48px;border-radius:14px}
 nav .sep{height:1px;background:var(--border);margin:4px 6px}
 main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-height:0}
 .plan{position:relative;overflow:hidden;touch-action:none;background:var(--bg)}
-.plan svg{position:absolute;inset:0;width:100%;height:100%}
+.plan>svg{position:absolute;inset:0;width:100%;height:100%}
 .plan .devs{position:absolute;inset:0;pointer-events:none}
 .plan .dv{position:absolute;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;background:var(--c);box-shadow:0 0 12px color-mix(in srgb,var(--c) 60%,transparent);pointer-events:auto;cursor:grab;border:2px solid transparent}
 .plan .dv.sel{border-color:#fff;box-shadow:0 0 0 3px var(--acc1)}
@@ -187,7 +187,7 @@ export class AtelierEditor {
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
         <button class="ceil" data-ceiling title="Ceiling"><ra-icon icon="mdi:ceiling-light-outline"></ra-icon><span></span></button><div class="zoom"><button data-sizes title="Sizes"><ra-icon icon="mdi:ruler"></ra-icon></button><button data-print title="Print"><ra-icon icon="mdi:printer-outline"></ra-icon></button><button data-z="in"><ra-icon icon="mdi:plus"></ra-icon></button><button data-z="fit"><ra-icon icon="mdi:fit-to-screen-outline"></ra-icon></button><button data-z="out"><ra-icon icon="mdi:minus"></ra-icon></button></div></div>
         <div class="three"></div></main><aside></aside></div>`;
-    this.ed = root.querySelector(".ed"); this.svg = root.querySelector("svg"); this.g = root.querySelector("svg .w"); this.devsEl = root.querySelector(".devs");
+    this.ed = root.querySelector(".ed"); this.svg = root.querySelector(".plan>svg"); this.g = root.querySelector(".plan>svg .w"); this.devsEl = root.querySelector(".devs");
     this.planEl = root.querySelector(".plan"); this.aside = root.querySelector("aside");
     this.drawNav();
     root.querySelector(".homes").onclick = () => this.homesMenu();
