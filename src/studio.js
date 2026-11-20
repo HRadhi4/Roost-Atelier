@@ -37,6 +37,9 @@ export class Studio {
     // a 360° view is twice as wide as it is tall
     const [W, H] = this.size || (pano ? (q === "high" ? [4096, 2048] : q === "medium" ? [3072, 1536] : [2048, 1024]) : q === "high" ? [1600, 1000] : q === "medium" ? [1280, 800] : [960, 600]);
     const canvas = document.createElement("canvas");
+    // a graphics chip that gives up (its drawing surface is lost, or the tracing stops moving) is not waited for:
+    // the picture is drawn the plain 3D way instead, and the rest of the run skips tracing
+    let lost = false; canvas.addEventListener("webglcontextlost", (ev) => { ev.preventDefault(); lost = true; });
     let renderer, pt, sky, quad, smooth;
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });
@@ -56,21 +59,56 @@ export class Studio {
         quad.material.map = pt._pathTracer.target.texture; quad.material.blending = THREE.NoBlending; quad.material.needsUpdate = true;
         renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); quad.render(renderer);
       };
-      // the home drawn the normal way (not traced) from the photo's camera, on a fresh drawing surface
+      // the home drawn the normal way (not traced) from the photo's camera. It uses the 3D view's own drawing surface
+      // (a browser allows only so many, and a chip in trouble may refuse a new one), sized to the photo for a moment
+      const plain = (draw) => {
+        const r = e.renderer, size = r.getSize(new THREE.Vector2()), ratio = r.getPixelRatio(), prevView = e.view, bg = e.scene.background, pc = e.composer;
+        try { e.busy = true; e.composer = null; return draw(r); }
+        finally { e.view = prevView; e._wallsOverride = null; e.scene.background = bg; e.composer = pc; r.setPixelRatio(ratio); r.setSize(size.x, size.y, false); e.applyWalls(); e.fitSun(); e.busy = false; e.request(true); }
+      };
+      const grab = (r, w, h) => { const out = document.createElement("canvas"); out.width = w; out.height = h; out.getContext("2d").drawImage(r.domElement, 0, 0, w, h, 0, 0, w, h); return out; };
       const rasterShot = (shot, cam, W, H, exposure, toneMapping) => {
-        let r2;
         try {
-          const c = document.createElement("canvas"); r2 = new THREE.WebGLRenderer({ canvas: c, antialias: true, preserveDrawingBuffer: true });
-          r2.setPixelRatio(1); r2.setSize(W, H, false); r2.outputColorSpace = THREE.SRGBColorSpace; r2.toneMapping = toneMapping; r2.toneMappingExposure = exposure;
-          r2.shadowMap.enabled = e.renderer.shadowMap.enabled; r2.shadowMap.type = e.renderer.shadowMap.type; r2.localClippingEnabled = true;
-          const prevView = e.view, bg = e.scene.background;
-          e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); if (shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
-          e.scene.updateMatrixWorld(true); r2.render(e.scene, cam);
-          const flat = document.createElement("canvas"); flat.width = W; flat.height = H; flat.getContext("2d").drawImage(c, 0, 0);
-          e.view = prevView; e._wallsOverride = null; e.scene.background = bg; e.applyWalls(); e.fitSun(); e.request(true);
-          return flat;
+          return plain((r) => {
+            e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); if (shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
+            r.setPixelRatio(1); r.setSize(W, H, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure;
+            e.scene.updateMatrixWorld(true); r.setRenderTarget(null); r.render(e.scene, cam); const out = grab(r, W, H);
+            r.toneMapping = tm; r.toneMappingExposure = ex; return out;
+          });
         } catch (err) { console.warn("Roost Atelier photo studio (plain picture):", err); return null; }
-        finally { r2?.dispose(); r2?.forceContextLoss?.(); }
+      };
+      // a 360° picture drawn the plain way: six square views round the spot, unwrapped into one picture
+      const rasterPano = (shot, cam, W, H, exposure, toneMapping) => {
+        try {
+          const S = Math.min(1024, Math.max(256, Math.round(W / 4)));
+          // faces: +x, -x, +y, -y, +z, -z (looking out from the spot)
+          const dirs = [[1, 0, 0, 0, 1, 0], [-1, 0, 0, 0, 1, 0], [0, 1, 0, 0, 0, -1], [0, -1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0], [0, 0, -1, 0, 1, 0]];
+          const faces = plain((r) => {
+            e.view = "walk"; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); e.scene.updateMatrixWorld(true);
+            r.setPixelRatio(1); r.setSize(S, S, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure; r.setRenderTarget(null);
+            const list = dirs.map(([x, y, z, ux, uy, uz]) => {
+              const pc = new THREE.PerspectiveCamera(90, 1, 0.05, 400); pc.position.copy(cam.position); pc.up.set(ux, uy, uz); pc.lookAt(cam.position.x + x, cam.position.y + y, cam.position.z + z); pc.updateMatrixWorld(true);
+              r.render(e.scene, pc); const t = grab(r, S, S); return { cam: pc, px: t.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, S, S).data };
+            });
+            r.toneMapping = tm; r.toneMappingExposure = ex; return list;
+          });
+          // each pixel of the 360° picture looks along a direction: find the face it falls on, and where
+          const flat = document.createElement("canvas"); flat.width = W; flat.height = H; const fx = flat.getContext("2d"), img = fx.createImageData(W, H), o = img.data;
+          const v = new THREE.Vector3(), inv = faces.map((f) => f.cam.matrixWorldInverse);
+          for (let y = 0; y < H; y++) {
+            const lat = (0.5 - (y + 0.5) / H) * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
+            for (let x = 0; x < W; x++) {
+              const lon = ((x + 0.5) / W - 0.25) * 2 * Math.PI, dx = Math.sin(lon) * cl, dy = sl, dz = -Math.cos(lon) * cl;
+              const ax = Math.abs(dx), ay = Math.abs(dy), az = Math.abs(dz);
+              const k = ax >= ay && ax >= az ? (dx > 0 ? 0 : 1) : ay >= az ? (dy > 0 ? 2 : 3) : dz > 0 ? 4 : 5;
+              v.set(cam.position.x + dx, cam.position.y + dy, cam.position.z + dz).applyMatrix4(inv[k]);
+              const px = Math.min(S - 1, Math.max(0, Math.floor(((v.x / -v.z) * 0.5 + 0.5) * S))), py = Math.min(S - 1, Math.max(0, Math.floor((0.5 - (v.y / -v.z) * 0.5) * S)));
+              const si = (py * S + px) * 4, di = (y * W + x) * 4, src = faces[k].px; o[di] = src[si]; o[di + 1] = src[si + 1]; o[di + 2] = src[si + 2]; o[di + 3] = 255;
+            }
+          }
+          fx.putImageData(img, 0, 0);
+          return flat;
+        } catch (err) { console.warn("Roost Atelier photo studio (plain 360° picture):", err); return null; }
       };
       for (let i = 0; i < shots.length; i++) {
         const shot = shots[i];
@@ -96,15 +134,34 @@ export class Studio {
         scene.environment = e.skyTexture || sky;
         scene.environmentIntensity = e.baked && e.skyTexture ? (e.skyNow?.L || 1) / (e.skyMean || 1) : e.scene.environmentIntensity;
         scene.background = shot.view !== "3d" ? null : new THREE.Color("#0B0D17");
-        pt.setScene(scene, cam); pt.reset();
+        let gaveUp = this.traceBroken || lost;
+        if (!gaveUp) { pt.setScene(scene, cam); pt.reset(); }
         // trace, a little at a time so the page stays smooth; pause while you move the view
-        while (pt.samples < target) {
+        let lastS = -1, lastT = performance.now(), first = true;
+        while (!gaveUp && pt.samples < target) {
           if (token !== this.token) return;
-          if (e.busy || e.keys?.size) { await wait(400); continue; }
+          if (e.busy || e.keys?.size) { await wait(400); lastT = performance.now(); continue; }
+          if (lost) { gaveUp = true; break; }
           pt.renderSample();
+          // the first light can take a while (the chip prepares the tracer); after that it must keep moving
+          if (pt.samples !== lastS) { if (lastS >= 0) first = false; lastS = pt.samples; lastT = performance.now(); }
+          else if (performance.now() - lastT > (first ? 150000 : 30000)) { gaveUp = true; break; }
           if ((this._n = (this._n || 0) + 1) % 9 === 0) { this.onProgress({ state: "working", done: i, total: shots.length, f: (i + 0.9 * Math.min(1, pt.samples / target)) / shots.length, name: shot.name }); await wait(8); }
         }
         if (token !== this.token) return;
+        if (gaveUp) {
+          if (!this.traceBroken) console.warn("Roost Atelier photo studio: tracing stopped on this graphics chip; plain 3D pictures are made instead");
+          this.traceBroken = true;
+          const c2 = shot.view === "pano" ? rasterPano(shot, cam, W, H, exposure, toneMapping) : rasterShot(shot, cam, W, H, exposure, toneMapping);
+          if (c2 && !dark(c2)) {
+            let blob = await new Promise((r) => c2.toBlob(r, "image/jpeg", 0.9));
+            if (blob) blob = await withCamera(blob, camInfo).catch(() => blob);
+            if (token !== this.token) return;
+            if (blob) await this.save(shot.key, blob).catch(() => {});
+            this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, saved: shot.key });
+          } else { this.black = (this.black || 0) + 1; this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, black: true }); }
+          continue;
+        }
         if (smooth) {
           // 360° views: the light is smoothed while keeping edges (the AI clean-up needs a normal camera)
           const m = smooth.material; m.map = pt._pathTracer.target.texture; m.sigma = 3.5; m.threshold = 0.18; m.kSigma = 1.2;

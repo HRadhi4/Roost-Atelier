@@ -2,6 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.19.2 — 2026-11-21
+- **Dashboard pictures on any computer.** When the graphics chip stops tracing, or the picture comes out black, the photo and the 360° view are drawn the plain 3D way with the home's stored light, on the 3D view's own drawing surface (no new one is asked for, which a struggling chip may refuse). Tracing that stops moving is noticed in seconds instead of waiting forever.
+
 ## 0.19.1 — 2026-11-21
 - **Dashboard pictures are never black.** On computers whose graphics chip gives up on the realistic tracing (some Intel laptops), each picture is drawn the normal 3D way instead, with the home's stored light. A computer where the AI clean-up failed once skips it from then on.
 
