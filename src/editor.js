@@ -46,7 +46,7 @@ header .title{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 header .test{display:flex;align-items:center;gap:6px;padding:0 12px}header .test.on{background:var(--acc1);color:#FFFFFF}
 .ed.testing nav{opacity:.35;pointer-events:none}.ed.testing .plan .hint{display:none}
 header h1{all:unset;font:600 17px "Space Grotesk",Inter,sans-serif;white-space:nowrap}
-button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;height:40px;min-width:40px;padding:0 10px;color:var(--text);transition:background .12s,transform .12s}
+button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;height:auto;min-height:40px;min-width:40px;padding:6px 12px;text-align:center;line-height:1.25;overflow-wrap:anywhere;color:var(--text);transition:background .12s,transform .12s}
 button:active{transform:scale(.96)}
 button:hover{background:var(--inset)}
 button.on,button.primary{color:#fff;background:linear-gradient(135deg,var(--acc1),var(--acc2));box-shadow:0 0 14px rgba(109,75,255,.35)}
@@ -54,7 +54,11 @@ button[disabled]{opacity:.35;pointer-events:none}
 button.danger{color:#FF7A7A}
 ha-icon{--mdc-icon-size:20px;display:inline-flex}
 .seg{display:flex;gap:2px;padding:3px;border-radius:14px;background:var(--inset)}
-.seg button{height:34px;border-radius:11px}
+.seg button{min-height:34px;border-radius:11px}
+.seg.wrap{flex-wrap:wrap}.seg.wrap button{flex:1 1 auto;white-space:nowrap;padding:6px 12px}
+/* rule: text is always inside a visible button: plain buttons in the side panel get their own background */
+aside button:not(.on):not(.primary):not(.danger):not(.x):not([data-close]):not(.tile){background:var(--inset)}
+aside button.danger{background:color-mix(in srgb,#FF7A7A 14%,var(--inset))}
 .status{color:var(--muted);font-size:12px;min-width:64px;text-align:center}
 nav{grid-row:2;display:flex;flex-direction:column;gap:6px;padding:10px 8px;border-inline-end:1px solid var(--border);background:var(--panel);overflow:auto;z-index:2}
 nav button{width:48px;height:48px;border-radius:14px}
@@ -82,7 +86,10 @@ aside h3{all:unset;font:600 11px Inter,sans-serif;color:var(--muted);text-transf
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .row.between{justify-content:space-between}
 .field{display:flex;flex-direction:column;gap:6px}
-input[type=text],select{all:unset;box-sizing:border-box;height:40px;padding:0 12px;border-radius:12px;background:var(--inset);color:var(--text);border:1px solid var(--border);width:100%}
+input[type=text],input[type=number],input[type=search],input:not([type]),textarea,select{all:unset;box-sizing:border-box;height:40px;padding:0 12px;border-radius:12px;background:var(--inset);color:var(--text);border:1px solid var(--border);width:100%;font:inherit;font-weight:600}
+input[type=number]{-moz-appearance:textfield;text-align:center}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input:focus-visible,textarea:focus-visible,select:focus-visible{border-color:var(--acc2);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc1) 30%,transparent)}
+textarea{height:auto;min-height:80px;padding:10px 12px}
 input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .sl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
 .sl input[type=range]{grid-column:1/-1}

@@ -136,6 +136,31 @@ with sync_playwright() as p:
     page.set_viewport_size({"width": 1200, "height": 800})
 
     # tapping a device on the dashboard card shows its controls next to it; walking in a room shows a side panel
+    # ---- house rules for the look: text never spills out of its button, every button with text has a visible
+    # background, and every text box looks like the Atelier's own (not the browser's default)
+    bad = page.evaluate("""async () => {
+      const ed = document.getElementById('panel').editor, out = [], w = (ms) => new Promise((r) => setTimeout(r, ms));
+      const look = (where) => {
+        for (const b of ed.aside.querySelectorAll('button')) {
+          if (!b.offsetParent || !b.textContent.trim()) continue;
+          const r = b.getBoundingClientRect();
+          for (const n of b.childNodes) { if (n.nodeType !== 3 || !n.textContent.trim()) continue; const rg = document.createRange(); rg.selectNodeContents(n); for (const q of rg.getClientRects()) if (q.left < r.left - 1 || q.right > r.right + 1 || q.top < r.top - 1 || q.bottom > r.bottom + 1) out.push(`${where}: "${b.textContent.trim()}" spills out of its button`); }
+          const bg = getComputedStyle(b); if (bg.backgroundColor === 'rgba(0, 0, 0, 0)' && bg.backgroundImage === 'none') out.push(`${where}: "${b.textContent.trim()}" has no button background`);
+        }
+        for (const i of ed.aside.querySelectorAll('input:not([type=range]):not([type=checkbox]):not([type=file]),select,textarea')) { if (!i.offsetParent) continue; const c = getComputedStyle(i); if (c.backgroundColor === 'rgba(0, 0, 0, 0)' || c.backgroundColor === 'rgb(255, 255, 255)' || c.borderTopStyle === 'inset') out.push(`${where}: a text box (${i.type || i.tagName}) has the browser's look`); }
+      };
+      ed.setLayout('split'); ed.useFloor(0);
+      let lamp = ed.floor.devices.find((d) => (d.kind || 'light') === 'light'); if (!lamp) { lamp = { id: 'dtest', kind: 'light', entity: '', name: 'Lamp', x: 1, y: 1 }; ed.floor.devices.push(lamp); ed.floor.devices.push({ ...lamp, id: 'dtest2', x: lamp.x + 0.5 }); ed.changed(); } lamp.look = 'downlight'; ed.select({ t: 'dev', id: lamp.id }); await w(200); look('downlight');
+      for (const lk of ['track', 'linear', 'wall', 'pendant']) { lamp.look = lk; ed.inspector(); await w(100); look(lk); }
+      if (!ed.floor.items.length) ed.floor.items.push({ id: 'itest', kind: 'sofa', x: 2, y: 2, rot: 0 }); ed.changed(); const it = ed.floor.items[0]; ed.select({ t: 'item', id: it.id }); await w(200); look('furniture');
+      if (!ed.floor.rooms.length) ed.floor.rooms.push({ id: 'rtest', type: 'living', name: '', pts: [[0, 0], [4, 0], [4, 4], [0, 4]] }); ed.select({ t: 'room', id: ed.floor.rooms[0].id }); await w(150); look('room');
+      ed.selectMany((x) => x.t === 'dev'); await w(150); look('several');
+      ed.select(null); ed.inspector('settings'); await w(150); look('settings');
+      ed.setTool('stairs'); await w(150); look('stairs'); ed.setTool('select');
+      ed.setTool('devices'); await w(150); look('devices'); ed.setTool('furniture'); await w(150); look('furniture library'); ed.setTool('select');
+      return [...new Set(out)];
+    }""")
+    check("text stays inside its button, buttons have a background, text boxes match the Atelier", not bad, "; ".join(bad[:6]))
     page.evaluate("""() => { document.getElementById('panel')?.remove(); window.svc = [];
       const p = { ...window.SAMPLES[0].make(), id: 'home1', updated: window.store.plan.updated + 1 }, f = p.floors[0];
       const r = f.rooms[0], cx = r.pts.reduce((a, q) => a + q[0], 0) / r.pts.length, cy = r.pts.reduce((a, q) => a + q[1], 0) / r.pts.length;
@@ -231,6 +256,7 @@ with sync_playwright() as p:
     errors[:] = [e for e in errors if "huggingface" not in e and "Failed to fetch" not in e and "ERR_" not in e]
 
     serious = [e for e in errors if "favicon" not in e and "ha-icon" not in e]
+
     check("no errors in the browser", not serious, "; ".join(serious[:3]))
     browser.close()
 

@@ -54,8 +54,13 @@ export async function denoise({ renderer, target, scene, camera, exposure, mid, 
   if (mid) { let sl = 0, n = 0; for (let i = 0; i < color.length; i += 16) { const l = 0.2126 * color[i] + 0.7152 * color[i + 1] + 0.0722 * color[i + 2]; if (l > 0) { sl += Math.log(l + 1e-6); n++; } } const lg = Math.exp(sl / Math.max(1, n)); if (lg > 0) exposure = mid / lg; }
   for (let i = 0; i < color.length; i += 4) { color[i] *= exposure; color[i + 1] *= exposure; color[i + 2] *= exposure; color[i + 3] = 1; }
   const { albedo, normal } = auxBuffers(renderer, scene, camera, w, h);
-  const net = await unet(small);
-  const out = await new Promise((res, rej) => net.tileExecute({ color: { data: color, width: w, height: h }, albedo: { data: albedo, width: w, height: h }, normal: { data: normal, width: w, height: h }, done: res, error: rej }));
+  // the graphics chip can drop the AI's connection (sleep, another tab, a driver reset): connect again once
+  let out;
+  for (let attempt = 0; ; attempt++) {
+    try { const net = await unet(small); out = await run(net); break; }
+    catch (err) { unetP = null; if (attempt >= 1) throw err; }
+  }
+  function run(net) { return new Promise((res, rej) => net.tileExecute({ color: { data: color, width: w, height: h }, albedo: { data: albedo, width: w, height: h }, normal: { data: normal, width: w, height: h }, done: res, error: rej })); }
   // some graphics chips hand back an empty (black) or broken picture: then the photo is used as traced
   let top = 0, bad = false; for (let i = 0; i < out.data.length; i += 4) { const v = out.data[i] + out.data[i + 1] + out.data[i + 2]; if (!Number.isFinite(v)) { bad = true; break; } if (v > top) top = v; }
   if (bad || top < 1e-4) throw new Error("the AI clean-up returned an empty picture");

@@ -51,6 +51,11 @@ export class Studio {
       // background work: enough light samples for the AI to finish a clean photo, many more without it
       const target = this.samples || (pano ? { low: 96, medium: 160, high: 256 }[q] : ai ? { low: 40, medium: 72, high: 128 }[q] : { low: 160, medium: 320, high: 640 }[q]);
       smooth = pano ? new FullScreenQuad(new DenoiseMaterial({ map: null, blending: THREE.NoBlending })) : null;
+      // the traced picture as it is (no AI clean-up), drawn onto the photo
+      const traced = () => {
+        quad.material.map = pt._pathTracer.target.texture; quad.material.blending = THREE.NoBlending; quad.material.needsUpdate = true;
+        renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); quad.render(renderer);
+      };
       for (let i = 0; i < shots.length; i++) {
         const shot = shots[i];
         if (token !== this.token) return;
@@ -96,10 +101,10 @@ export class Studio {
             quad.material.map = clean; quad.material.needsUpdate = true;
             renderer.toneMappingExposure = 1; renderer.setRenderTarget(null); quad.render(renderer); renderer.toneMappingExposure = exposure;
             clean.dispose();
-          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); pt.renderSample(); }
-        }
+          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); traced(); }
+        } else traced();
         // never keep a black photo: show the traced picture instead, and if that is black too, keep the old photo
-        if (dark(canvas)) { pt.renderSample(); if (dark(canvas)) { console.warn("Roost Atelier photo studio: the photo came out black on this graphics chip"); this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, black: true }); this.black = (this.black || 0) + 1; continue; } }
+        if (dark(canvas)) { traced(); if (dark(canvas)) { console.warn("Roost Atelier photo studio: the photo came out black on this graphics chip"); this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, black: true }); this.black = (this.black || 0) + 1; continue; } }
         // the picture carries the camera it was taken with, so the dashboard card can put device buttons on it
         let blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
         if (blob) blob = await withCamera(blob, camInfo).catch(() => blob);
