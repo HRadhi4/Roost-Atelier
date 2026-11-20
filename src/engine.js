@@ -64,6 +64,7 @@ function noLamps(m) {
   m.customProgramCacheKey = () => "roost-nolamps"; return m;
 }
 
+const isOn = (kind, st) => (kind === "curtain" ? st.open > 0.05 : kind === "door" ? !!st.open : kind === "lock" ? !st.locked : !!st.on);
 const CUT = 1.15;
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
@@ -648,13 +649,17 @@ export class AtelierEngine {
     return { pts, seeds, t: 0 };
   }
   // switch a device that has no working entity, just here on the screen (for trying the home out)
-  pretend(id) {
+  // want: true (on / open), false (off / closed) or undefined (the other way round from now)
+  pretend(id, want) {
     const rec = this.devices.get(id); if (!rec) return false;
     this.pretends ||= new Map();
     const now = stateOf(rec, this.states, this.opts.editing, this.pretends.get(id));
-    this.pretends.set(id, pretendNext(rec.kind, now)); this.updateDevices(false); this.updateHot?.(); this.request(false);
+    if (want === undefined || isOn(rec.kind, now) !== want) this.pretends.set(id, pretendNext(rec.kind, now));
+    this.updateDevices(false); this.updateHot?.(); this.request(false);
     return true;
   }
+  // is a device on right now (as shown)
+  isOn(id) { const rec = this.devices.get(id); return rec ? isOn(rec.kind, stateOf(rec, this.states, this.opts.editing, this.pretends?.get(id))) : false; }
   setStates(states) {
     this.states = states || {}; this.updateDevices(false);
     // a light changed while the photo was being made: start the photo again with the new light

@@ -49,7 +49,7 @@ ${CONTROLS_CSS}
 
 export class AtelierView {
   constructor(host, { onMoreInfo, toolbar = true, hotspots = true, editing = false, view = "3d", photo = false, quality = "auto", canBake, store, tap = "controls" } = {}) {
-    this.host = host; this.onMoreInfo = onMoreInfo; this.tapMode = editing ? "toggle" : tap;
+    this.host = host; this.onMoreInfo = onMoreInfo; this.tapMode = editing ? "toggle" : tap; this.editing = editing;
     host.innerHTML = `<div class="av" dir="${isRtl() ? "rtl" : "ltr"}"><div class="hot"></div><div class="prog hide"><span>${t("Making photo")}</span><i><b></b></i></div>${toolbar ? `<div class="bar"></div>` : ""}</div>`;
     this.root = host.firstElementChild; this.hotEl = this.root.querySelector(".hot");
     // the light is baked on a computer, not on phones or tablets; the result is shared through Home Assistant
@@ -157,6 +157,21 @@ export class AtelierView {
   dev(id) { return this.plan?.floors.flatMap((f) => f.devices).find((d) => d.id === id); }
   toggle(id) {
     const d = this.dev(id); if (!d) return;
+    // in the Atelier, devices only switch while trying the home out; while editing a tap picks the device
+    if (this.editing && !this.testing) { this.onDemo?.(d); return; }
+    // a group: every device in it goes the same way as the one tapped
+    const group = d.group ? (this.plan?.floors.flatMap((f) => f.devices) || []).filter((x) => x.group === d.group) : null;
+    if (group && group.length > 1 && this.tapMode !== "controls") {
+      const want = !this.engine.isOn(id);
+      for (const x of group) {
+        if (!x.entity || (this._hass && !this._hass.states[x.entity])) { this.engine.pretend(x.id, want); continue; }
+        const dom = x.entity.split(".")[0];
+        if (dom === "cover") this._hass.callService("cover", want ? "open_cover" : "close_cover", { entity_id: x.entity });
+        else if (dom === "lock") this._hass.callService("lock", want ? "unlock" : "lock", { entity_id: x.entity });
+        else this._hass.callService("homeassistant", want ? "turn_on" : "turn_off", { entity_id: x.entity });
+      }
+      return;
+    }
     // no working entity yet: it still switches on and off here, so the home can be tried out
     if (!d.entity || (this._hass && !this._hass.states[d.entity])) { if (!this.engine.pretend(id)) this.onDemo?.(d); return; }
     if (this.tapMode === "controls") return this.openId === id && this.popEl ? this.closePanel() : this.open(id);
@@ -164,7 +179,7 @@ export class AtelierView {
     if (dom === "lock" || dom === "alarm_control_panel" || dom === "sensor" || dom === "binary_sensor" || dom === "person" || dom === "device_tracker") return this.more(id);
     if (tapAction(this._hass, d.entity) === false) this.more(id);
   }
-  more(id) { const d = this.dev(id); if (this.testing && (!d?.entity || !this._hass?.states[d.entity])) { this.engine.pretend(id); return; } if (d?.entity) this.onMoreInfo?.(d.entity); else this.onDemo?.(d); }
+  more(id) { const d = this.dev(id); if (this.editing && !this.testing) { if (d) this.onDemo?.(d); return; } if (this.testing && (!d?.entity || !this._hass?.states[d.entity])) { this.engine.pretend(id); return; } if (d?.entity) this.onMoreInfo?.(d.entity); else this.onDemo?.(d); }
   tap(hit) { if (hit.device) this.toggle(hit.device); else this.onPick?.(hit); }
   // ---------------------------------------------------------------- the controls of a device
   // in the 3D and top views a small pop-up next to it; walking in a room, a side panel with everything in that room
