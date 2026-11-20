@@ -4,7 +4,7 @@
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-6D4BFF.svg)](https://hacs.xyz)
 [![Validate](https://github.com/HRadhi4/Roost-Atelier/actions/workflows/validate.yml/badge.svg)](https://github.com/HRadhi4/Roost-Atelier/actions/workflows/validate.yml)
-![Licence](https://img.shields.io/badge/licence-free%20for%20personal%20use-8B6CFF)
+![Licence](https://img.shields.io/badge/licence-MIT-8B6CFF)
 <a href="https://ko-fi.com/hradhi4"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
 
 <p align="center"><img src="docs/media/live.gif" width="560" alt="Lights, curtains, the AC and the TV coming on in the 3D home as they are switched in Home Assistant"></p>
@@ -159,10 +159,7 @@ If Roost Atelier makes your home nicer, you can buy me a coffee on Ko-fi. It hel
 
 ## Licence
 
-Roost Atelier is **source-available**: anyone can read, use, change and share the code.
-
-- **Free** for personal and other noncommercial use, under the [PolyForm Noncommercial License 1.0.0](LICENSE).
-- **Commercial use** (installers and integrators working for clients, businesses, show homes, rental properties, or reselling) needs a **one-time licence per user**. See [COMMERCIAL.md](COMMERCIAL.md).
+Free and open source under the [MIT License](LICENSE).
 
 The bundled open-source libraries keep their own licences. See `custom_components/roost_atelier/frontend/THIRD-PARTY-LICENSES.txt`.
 

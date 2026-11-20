@@ -12,8 +12,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # free for personal use, paid for commercial use: installed as a custom repository
-          ignore: license
 
   hassfest:
     runs-on: ubuntu-latest

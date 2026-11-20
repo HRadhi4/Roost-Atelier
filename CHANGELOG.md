@@ -2,6 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.18.2 — 2026-11-20
+- **Now free and open source (MIT licence)** for everyone, also for commercial use, so it can be listed in the Home Assistant Marketplace.
+
 ## 0.18.1 — 2026-11-20
 - Arabic (and the other languages) now show in your device's own clear font, the same as Roost Cards.
 
