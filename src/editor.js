@@ -720,10 +720,12 @@ export class AtelierEditor {
     el.addEventListener("wheel", (e) => { e.preventDefault(); const r = el.getBoundingClientRect(); this.zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
     // placing stairs: show where they would go as the pointer moves
     el.addEventListener("pointermove", (e) => {
+      this._mouse = [e.clientX, e.clientY];
       if (this.tool !== "stairs" || !this.stairPick?.step || this.drag) return;
       this.stairHover = this.snapPt(this.toPlan(e.clientX, e.clientY));
       if (!this._hovRaf) this._hovRaf = requestAnimationFrame(() => { this._hovRaf = 0; this.draw(); });
     });
+    el.addEventListener("pointerleave", () => (this._mouse = null));
     el.addEventListener("pointerdown", (e) => {
       // the plan's own buttons (zoom, ceiling, sizes, print) keep their taps: never start a drag from them
       if (e.composedPath().some((n) => n.tagName === "BUTTON" || n.classList?.contains("zoom"))) return;
@@ -1375,7 +1377,36 @@ export class AtelierEditor {
     else if (e.key === "Escape") { this.picking = false; this.select(null); }
     // Ctrl+A: every device on this level; Ctrl+Shift+A: every device and piece of furniture
     else if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A") && !this.testing) { e.preventDefault(); this.selectMany((x) => x.t === "dev" || (e.shiftKey && x.t === "item")); }
+    // Ctrl+C / Ctrl+X / Ctrl+V: copy, cut and paste devices and furniture (also onto another level)
+    else if ((e.ctrlKey || e.metaKey) && /^[cC]$/.test(e.key) && !this.testing) { if (this.copySel()) e.preventDefault(); }
+    else if ((e.ctrlKey || e.metaKey) && /^[xX]$/.test(e.key) && !this.testing) { if (this.copySel()) { e.preventDefault(); this.remove(this.sel); this.toast(t("Cut")); } }
+    else if ((e.ctrlKey || e.metaKey) && /^[vV]$/.test(e.key) && !this.testing) { if (this.clip?.length) { e.preventDefault(); this.paste(); } }
     else if (e.key === " " && !e.repeat) this._space = true;
+  }
+  // the picked devices and furniture, kept to paste (rooms, doors and stairs stay where they are)
+  copySel() {
+    const s = this.sel, f = this.floor; if (!s) return false;
+    const list = s.t === "multi" ? s.list : [s], out = [];
+    for (const x of list) {
+      const o = x.t === "dev" ? f.devices.find((d) => d.id === x.id) : x.t === "item" ? f.items.find((i) => i.id === x.id && i.kind !== "stairs") : null;
+      if (o) out.push({ t: x.t, o: clone(o) });
+    }
+    if (!out.length) return false;
+    this.clip = out; this.toast(`${out.length} ${t("copied")}`); return true;
+  }
+  // pasted under the pointer when it is on the plan, otherwise a little to the side of the originals
+  paste() {
+    const f = this.floor, cx = this.clip.reduce((a, c) => a + c.o.x, 0) / this.clip.length, cy = this.clip.reduce((a, c) => a + c.o.y, 0) / this.clip.length;
+    let dx = 0.5, dy = 0.5;
+    if (this._mouse) { const [px, py] = this.toPlan(...this._mouse); dx = snap(px) - cx; dy = snap(py) - cy; }
+    this.snapshot(); const next = [];
+    for (const { t: k, o } of this.clip) {
+      const c = { ...clone(o), id: uid(k === "item" ? "i" : "d"), x: round(o.x + dx, 3), y: round(o.y + dy, 3) };
+      if (k === "dev") delete c.group;
+      (k === "item" ? f.items : f.devices).push(c); next.push({ t: k, id: c.id });
+    }
+    this.sel = next.length > 1 ? { t: "multi", list: next } : next[0]; this.tool = "select";
+    this.changed(); this.drawNav(); this.inspector(); this.toast(t("Pasted"));
   }
   // every device or piece on this level that passes a test, as one selection
   selectMany(test, base = []) {

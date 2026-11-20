@@ -1,6 +1,6 @@
 {
   "name": "roost-atelier",
-  "version": "0.18.2",
+  "version": "0.18.3",
   "description": "Build your home in realistic 3D and watch it live on Home Assistant dashboards.",
   "scripts": {
     "build": "node build.mjs",
