@@ -2,6 +2,14 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.15.0 — 2026-11-20
+- **Your devices place themselves.** After you draw the floor plan, the lights, ACs, curtains, fans, TVs, locks and other devices from Home Assistant are put in the matching rooms by their Home Assistant area: lights spread evenly, the AC on a wall without a window, curtains on the windows, the TV facing the sofa, the fan in the middle. Rooms whose names don't match can be matched by hand, and *Place them now* in the home settings runs it again.
+- **Several room photos at once.** The photo import takes many pictures in one go and adds the furniture, windows, doors, fans and ACs it sees, leaving out what is already there.
+- **Many more light fittings**, grouped like a lighting shop: surface, deep and square downlights, anti-glare spots, aluminium profiles, linear and neon lights, glass and filament pendants, linear pendants, wall lights (up/down, up, down and reading arm), table and desk lamps, wall washers, step lights, garden bollards, ground uplights and floodlights, with style, finish and height choices.
+- **Smoother editing.** Dashboard pictures are made only when you press *Make dashboard pictures*, no longer by themselves in the background.
+- A picked room no longer shows its wall sizes twice.
+- Safer saving: every id in a home is cleaned when it is saved and loaded, and pictures are sent with a safe content type.
+
 ## 0.14.0 — 2026-11-20
 - **The pictures card moved to Roost Cards.** The Atelier now only designs the home and makes its pictures; the new **Roost Home Tour** card in Roost Cards shows them. Add it from the card picker after updating Roost Cards.
 - A new, light message gives dashboard cards just what they need to show the pictures (rooms, doors and devices, and which pictures are made).
