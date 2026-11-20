@@ -318,8 +318,109 @@ function wallPanels(o) {
   return g;
 }
 
+// ---------------------------------------------------------------- more pieces, after the range of a big furniture store
+const white = () => solid("#F2F0EC", { rough: 0.55 });
+function boxUnit(g, o, mat, { doors = 2, legsH = 0, gap = 0.004 } = {}) {
+  if (legsH) legs(g, o.w, o.d, legsH, 0.05, metal("#1B1B1F"), 0.012);
+  B(g, o.w, o.h - legsH, o.d, 0.01, mat, 0, legsH, 0);
+  for (let i = 0; i < doors; i++) B(g, o.w / doors - gap * 2, o.h - legsH - 0.03, 0.008, 0.003, mat, -o.w / 2 + (i + 0.5) * (o.w / doors), legsH + 0.015, o.d / 2);
+  return g;
+}
+function sideboard(o) { return boxUnit(new THREE.Group(), o, wood(o.wood || "oak"), { doors: 3, legsH: 0.12 }); }
+function shoeCabinet(o) { const g = boxUnit(new THREE.Group(), o, white(), { doors: 2 }); for (let i = 0; i < 2; i++) B(g, 0.08, 0.015, 0.02, 0.005, metal("#8E9096", 0.3), -o.w / 4 + i * (o.w / 2), o.h - 0.08, o.d / 2 + 0.012); return g; }
+function displayCabinet(o) {
+  const g = new THREE.Group(), fr = wood(o.wood || "walnut"), gl = glass();
+  B(g, o.w, 0.04, o.d, 0.005, fr, 0, 0, 0); B(g, o.w, 0.03, o.d, 0.005, fr, 0, o.h - 0.03, 0);
+  for (const s of [-1, 1]) B(g, 0.03, o.h, o.d, 0.004, fr, s * (o.w / 2 - 0.015), 0, 0);
+  B(g, o.w, o.h, 0.01, 0.002, fr, 0, 0, -o.d / 2 + 0.005);
+  for (let k = 1; k < 4; k++) B(g, o.w - 0.06, 0.012, o.d - 0.04, 0.003, gl, 0, (k * o.h) / 4, 0);
+  const p = mesh(new THREE.BoxGeometry(o.w - 0.06, o.h - 0.08, 0.006), gl, 0, o.h / 2, o.d / 2); p.userData.glass = true; g.add(p);
+  for (let k = 1; k < 4; k++) C(g, 0.04, 0.05, 0.12, solid("#B8674A", { rough: 0.4 }), -0.1 + 0.1 * k, (k * o.h) / 4 + 0.012, 0, 16);
+  return g;
+}
+function cubeShelf(o) {
+  const g = new THREE.Group(), m = white(), cols = Math.max(1, Math.round(o.w / 0.39)), rows = Math.max(1, Math.round(o.h / 0.39)), t = 0.025;
+  for (let i = 0; i <= cols; i++) B(g, t, o.h, o.d, 0.004, m, -o.w / 2 + (i * o.w) / cols, 0, 0);
+  for (let j = 0; j <= rows; j++) B(g, o.w, t, o.d, 0.004, m, 0, Math.min(o.h - t, (j * o.h) / rows), 0);
+  // a few boxes and books in the cubes
+  const fill = [fabric("#C9B79C"), solid("#3E5A7A", { rough: 0.6 }), fabric("#8FA08A")];
+  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) if ((i + j) % 2 === 0) B(g, o.w / cols - 0.06, o.h / rows - 0.08, o.d - 0.06, 0.02, fill[(i + j * 2) % 3], -o.w / 2 + (i + 0.5) * (o.w / cols), (j * o.h) / rows + t, 0);
+  return g;
+}
+function wallShelf(o) { const g = new THREE.Group(); B(g, o.w, 0.025, o.d, 0.004, wood(o.wood || "oak"), 0, 0, 0); for (let k = 0; k < 4; k++) B(g, 0.03, 0.2, 0.15, 0.004, solid(["#3E5A7A", "#B8674A", "#E8E2D6", "#45464C"][k], { rough: 0.6 }), -o.w / 3 + k * 0.04, 0.025, 0); C(g, 0.05, 0.04, 0.14, solid("#E8E2D6", { rough: 0.3, clear: 0.5 }), o.w / 4, 0.025, 0, 16); return g; }
+function coatRack(o) { const g = new THREE.Group(), m = metal("#1B1B1F"); C(g, 0.02, 0.02, o.h, m, 0, 0, 0, 10); C(g, 0.2, 0.22, 0.02, m, 0, 0, 0, 24); for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2, h = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.18, 6), m, Math.cos(a) * 0.07, o.h - 0.15, Math.sin(a) * 0.07); h.rotation.z = Math.cos(a) * 0.9; h.rotation.x = -Math.sin(a) * 0.9; g.add(h); } B(g, 0.32, 0.6, 0.12, 0.05, fabric("#B8674A"), 0.12, o.h - 0.9, 0); return g; }
+function clothesRail(o) { const g = new THREE.Group(), m = metal("#1B1B1F"); for (const s of [-1, 1]) C(g, 0.014, 0.014, o.h, m, s * (o.w / 2 - 0.02), 0, 0, 8); const bar = mesh(new THREE.CylinderGeometry(0.012, 0.012, o.w, 8), m, 0, o.h - 0.02, 0); bar.rotation.z = Math.PI / 2; g.add(bar); B(g, o.w - 0.04, 0.02, o.d, 0.004, wood("oak"), 0, 0.2, 0); const cl = [fabric("#D8CFC0"), fabric("#2F3E5C"), fabric("#8E8C92"), fabric("#B8674A")]; for (let k = 0; k < 5; k++) B(g, 0.05, 0.85, 0.42, 0.02, cl[k % 4], -o.w / 3 + (k * o.w) / 7, o.h - 0.95, 0); return g; }
+function roomDivider(o) { const g = new THREE.Group(), n = Math.max(2, Math.round(o.w / 0.45)), m = solid("#C9B79C", { rough: 0.9 }); for (let i = 0; i < n; i++) { const p = B(g, o.w / n - 0.02, o.h, 0.025, 0.006, m, -o.w / 2 + (i + 0.5) * (o.w / n), 0, 0); p.rotation.y = (i % 2 ? 1 : -1) * 0.25; } return g; }
+function trolley(o) { const g = new THREE.Group(), m = metal("#3E5A7A", 0.45); for (const y of [0.1, 0.38, 0.66]) B(g, o.w, 0.06, o.d, 0.015, m, 0, y, 0); for (const sx of [-1, 1]) for (const sz of [-1, 1]) { C(g, 0.008, 0.008, 0.7, m, sx * (o.w / 2 - 0.02), 0.04, sz * (o.d / 2 - 0.02), 6); C(g, 0.025, 0.025, 0.02, solid("#1B1B1F"), sx * (o.w / 2 - 0.03), 0, sz * (o.d / 2 - 0.03), 10); } return g; }
+function bunkBed(o) {
+  const g = new THREE.Group(), fr = wood(o.wood || "white"), mat = fabric("#F2EFE8"), sheet = fabric("#8FA08A");
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) B(g, 0.05, o.h, 0.05, 0.008, fr, sx * (o.w / 2 - 0.025), 0, sz * (o.d / 2 - 0.025));
+  for (const y of [0.25, 1.25]) { B(g, o.w, 0.06, o.d, 0.01, fr, 0, y, 0); B(g, o.w - 0.08, 0.14, o.d - 0.08, 0.04, mat, 0, y + 0.06, 0); B(g, o.w - 0.1, 0.03, o.d * 0.6, 0.02, sheet, 0, y + 0.2, 0.15); B(g, 0.45, 0.1, 0.3, 0.05, mat, 0, y + 0.2, -o.d / 2 + 0.25); }
+  for (const sz of [-1, 1]) B(g, o.w, 0.05, 0.03, 0.006, fr, 0, o.h - 0.1, sz * (o.d / 2 - 0.02));
+  for (let k = 0; k < 5; k++) B(g, 0.03, 0.03, 0.4, 0.005, fr, o.w / 2 - 0.02, 0.35 + k * 0.25, o.d / 2 - 0.3);
+  return g;
+}
+function cot(o) { const g = new THREE.Group(), fr = wood("white"); for (const sx of [-1, 1]) for (const sz of [-1, 1]) B(g, 0.04, o.h, 0.04, 0.006, fr, sx * (o.w / 2 - 0.02), 0, sz * (o.d / 2 - 0.02)); B(g, o.w - 0.06, 0.12, o.d - 0.06, 0.03, fabric("#F2EFE8"), 0, 0.3, 0); for (const sz of [-1, 1]) for (let k = 0; k < 10; k++) C(g, 0.008, 0.008, o.h - 0.3, fr, -o.w / 2 + 0.06 + (k * (o.w - 0.12)) / 9, 0.3, sz * (o.d / 2 - 0.02), 6); return g; }
+function dayBed(o) { const g = new THREE.Group(), fr = wood(o.wood || "oak"), f = fabric(o.color || "#D8CFC0"); B(g, o.w, 0.35, o.d, 0.02, fr, 0, 0, 0); B(g, o.w - 0.06, 0.14, o.d - 0.06, 0.05, f, 0, 0.35, 0); B(g, o.w, 0.5, 0.06, 0.02, fr, 0, 0.35, -o.d / 2 + 0.03); for (const s of [-1, 1]) B(g, 0.06, 0.4, o.d, 0.02, fr, s * (o.w / 2 - 0.03), 0.35, 0); for (let k = 0; k < 3; k++) B(g, 0.55, 0.38, 0.14, 0.07, f, -o.w / 3 + (k * o.w) / 3, 0.48, -o.d / 2 + 0.16); return g; }
+function chaiseLongue(o) { const g = new THREE.Group(), f = fabric(o.color); legs(g, o.w - 0.1, o.d - 0.1, 0.12, 0.05, wood("walnut")); B(g, o.w, 0.2, o.d, 0.05, f, 0, 0.12, 0); const back = B(g, o.w, 0.5, 0.2, 0.08, f, 0, 0.3, -o.d / 2 + 0.1); back.rotation.x = -0.35; B(g, 0.18, 0.28, o.d * 0.45, 0.06, f, -o.w / 2 + 0.09, 0.3, -o.d * 0.25); return g; }
+function diningRound(o) { const g = new THREE.Group(); C(g, o.w / 2, o.w / 2, 0.035, wood(o.wood || "oak"), 0, o.h - 0.035, 0, 48); C(g, 0.06, 0.06, o.h - 0.1, wood(o.wood || "oak"), 0, 0.06, 0, 16); C(g, 0.3, 0.32, 0.06, wood(o.wood || "oak"), 0, 0, 0, 32); return g; }
+function barTable(o) { const g = new THREE.Group(); C(g, o.w / 2, o.w / 2, 0.03, solid("#2B2D33", { rough: 0.4 }), 0, o.h - 0.03, 0, 40); C(g, 0.03, 0.03, o.h - 0.03, metal("#1B1B1F"), 0, 0, 0, 10); C(g, 0.24, 0.26, 0.02, metal("#1B1B1F"), 0, 0, 0, 32); return g; }
+function dressingTable(o) { const g = new THREE.Group(), wd = white(); legs(g, o.w, o.d, 0.72, 0.04, wood("oak"), 0.016); B(g, o.w, 0.12, o.d, 0.01, wd, 0, 0.62, 0); const mir = mesh(new THREE.CircleGeometry(0.32, 40), solid("#DDE6EE", { rough: 0.02, metal: 1 }), 0, 1.08, -o.d / 2 + 0.06); g.add(mir); const ring = mesh(new THREE.TorusGeometry(0.33, 0.012, 8, 48), brass(), 0, 1.08, -o.d / 2 + 0.06); g.add(ring); B(g, 0.2, 0.02, 0.1, 0.005, brass(), 0, 0.74, -o.d / 2 + 0.07); return g; }
+function drawerUnit(o) { const g = new THREE.Group(), m = white(), n = Math.max(2, Math.round(o.h / 0.18)); B(g, o.w, o.h - 0.05, o.d, 0.01, m, 0, 0.05, 0); for (let i = 0; i < n; i++) { const y = 0.06 + (i * (o.h - 0.07)) / n; B(g, o.w - 0.02, (o.h - 0.07) / n - 0.008, 0.01, 0.003, m, 0, y, o.d / 2); B(g, 0.1, 0.012, 0.02, 0.004, metal("#8E9096", 0.3), 0, y + (o.h - 0.07) / n / 2, o.d / 2 + 0.012); } for (const sx of [-1, 1]) for (const sz of [-1, 1]) C(g, 0.02, 0.02, 0.04, solid("#1B1B1F"), sx * (o.w / 2 - 0.05), 0, sz * (o.d / 2 - 0.05), 10); return g; }
+function dishwasher(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.01, solid("#E7E8EA", { rough: 0.25, metal: 0.6 }), 0, 0, 0); B(g, o.w - 0.04, 0.03, 0.02, 0.006, metal("#2B2D33"), 0, o.h - 0.1, o.d / 2 + 0.01); return g; }
+function microwave(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.02, solid("#1B1B1F", { rough: 0.3 }), 0, 0, 0); const d = mesh(new THREE.PlaneGeometry(o.w * 0.62, o.h * 0.7), solid("#0B0B0E", { rough: 0.05, clear: 1 }), -o.w * 0.12, o.h / 2, o.d / 2 + 0.001); g.add(d); return g; }
+function dryer(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.02, white(), 0, 0, 0); const d = mesh(new THREE.TorusGeometry(0.17, 0.03, 12, 40), chrome(), 0, o.h * 0.5, o.d / 2); g.add(d); const gl = mesh(new THREE.CircleGeometry(0.15, 32), solid("#2B2D33", { rough: 0.1 }), 0, o.h * 0.5, o.d / 2 + 0.001); g.add(gl); B(g, o.w - 0.08, 0.08, 0.01, 0.004, solid("#D8D6D2", { rough: 0.4 }), 0, o.h - 0.1, o.d / 2); return g; }
+function dryingRack(o) { const g = new THREE.Group(), m = metal("#E6E8EB", 0.3); for (const s of [-1, 1]) { const l = mesh(new THREE.BoxGeometry(0.02, o.h * 1.1, 0.02), m, s * (o.w / 2 - 0.05), o.h / 2, 0); l.rotation.z = s * 0.25; g.add(l); } for (let k = 0; k < 8; k++) { const b = mesh(new THREE.CylinderGeometry(0.004, 0.004, o.d, 6), m, -o.w / 2 + 0.1 + (k * (o.w - 0.2)) / 7, o.h, 0); b.rotation.x = Math.PI / 2; g.add(b); } B(g, 0.4, 0.01, 0.5, 0.004, fabric("#C9D6E2"), -0.1, o.h - 0.25, 0).rotation.z = 0.05; return g; }
+function laundryBasket(o) { const g = new THREE.Group(); C(g, o.w / 2, o.w / 2 * 0.9, o.h, solid("#B89A70", { rough: 0.9 }), 0, 0, 0, 20); C(g, o.w / 2 - 0.02, o.w / 2 - 0.02, 0.02, fabric("#E9E4DA"), 0, o.h - 0.05, 0, 20); return g; }
+function bathShelf(o) { const g = new THREE.Group(), m = wood(o.wood || "oak"); for (const sx of [-1, 1]) B(g, 0.03, o.h, o.d, 0.004, m, sx * (o.w / 2 - 0.015), 0, 0); for (let k = 0; k < 4; k++) B(g, o.w, 0.02, o.d, 0.004, m, 0, 0.05 + (k * (o.h - 0.1)) / 3, 0); for (let k = 0; k < 3; k++) B(g, o.w - 0.1, 0.06, o.d - 0.06, 0.02, fabric(["#F2EFE8", "#C9D6E2", "#D8CFC0"][k]), 0, 0.07 + (k * (o.h - 0.1)) / 3, 0); return g; }
+function sunLounger(o) { const g = new THREE.Group(), fr = wood("oak"), f = fabric(o.color || "#F2EFE8"); legs(g, o.w, o.d - 0.1, 0.25, 0.05, fr, 0.025); B(g, o.w, 0.04, o.d, 0.01, fr, 0, 0.25, 0); B(g, o.w - 0.04, 0.07, o.d * 0.65, 0.03, f, 0, 0.29, o.d * 0.17); const back = B(g, o.w - 0.04, 0.07, o.d * 0.35, 0.03, f, 0, 0.3, -o.d * 0.32); back.rotation.x = 0.7; back.position.y = 0.42; return g; }
+function parasol(o) { const g = new THREE.Group(); C(g, 0.025, 0.025, o.h, wood("oak"), 0, 0, 0, 10); C(g, 0.25, 0.28, 0.06, solid("#45464C", { rough: 0.8 }), 0, 0, 0, 24); const top = mesh(new THREE.ConeGeometry(o.w / 2, 0.45, 8, 1, true), fabric("#EEE6D8"), 0, o.h - 0.15, 0); top.material = top.material.clone(); top.material.side = THREE.DoubleSide; g.add(top); return g; }
+function outdoorSofa(o) { const g = new THREE.Group(), fr = solid("#5A5550", { rough: 0.85 }), f = fabric("#E9E4DA"); B(g, o.w, 0.4, o.d, 0.03, fr, 0, 0, 0); B(g, o.w, 0.45, 0.12, 0.03, fr, 0, 0.4, -o.d / 2 + 0.06); for (const s of [-1, 1]) B(g, 0.12, 0.25, o.d, 0.03, fr, s * (o.w / 2 - 0.06), 0.4, 0); B(g, o.w - 0.26, 0.12, o.d - 0.16, 0.05, f, 0, 0.4, 0.04); B(g, o.w - 0.3, 0.35, 0.12, 0.06, f, 0, 0.52, -o.d / 2 + 0.2); return g; }
+function planter(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.02, solid("#45464C", { rough: 0.85 }), 0, 0, 0); for (let k = 0; k < Math.max(2, Math.round(o.w / 0.35)); k++) { const p = mesh(new THREE.IcosahedronGeometry(0.2, 1), solid("#5F7A45", { rough: 0.85 }), -o.w / 2 + 0.2 + k * 0.35, o.h + 0.12, 0); p.scale.y = 0.8; g.add(p); } return g; }
+function bbq(o) { const g = new THREE.Group(), m = metal("#2B2D33", 0.5); legs(g, o.w, o.d, 0.75, 0.04, m, 0.015); B(g, o.w, 0.25, o.d, 0.04, m, 0, 0.75, 0); const lid = mesh(new THREE.CylinderGeometry(o.d / 2, o.d / 2, o.w * 0.9, 20, 1, false, 0, Math.PI), m, 0, 1.0, 0); lid.rotation.z = Math.PI / 2; g.add(lid); return g; }
+function wallArt(o) { const g = new THREE.Group(); B(g, o.w, o.h, 0.03, 0.004, wood("walnut"), 0, 0, 0); const p = mesh(new THREE.PlaneGeometry(o.w - 0.08, o.h - 0.08), solid(o.color || "#D9AFA3", { rough: 0.9 }), 0, o.h / 2, 0.016); g.add(p); const sun = mesh(new THREE.CircleGeometry(Math.min(o.w, o.h) * 0.16, 32), solid("#B8674A", { rough: 0.9 }), 0, o.h * 0.58, 0.017); g.add(sun); return g; }
+function vase(o) { const g = new THREE.Group(), pts = [[0, 0], [o.w * 0.35, 0], [o.w * 0.5, o.h * 0.35], [o.w * 0.25, o.h * 0.8], [o.w * 0.28, o.h], [o.w * 0.24, o.h]].map(([x, y]) => new THREE.Vector2(x, y)); g.add(mesh(new THREE.LatheGeometry(pts, 24), solid(o.color || "#B8674A", { rough: 0.5, clear: 0.3 }))); for (let k = 0; k < 3; k++) { const st = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.5, 4), solid("#5F7A45"), (k - 1) * 0.04, o.h + 0.22, 0); st.rotation.z = (k - 1) * 0.25; g.add(st); } return g; }
+function wallClock(o) { const g = new THREE.Group(); const f = mesh(new THREE.CylinderGeometry(o.w / 2, o.w / 2, 0.04, 40), white(), 0, 0, 0.02); f.rotation.x = Math.PI / 2; f.position.y = o.h / 2; g.add(f); const r = mesh(new THREE.TorusGeometry(o.w / 2, 0.012, 8, 40), metal("#1B1B1F"), 0, o.h / 2, 0.04); g.add(r); for (const [l, a] of [[o.w * 0.3, 0.4], [o.w * 0.4, 2.2]]) { const hnd = mesh(new THREE.BoxGeometry(0.008, l, 0.004), metal("#1B1B1F"), 0, o.h / 2, 0.045); hnd.geometry.translate(0, l / 2, 0); hnd.rotation.z = a; g.add(hnd); } return g; }
+function toyStorage(o) { const g = new THREE.Group(), m = wood("white"); B(g, o.w, o.h, o.d, 0.01, m, 0, 0, 0); const cols = ["#E86FB0", "#4E8CFF", "#F5B041", "#5FBF77", "#FF7A59", "#8B6CFF"], n = 3; for (let i = 0; i < n; i++) for (let j = 0; j < 2; j++) B(g, o.w / n - 0.04, o.h / 2 - 0.06, 0.02, 0.01, solid(cols[(i + j * 3) % 6], { rough: 0.6 }), -o.w / 2 + (i + 0.5) * (o.w / n), 0.03 + (j * o.h) / 2, o.d / 2); return g; }
+function kidsTable(o) { const g = new THREE.Group(); B(g, o.w, 0.03, o.d, 0.01, white(), 0, o.h - 0.03, 0); legs(g, o.w, o.d, o.h - 0.03, 0.04, wood("oak"), 0.02); return g; }
+function stool(o) { const g = new THREE.Group(); C(g, o.w / 2, o.w / 2, 0.03, wood(o.wood || "oak"), 0, o.h - 0.03, 0, 28); for (let k = 0; k < 3; k++) { const a = (k * Math.PI * 2) / 3, l = mesh(new THREE.CylinderGeometry(0.014, 0.012, o.h, 8), wood(o.wood || "oak"), Math.cos(a) * o.w * 0.3, (o.h - 0.03) / 2, Math.sin(a) * o.w * 0.3); l.rotation.z = Math.cos(a) * 0.08; l.rotation.x = -Math.sin(a) * 0.08; g.add(l); } return g; }
+
 // kind: [name, category, builder, default w, d, h, mount ("floor" | "wall" | "ceiling"), default elevation]
 export const LIBRARY = {
+  sideboard: ["Sideboard", "Living", sideboard, 1.6, 0.45, 0.8, "floor"],
+  display_cabinet: ["Glass cabinet", "Living", displayCabinet, 0.8, 0.4, 1.9, "floor"],
+  cube_shelf: ["Cube shelf", "Living", cubeShelf, 1.47, 0.39, 1.47, "floor"],
+  wall_shelf: ["Wall shelf", "Living", wallShelf, 0.8, 0.22, 0.3, "wall", 1.5],
+  chaise: ["Chaise longue", "Living", chaiseLongue, 0.75, 1.6, 0.8, "floor"],
+  stool: ["Stool", "Living", stool, 0.38, 0.38, 0.45, "floor"],
+  room_divider: ["Room divider", "Living", roomDivider, 1.6, 0.3, 1.75, "floor"],
+  dining_round: ["Round dining table", "Dining", diningRound, 1.1, 1.1, 0.75, "floor"],
+  bar_table: ["Bar table", "Dining", barTable, 0.7, 0.7, 1.05, "floor"],
+  trolley: ["Trolley", "Dining", trolley, 0.45, 0.35, 0.78, "floor"],
+  bunk_bed: ["Bunk bed", "Bedroom", bunkBed, 1.0, 2.0, 1.6, "floor"],
+  cot: ["Baby cot", "Bedroom", cot, 0.66, 1.26, 0.9, "floor"],
+  day_bed: ["Day bed", "Bedroom", dayBed, 0.9, 2.0, 0.85, "floor"],
+  dressing_table: ["Dressing table", "Bedroom", dressingTable, 1.0, 0.45, 0.75, "floor"],
+  clothes_rail: ["Clothes rail", "Bedroom", clothesRail, 1.2, 0.5, 1.75, "floor"],
+  toy_storage: ["Toy storage", "Bedroom", toyStorage, 0.9, 0.35, 0.65, "floor"],
+  kids_table: ["Children's table", "Bedroom", kidsTable, 0.8, 0.55, 0.48, "floor"],
+  drawer_unit: ["Drawer unit", "Office", drawerUnit, 0.42, 0.5, 0.6, "floor"],
+  shoe_cabinet: ["Shoe cabinet", "Hall", shoeCabinet, 0.8, 0.3, 1.0, "floor"],
+  coat_rack: ["Coat stand", "Hall", coatRack, 0.45, 0.45, 1.8, "floor"],
+  dishwasher: ["Dishwasher", "Kitchen", dishwasher, 0.6, 0.6, 0.86, "floor"],
+  microwave: ["Microwave", "Kitchen", microwave, 0.5, 0.38, 0.3, "wall", 0.92],
+  dryer: ["Tumble dryer", "Laundry", dryer, 0.6, 0.6, 0.85, "floor"],
+  drying_rack: ["Drying rack", "Laundry", dryingRack, 1.1, 0.55, 0.95, "floor"],
+  laundry_basket: ["Laundry basket", "Laundry", laundryBasket, 0.45, 0.45, 0.6, "floor"],
+  bath_shelf: ["Bathroom shelf", "Bathroom", bathShelf, 0.6, 0.3, 1.4, "floor"],
+  sun_lounger: ["Sun lounger", "Outdoor", sunLounger, 0.7, 1.95, 0.5, "floor"],
+  parasol: ["Parasol", "Outdoor", parasol, 2.5, 2.5, 2.4, "floor"],
+  outdoor_sofa: ["Outdoor sofa", "Outdoor", outdoorSofa, 1.9, 0.85, 0.75, "floor"],
+  planter: ["Planter", "Outdoor", planter, 1.0, 0.4, 0.45, "floor"],
+  bbq: ["Barbecue", "Outdoor", bbq, 1.1, 0.55, 1.1, "floor"],
+  wall_art: ["Picture", "Decor", wallArt, 0.7, 0.03, 0.9, "wall", 1.2],
+  vase: ["Vase", "Decor", vase, 0.25, 0.25, 0.4, "floor"],
+  wall_clock: ["Wall clock", "Decor", wallClock, 0.4, 0.05, 0.4, "wall", 1.8],
   stairs: ["Stairs", "Building", buildStairs, 1.0, 3.6, 2.8, "floor"],
   sofa: ["Sofa", "Living", (o) => sofa(o), 2.2, 0.95, 0.8, "floor"],
   sofa_l: ["Corner sofa", "Living", sofaL, 2.8, 1.6, 0.8, "floor"],
@@ -348,7 +449,7 @@ export const LIBRARY = {
   kitchen_base: ["Kitchen counter", "Kitchen", kitchenBase, 2.4, 0.62, 0.91, "floor"],
   kitchen_island: ["Kitchen island", "Kitchen", island, 2.0, 1.0, 0.92, "floor"],
   fridge: ["Fridge", "Kitchen", fridge, 0.9, 0.72, 1.85, "floor"],
-  washing_machine: ["Washing machine", "Kitchen", washer, 0.6, 0.6, 0.85, "floor"],
+  washing_machine: ["Washing machine", "Laundry", washer, 0.6, 0.6, 0.85, "floor"],
   bathtub: ["Bathtub", "Bathroom", bathtub, 1.7, 0.8, 0.55, "floor"],
   shower: ["Shower", "Bathroom", shower, 1.0, 1.0, 2.0, "floor"],
   toilet: ["Toilet", "Bathroom", toilet, 0.4, 0.65, 0.82, "floor"],
@@ -381,7 +482,7 @@ export const DEVICE_LOOKS = {
   pendant: pendant, chandelier: chandelier, spots: spots, flush: flush, floor: floorLamp,
   ac: (o) => acSplit({ w: 0.95, d: 0.24, h: 0.3, ...o }), fan: ceilingFan, speaker, vacuum, person,
 };
-export const CATEGORIES = ["Building", "Living", "Dining", "Bedroom", "Office", "Kitchen", "Bathroom", "Decor", "Lights", "Outdoor"];
+export const CATEGORIES = ["Building", "Living", "Dining", "Bedroom", "Office", "Hall", "Kitchen", "Laundry", "Bathroom", "Decor", "Lights", "Outdoor"];
 
 export function dims(it) {
   const L = LIBRARY[it.kind]; if (!L) return { w: 0.5, d: 0.5, h: 0.5 };
