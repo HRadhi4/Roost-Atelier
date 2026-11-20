@@ -2,6 +2,15 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.16.0 — 2026-11-20
+- **Stairs that join two levels.** Pick *Stairs*, choose a style, tap where they start, then tap where they arrive on the level above. The stairs are built between the two, the floor above gets an opening with a railing, and the ceiling below opens too. Six styles: wooden, wrought iron with scrolls, glass, round (spiral), rounded first steps, and palace stairs with a red runner and a curled handrail. A selected staircase can change style or where it arrives.
+- **Try it.** A new button in the top bar: tap lights, TVs, ACs, fans, curtains and doors to switch them, without opening anything for editing.
+- **Devices switch even without a working entity**, just on the screen, so a home can be tried out before it is linked.
+- **The real Roost Home Tour card as the preview**, opening by itself once the dashboard pictures are made (when Roost Cards is installed).
+- **Smarter placing of Home Assistant devices**: one TV per room, on the TV drawn on the plan, and one AC for about every 25 m², never on a wall with a window or the TV.
+- **No more black photos**: when the AI clean-up returns an empty picture on some graphics chips, the photo is kept as it was traced.
+- Dragging the Top view moves the plan; panning the 2D plan is smoother; the ruler button stays clear when on.
+
 ## 0.15.0 — 2026-11-20
 - **Your devices place themselves.** After you draw the floor plan, the lights, ACs, curtains, fans, TVs, locks and other devices from Home Assistant are put in the matching rooms by their Home Assistant area: lights spread evenly, the AC on a wall without a window, curtains on the windows, the TV facing the sofa, the fan in the middle. Rooms whose names don't match can be matched by hand, and *Place them now* in the home settings runs it again.
 - **Several room photos at once.** The photo import takes many pictures in one go and adds the furniture, windows, doors, fans and ACs it sees, leaving out what is already there.
