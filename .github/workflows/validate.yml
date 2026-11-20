@@ -36,4 +36,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: pip install pytest && python -m pytest -q tests/py
       - run: python tests/browser/run.py

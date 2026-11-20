@@ -39,14 +39,12 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_function("window.ready === true", timeout=60000)
 
-    # ---- the picture card (the default): no 3D engine, and a plain note while the pictures aren't made
-    page.evaluate("""() => { const c = document.createElement('roost-atelier-card'); c.id = 'pic'; c.setConfig({ plan: 'home1', height: 420 });
+    # ---- the pictures are shown by Roost Cards now: an old picture card says where it went, and the card isn't in the picker
+    page.evaluate("""() => { const c = document.createElement('roost-atelier-card'); c.id = 'pic'; c.setConfig({ plan: 'home1', height: 420, view: 'still' });
       document.getElementById('slot').appendChild(c); c.hass = window.hass; }""")
-    page.wait_for_function("() => document.getElementById('pic')?.shadowRoot?.querySelector('.st .msg')", timeout=30000)
-    pic = page.evaluate("""() => { const r = document.getElementById('pic').shadowRoot; return { msg: r.querySelector('.st .msg').textContent, bar: !!r.querySelector('.st .bar button'),
-      engine: performance.getEntriesByType('resource').some((e) => /chunks\/(view|engine)-/.test(e.name)) }; }""")
-    check("the picture card is the default and never loads the 3D engine", not pic["engine"] and pic["bar"], str(pic))
-    check("the picture card says plainly how to make its pictures", "Make dashboard pictures" in pic["msg"], pic["msg"])
+    page.wait_for_function("() => document.getElementById('pic')?.shadowRoot?.querySelector('.av .empty')", timeout=30000)
+    moved = page.evaluate("() => ({ msg: document.getElementById('pic').shadowRoot.querySelector('.av .empty').textContent, picker: (window.customCards || []).some((c) => c.type === 'roost-atelier-card') })")
+    check("an old picture card points to Roost Home Tour, and the Atelier adds no card to the picker", "Roost Home Tour" in moved["msg"] and not moved["picker"], str(moved))
     page.evaluate("() => document.getElementById('pic').remove()")
 
     # ---- the dashboard card

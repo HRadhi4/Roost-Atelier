@@ -15,7 +15,7 @@ from .recognize import async_recognize
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_list, ws_get, ws_save, ws_delete, ws_recognize, ws_subscribe, ws_photos, ws_versions, ws_version, ws_deleted, ws_undelete):
+    for cmd in (ws_list, ws_get, ws_save, ws_delete, ws_recognize, ws_subscribe, ws_photos, ws_versions, ws_version, ws_deleted, ws_undelete, ws_tour):
         websocket_api.async_register_command(hass, cmd)
 
 
@@ -37,6 +37,24 @@ def ws_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg:
         connection.send_error(msg["id"], "not_found", "This home was not found")
         return
     connection.send_result(msg["id"], plan)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "roost_atelier/tour", vol.Optional("plan_id"): str})
+@websocket_api.async_response
+async def ws_tour(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """A home as pictures, for dashboard cards: rooms, doors, devices and which pictures are made. No plan_id = the first home."""
+    from .tour import tour_data
+    from .uploads import list_photos
+
+    store = _store(hass)
+    plan_id = msg.get("plan_id") or next((p["id"] for p in store.summary()), None)
+    plan = store.get(plan_id) if plan_id else None
+    if plan is None:
+        connection.send_error(msg["id"], "not_found", "No home drawn yet" if not plan_id else "This home was not found")
+        return
+    prefix = "".join(c for c in plan["id"] if c.isalnum() or c in "_-") + "_"
+    photos = await hass.async_add_executor_job(list_photos, hass, prefix)
+    connection.send_result(msg["id"], tour_data(plan, photos))
 
 
 @websocket_api.require_admin

@@ -56,8 +56,8 @@ Roost Atelier lights your home **once**, then never has to render it again.
 
 ### A light dashboard card made of pictures
 - Design the home in the Atelier, then press **Make dashboard pictures** (home settings). It renders a finished photo of the whole floor and a realistic 360° picture of every room, with the real light.
-- The dashboard card shows only those pictures, like a street-view tour of your home: tap a room to step in, drag to look around, follow the arrows on the doors to the next room, and tap any light, AC, curtain or TV right where it is. Lights that are on glow in their own colour.
-- No 3D engine is loaded on the dashboard, so the card opens fast on phones and wall tablets. The live 3D card is still there if you want it.
+- The **Roost Home Tour** card in [Roost Cards](https://github.com/HRadhi4/Roost-card) shows those pictures, like a street-view tour of your home: tap a room to step in, drag to look around, follow the arrows on the doors to the next room, and tap any light, AC, curtain or TV right where it is. Lights that are on glow in their own colour.
+- No 3D engine is loaded on the dashboard, so the card opens fast on phones and wall tablets.
 
 ### Realistic photos with local AI
 - **Photo mode** traces light bounce by bounce, then a **local AI denoiser** (Intel Open Image Denoise, the same kind of AI that professional renderers use) cleans the picture. It runs on your own computer's graphics through WebGPU; nothing leaves your home.
@@ -144,23 +144,9 @@ Tap **Use this plan**, then name the rooms and run **Check the home**.
 ### Furniture from a photo
 You need an AI Task set up in Home Assistant. Select a room, open **Import**, choose **From a photo**, and pick or take a photo of the room. Untick anything you don't want, then tap **Add**.
 
-## The card
+## On your dashboard
 
-```yaml
-type: custom:roost-atelier-card
-plan: ""          # leave empty for your first home, or choose one in the visual editor
-height: 420       # in pixels
-view: still       # still (pictures, light) or the live 3d, top or walk
-room: ""          # pictures only: start in this room's 360° instead of the whole home
-toolbar: true     # the buttons along the bottom (rooms) or the 3D / Top / Walk / Photo buttons
-hotspots: true    # the device buttons on the home
-tap: controls     # controls (small pop-up) or toggle
-photo: false      # live 3D only: refine into a photo-real render when left still
-quality: auto     # live 3D only: auto, low, medium or high
-language: auto    # auto, en or ar
-```
-
-Everything above can also be set in the card's visual editor.
+Add **Roost Home Tour** from [Roost Cards](https://github.com/HRadhi4/Roost-card). It shows the pictures the Atelier makes. Dashboards that already use the Atelier's own live 3D card keep working.
 
 ---
 

@@ -1,9 +1,10 @@
 // Words in English and Arabic. Arabic switches the whole layout to right-to-left.
 const AR = {
   "Dashboard pictures": "صور لوحة التحكم", "Make dashboard pictures": "اصنع صور لوحة التحكم", Preview: "معاينة", "Whole home": "المنزل كاملاً", Rooms: "الغرف", "Previous room": "الغرفة السابقة", "Next room": "الغرفة التالية",
-  "Pictures (light, recommended)": "صور (خفيفة، موصى بها)", "Live 3D": "ثلاثي الأبعاد مباشر", "Live top view": "منظر علوي مباشر", "Live walk": "تجوّل مباشر", "Start in this room": "ابدأ في هذه الغرفة",
+  
   "This device can't show 360° pictures": "هذا الجهاز لا يستطيع عرض صور 360°",
-  "The dashboard card shows your home as finished pictures: the whole floor, and every room in 360° with its devices on it. Make them again after changing the home. Made on this computer; it takes a few minutes per room.": "تعرض بطاقة لوحة التحكم منزلك كصور جاهزة: الطابق كاملاً، وكل غرفة بزاوية 360° مع أجهزتها. اصنعها من جديد بعد تغيير المنزل. تُصنع على هذا الكمبيوتر وتستغرق بضع دقائق لكل غرفة.",
+  "Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.": "صور للطابق كاملاً ولكل غرفة بزاوية 360° لبطاقة جولة المنزل في Roost Cards. اصنعها من جديد بعد تغيير المنزل. تُصنع على هذا الكمبيوتر وتستغرق بضع دقائق لكل غرفة.",
+  "The pictures of your home are now shown by the Roost Home Tour card in Roost Cards.": "صور منزلك تظهر الآن في بطاقة جولة المنزل (Roost Home Tour) في Roost Cards.",
   "This room's pictures aren't made yet. In the Atelier, open the home settings and press Make dashboard pictures.": "لم تُصنع صور هذه الغرفة بعد. في الأتيليه افتح إعدادات المنزل واضغط اصنع صور لوحة التحكم.",
   "The pictures of this home aren't made yet. In the Atelier, open the home settings and press Make dashboard pictures.": "لم تُصنع صور هذا المنزل بعد. في الأتيليه افتح إعدادات المنزل واضغط اصنع صور لوحة التحكم.",
   "360° views": "مناظر 360°", "Make 360° views": "اصنع مناظر 360°", "One room in 360°": "غرفة واحدة بزاوية 360°", "Waiting for the light to be ready": "بانتظار تجهيز الإضاءة", "Choose a room for this card": "اختر غرفة لهذه البطاقة", "Also in this room": "أيضاً في هذه الغرفة", "This room": "هذه الغرفة", More: "المزيد", "How open": "مقدار الفتح", Speed: "السرعة", Cool: "تبريد", Dry: "تجفيف", Fan: "مروحة", Heat: "تدفئة", Lock: "قفل", Unlock: "فتح القفل",

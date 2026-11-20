@@ -9,10 +9,10 @@ export async function listPlans(hass) { return hass.connection.sendMessagePromis
 export async function getPlan(hass, id) { return hass.connection.sendMessagePromise({ type: "roost_atelier/plan", plan_id: id }); }
 
 class RoostAtelierCard extends HTMLElement {
-  static getStubConfig() { return { plan: "", height: 420, view: "still" }; }
+  static getStubConfig() { return { plan: "", height: 420, view: "3d" }; }
   static getConfigElement() { return document.createElement("roost-atelier-card-editor"); }
   setConfig(c) {
-    const old = this._config; this._config = { height: 420, view: "still", toolbar: true, hotspots: true, photo: false, quality: "auto", language: "auto", ...c };
+    const old = this._config; this._config = { height: 420, view: "3d", toolbar: true, hotspots: true, photo: false, quality: "auto", language: "auto", ...c };
     if (this._view && old && (old.plan !== c.plan || old.toolbar !== c.toolbar || old.quality !== c.quality || old.view !== c.view || old.room !== c.room || old.floor !== c.floor || old.tap !== c.tap || old.hotspots !== c.hotspots)) { this._view.dispose(); this._view = null; this._booted = false; this.boot(); }
     if (this.card) this.card.style.height = this.height();
   }
@@ -31,15 +31,6 @@ class RoostAtelierCard extends HTMLElement {
     // left the page: give the graphics memory back after a minute (coming back sooner keeps it instant)
     clearTimeout(this._drop); this._drop = setTimeout(() => this.shutdown(), 60000);
   }
-  // the light card: finished pictures of the home with device buttons on them (no 3D engine)
-  async bootStill(plan) {
-    const { StillViewer, STILL_CSS, photoFetcher } = await import("./still.js");
-    const fi = this._config.floor || 0;
-    const style = document.createElement("style"); style.textContent = STILL_CSS; this.shadowRoot.appendChild(style);
-    const v = new StillViewer(this.card, { plan, floorIndex: fi, room: this._config.room, photo: photoFetcher(() => this._hass, plan.id, fi), tap: this._config.tap || "controls", nav: this._config.toolbar !== false, devices: this._config.hotspots !== false, onMoreInfo: (e) => fire(this, "hass-more-info", { entityId: e }) });
-    v.hass = this._hass;
-    this._view = { engine: { setVisible() {}, on() {} }, dispose: () => v.dispose(), setPlan: (p, f) => v.setPlan(p, f), set hass(h) { v.hass = h; } };
-  }
   shutdown() {
     this._unsub?.(); this._unsub = null;
     this._view?.dispose(); this._view = null; this._booted = false;
@@ -48,9 +39,9 @@ class RoostAtelierCard extends HTMLElement {
     if (this._booted || !this._hass || !this._config || !this.isConnected) return;
     this._booted = true;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    // the picture card never loads the 3D engine
-    const light = this._config.view === "still" || this._config.view === "360";
-    const { VIEW_CSS, AtelierView } = light ? { VIEW_CSS: `.av{position:absolute;inset:0;display:grid;place-items:center;background:#0B0D17}.av .empty{color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;line-height:1.6}` } : await loadView();
+    // the pictures of the home are shown by Roost Cards (Roost Home Tour); the Atelier only makes them
+    const moved = this._config.view === "still" || this._config.view === "360";
+    const { VIEW_CSS, AtelierView } = moved ? { VIEW_CSS: `.av{position:absolute;inset:0;display:grid;place-items:center;background:#0B0D17;padding:24px}.av .empty{color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;line-height:1.6}` } : await loadView();
     this.shadowRoot.innerHTML = `<style>${VIEW_CSS} ha-card{overflow:hidden;border-radius:var(--ha-card-border-radius,24px);position:relative}</style><ha-card></ha-card>`;
     this.card = this.shadowRoot.querySelector("ha-card"); this.card.style.height = this.height();
     let id = this._config.plan;
@@ -58,9 +49,9 @@ class RoostAtelierCard extends HTMLElement {
       if (!id) id = (await listPlans(this._hass))[0]?.id;
       if (!id) { this.card.innerHTML = `<div class="av"><div class="empty">${t("No homes yet")}<br>Atelier → ${t("New home")}</div></div>`; this._booted = false; return; }
       const plan = await getPlan(this._hass, id);
-      if (light) await this.bootStill(plan);
-      else this._view = new AtelierView(this.card, { toolbar: this._config.toolbar, hotspots: this._config.hotspots, view: this._config.view, photo: this._config.photo, quality: this._config.quality, tap: this._config.tap || "controls", onMoreInfo: (e) => fire(this, "hass-more-info", { entityId: e }) });
-      if (!light) this._view.setPlan(plan, this._config.floor || 0);
+      if (moved) { this.card.innerHTML = `<div class="av"><div class="empty">${t("The pictures of your home are now shown by the Roost Home Tour card in Roost Cards.")}</div></div>`; this._booted = false; return; }
+      this._view = new AtelierView(this.card, { toolbar: this._config.toolbar, hotspots: this._config.hotspots, view: this._config.view, photo: this._config.photo, quality: this._config.quality, tap: this._config.tap || "controls", onMoreInfo: (e) => fire(this, "hass-more-info", { entityId: e }) });
+      this._view.setPlan(plan, this._config.floor || 0);
       this._view.hass = this._hass;
       this._planId = id; this._updated = plan.updated;
       // the browser took the 3D away (too many open views or a driver hiccup): build it again
@@ -80,12 +71,8 @@ class RoostAtelierCard extends HTMLElement {
 }
 
 class RoostAtelierCardEditor extends HTMLElement {
-  setConfig(c) { const before = this._config; this._config = c; if (c.view !== "3d" && c.view !== "top" && c.view !== "walk" && (!this._rooms || before?.plan !== c.plan || before?.floor !== c.floor)) this.loadRooms(); this.draw(); }
-  set hass(h) { const first = !this._hass; this._hass = h; if (first) { listPlans(h).then((p) => { this._plans = p; this.draw(); }).catch(() => {}); if (!["3d", "top", "walk"].includes(this._config?.view)) this.loadRooms(); } if (this.form) this.form.hass = h; }
-  async loadRooms() {
-    if (!this._hass) return;
-    try { const id = this._config.plan || (await listPlans(this._hass))[0]?.id; if (!id) return; const p = await getPlan(this._hass, id); this._rooms = (p.floors[this._config.floor || 0] || p.floors[0]).rooms; this.draw(); } catch { /* offline */ }
-  }
+  setConfig(c) { this._config = c; this.draw(); }
+  set hass(h) { const first = !this._hass; this._hass = h; if (first) listPlans(h).then((p) => { this._plans = p; this.draw(); }).catch(() => {}); if (this.form) this.form.hass = h; }
   draw() {
     if (!this._config || !this._hass) return;
     if (!this.form) { this.form = document.createElement("ha-form"); this.appendChild(this.form); this.form.addEventListener("value-changed", (e) => fire(this, "config-changed", { config: e.detail.value })); this.form.computeLabel = (s) => s.label; }
@@ -94,15 +81,13 @@ class RoostAtelierCardEditor extends HTMLElement {
     this.form.schema = [
       { name: "plan", label: t("Home"), selector: { select: { mode: "dropdown", options: [{ value: "", label: "First home" }, ...plans.map((p) => ({ value: p.id, label: p.name }))] } } },
       { name: "floor", label: "Level (0 = ground)", selector: { number: { min: 0, max: 9, step: 1, mode: "box" } } },
-      { name: "view", label: "View", selector: { select: { mode: "box", options: [{ value: "still", label: t("Pictures (light, recommended)") }, { value: "3d", label: t("Live 3D") }, { value: "top", label: t("Live top view") }, { value: "walk", label: t("Live walk") }] } } },
-      ...(this._config.view === "still" || this._config.view === "360" || !this._config.view ? [{ name: "room", label: t("Start in this room"), selector: { select: { mode: "dropdown", options: [{ value: "", label: t("Whole home") }, ...(this._rooms || []).map((r) => ({ value: r.id, label: r.name || r.id }))] } } }] : []),
+      { name: "view", label: "View", selector: { select: { mode: "box", options: [{ value: "3d", label: t("3D") }, { value: "top", label: t("Top") }, { value: "walk", label: t("Walk") }] } } },
       { name: "height", label: t("Height"), selector: { number: { min: 240, max: 1200, step: 20, mode: "slider", unit_of_measurement: "px" } } },
       { name: "toolbar", label: "Buttons along the bottom", selector: { boolean: {} } },
       { name: "hotspots", label: "Device buttons", selector: { boolean: {} } },
       { name: "tap", label: "Tapping a device", selector: { select: { mode: "box", options: [{ value: "controls", label: "Shows its controls" }, { value: "toggle", label: "Turns it on or off" }] } } },
-      ...(["3d", "top", "walk"].includes(this._config.view) ? [
-        { name: "photo", label: t("Photo") + " (idle)", selector: { boolean: {} } },
-        { name: "quality", label: t("Quality"), selector: { select: { mode: "dropdown", options: ["auto", "low", "medium", "high"].map((v) => ({ value: v, label: t(v[0].toUpperCase() + v.slice(1)) })) } } }] : []),
+      { name: "photo", label: t("Photo") + " (idle)", selector: { boolean: {} } },
+      { name: "quality", label: t("Quality"), selector: { select: { mode: "dropdown", options: ["auto", "low", "medium", "high"].map((v) => ({ value: v, label: t(v[0].toUpperCase() + v.slice(1)) })) } } },
       { name: "language", label: "Language", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Auto" }, { value: "en", label: "English" }, { value: "ar", label: "العربية" }] } } },
     ];
   }
@@ -128,7 +113,6 @@ class RoostAtelierPanel extends HTMLElement {
 if (!customElements.get("roost-atelier-card")) customElements.define("roost-atelier-card", RoostAtelierCard);
 if (!customElements.get("roost-atelier-card-editor")) customElements.define("roost-atelier-card-editor", RoostAtelierCardEditor);
 if (!customElements.get("roost-atelier-panel")) customElements.define("roost-atelier-panel", RoostAtelierPanel);
-window.customCards = window.customCards || [];
-if (!window.customCards.some((c) => c.type === "roost-atelier-card"))
-  window.customCards.push({ type: "roost-atelier-card", name: "Roost Atelier", description: "Your home as realistic pictures you can tap: lights, curtains, ACs, doors, room by room in 360°.", preview: false, documentationURL: "https://github.com/HRadhi4/Roost-Atelier" });
+// No card in the card picker: the Atelier makes the home and its pictures, and Roost Cards shows them
+// (Roost Home Tour). The card element stays so dashboards that already use the live 3D keep working.
 console.info(`%c ROOST ATELIER %c ${VERSION} `, "background:#6D4BFF;color:#fff;border-radius:4px 0 0 4px;padding:2px 6px", "background:#141831;color:#fff;border-radius:0 4px 4px 0;padding:2px 6px");

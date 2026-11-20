@@ -2,6 +2,11 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.14.0 — 2026-11-20
+- **The pictures card moved to Roost Cards.** The Atelier now only designs the home and makes its pictures; the new **Roost Home Tour** card in Roost Cards shows them. Add it from the card picker after updating Roost Cards.
+- A new, light message gives dashboard cards just what they need to show the pictures (rooms, doors and devices, and which pictures are made).
+- The Atelier no longer adds its own card to the card picker. Dashboards that already use its live 3D card keep working.
+
 ## 0.13.0 — 2026-11-20
 - **The dashboard card is now made of pictures, not a 3D program.** Design the home in the Atelier, press *Make dashboard pictures* in the home settings, and the card shows the finished photo of the whole floor and a 360° picture of every room. Tap a room to step in, drag to look around, follow the arrows on the doors to the next room, or use the room buttons along the bottom. Every device is a button on the picture with its controls, and lights that are on glow in their own colour and brightness.
 - **Much lighter.** The picture card loads about 77 KB and no 3D engine, so it opens fast on phones and wall tablets. New cards use it by default; the live 3D, top and walk views are still there as choices.
