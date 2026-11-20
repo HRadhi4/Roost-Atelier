@@ -41,6 +41,12 @@ function patchedBegin() {
 }
 // keyed weakly: materials made for one rebuild are forgotten with it
 const bakedCache = new WeakMap();
+// a material whose textures changed (a real texture arrived): its baked copy follows
+export function refreshBaked(m) {
+  const b = bakedCache.get(m); if (!b) return;
+  for (const k of ["map", "normalMap", "roughnessMap"]) b[k] = m[k];
+  b.color?.copy(m.color); b.roughness = m.roughness; b.normalScale?.copy(m.normalScale); b.needsUpdate = true;
+}
 function bakedMaterial(m, own) {
   if (!own && bakedCache.has(m)) return bakedCache.get(m);
   const b = m.clone();

@@ -15,17 +15,23 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
 import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES } from "./model.js";
-import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "./materials.js";
+import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric, onTextures, terraceMaterial } from "./materials.js";
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
 import { deviceKind, lightLook, stateOf, kelvinToHex, pretendNext } from "./devices.js";
-import { BakeManager } from "./bake/index.js";
+import { BakeManager, refreshBaked } from "./bake/index.js";
 import { emittersFor, lampModel, aimModel, anchorOf } from "./lights.js";
-import { stairHole, stairsArriving, holeRails, clipTo, riseTo } from "./stairs.js";
+import { stairHole, stairsArriving, holeRails, clipTo, riseTo, elevOf } from "./stairs.js";
 import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 const seg = (a) => Math.max(1, Math.ceil(a / 0.3));
-const wallGeo = (l, h, t) => new THREE.BoxGeometry(l, h, t, seg(l), seg(h), 1);
+// texture coordinates in metres, so a real plaster grain is the same size on every wall
+function metreUV(g) {
+  const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) { const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)); if (ay > 0.5) uv.setXY(i, p.getX(i), p.getZ(i)); else if (ax > 0.5) uv.setXY(i, p.getZ(i), p.getY(i)); else uv.setXY(i, p.getX(i), p.getY(i)); }
+  uv.needsUpdate = true; return g;
+}
+const wallGeo = (l, h, t) => metreUV(new THREE.BoxGeometry(l, h, t, seg(l), seg(h), 1));
 // floors and ceilings are split into small pieces so the stored light has enough detail
 function fineShape(pts, flip, holes = []) {
   const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, flip ? y : -y)));
@@ -41,6 +47,18 @@ function fineShape(pts, flip, holes = []) {
 
 // a surface the lamps never reach (the plinth under the house, the slab between levels): lit by the sun and sky
 // only, so lamp light never shows through a wall on it
+// the garden's own sunlight: the house's light is stored (baked), the garden's is drawn live and kept in balance
+// with the rooms (outdoors is far brighter than indoors, so it is toned down like a good photo of a house)
+const GARDEN = { gSunDir: { value: new THREE.Vector3(0, 1, 0) }, gSunCol: { value: new THREE.Color(0, 0, 0) }, gEnvK: { value: 1 }, gFill: { value: new THREE.Color(0, 0, 0) } };
+function gardenLit(m) {
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, GARDEN);
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform vec3 gSunDir; uniform vec3 gSunCol; uniform float gEnvK; uniform vec3 gFill;")
+      .replace("#include <lights_fragment_begin>", THREE.ShaderChunk.lights_fragment_begin.replaceAll("( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )", "0").replaceAll("( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )", "0"))
+      .replace("#include <lights_fragment_end>", "#include <lights_fragment_end>\nreflectedLight.indirectDiffuse *= gEnvK; reflectedLight.indirectSpecular *= gEnvK; reflectedLight.directDiffuse += BRDF_Lambert( material.diffuseColor ) * ( max( dot( geometryNormal, gSunDir ), 0.0 ) * gSunCol + gFill );");
+  };
+  m.customProgramCacheKey = () => "roost-garden"; return m;
+}
 function noLamps(m) {
   m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace("#include <lights_fragment_begin>", THREE.ShaderChunk.lights_fragment_begin.replaceAll("( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )", "0").replaceAll("( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )", "0")); };
   m.customProgramCacheKey = () => "roost-nolamps"; return m;
@@ -125,6 +143,8 @@ export class AtelierEngine {
     this.listeners = {};
     // if the light can't be worked out here, go back to the simple light
     this.on("bake", ({ state }) => { if ((state === "failed" || state === "waiting") && this.rebaking) { this.rebaking = false; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; for (const r of this.devices.values()) this.lightIntensity(r); this.fitSun(); } });
+    // a real texture arrived from Home Assistant: show it (the baked copies of the material follow)
+    this._offTex = onTextures((m) => { refreshBaked(m); this.request(false); });
     this.bakeMgr = new BakeManager(this); this.clearSky = 1; this.location = opts.location || null;
     this.setupComposer();
     this.resizeObs = new ResizeObserver(() => this.resize()); this.resizeObs.observe(host);
@@ -215,6 +235,8 @@ export class AtelierEngine {
         else if (this._ft < 21 && (this.scale || 1) < 1) { this.scale = Math.min(1, (this.scale || 1) / 0.85); this.resize(); }
       }
     }
+    // the garden's sun, in the camera's frame
+    if (this.baked) { GARDEN.gSunDir.value.copy(this.sun.position).sub(this.sun.target.position).normalize().transformDirection(this.camera.matrixWorldInverse); }
     if (this.shadowsDirty) { this.renderer.shadowMap.needsUpdate = true; this.shadowsDirty = false; }
     this.composer.render();
     if (this.camMoved || this.anims.size) { this.camMoved = false; this.projectHotspots(); }
@@ -224,8 +246,9 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
     // the same home again (a save that changed nothing here, another level edited): nothing to rebuild
-    const sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], plan.settings, plan.north]);
-    if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; return; }
+    const { time: _time, ...looks } = plan.settings || {}, sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], looks, plan.north]);
+    void _time;
+    if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; this.fitSun(); this.request(true); return; }
     this._sig = sig;
     this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
     // after a change the light is worked out again; meanwhile the same real-world units and exposure are kept,
@@ -439,12 +462,53 @@ export class AtelierEngine {
   }
   addGround(floor, open = false) {
     const b = planBounds(floor), w = b.x1 - b.x0 + 40, d = b.y1 - b.y0 + 40;
-    const geo = new THREE.PlaneGeometry(w, d); geo.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, -0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true; m.userData.noBake = true;
-    this.root.add(m);
+    const garden = this.plan?.settings?.garden !== false, ground = -elevOf(this.plan || { floors: [floor] }, this.floorIndex || 0);
+    if (garden) this.addGarden(b, ground);
+    else {
+      const geo = new THREE.PlaneGeometry(w, d); geo.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, ground - 0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true; m.userData.noBake = true;
+      this.root.add(m);
+    }
     const slab = new THREE.Mesh(new THREE.BoxGeometry(b.x1 - b.x0 + 0.4, 0.12, b.y1 - b.y0 + 0.4), noLamps(solid("#D6D0C6", { rough: 0.9 }).clone()));
     slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; slab.userData.noBake = true; if (!open) this.root.add(slab);
     this.bounds = b;
+  }
+  // the garden round the house: a lawn, a paved terrace along the walls, olive trees and cypresses, so windows and
+  // pictures look out onto something. Lit by the sun and sky only (lamps never shine through a wall onto it).
+  addGarden(b, y) {
+    const g = new THREE.Group(); g.name = "garden";
+    const cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, R = Math.hypot(b.x1 - b.x0, b.y1 - b.y0) / 2 + 16;
+    const lawnGeo = new THREE.CircleGeometry(R, 72); lawnGeo.rotateX(-Math.PI / 2);
+    { const p = lawnGeo.attributes.position, uv = lawnGeo.attributes.uv; for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) + cx, -(p.getZ(i) + cz)); }
+    const lawnM = floorMaterial("grass"); if (!lawnM.userData.garden) { gardenLit(lawnM); lawnM.userData.garden = true; }
+    const lawn = new THREE.Mesh(lawnGeo, lawnM); lawn.position.set(cx, y - 0.02, cz); lawn.receiveShadow = true; g.add(lawn);
+    // the terrace: 1.4 m of paving all round
+    const T = 1.4, shape = new THREE.Shape([[b.x0 - T, b.y0 - T], [b.x1 + T, b.y0 - T], [b.x1 + T, b.y1 + T], [b.x0 - T, b.y1 + T]].map(([x, z]) => new THREE.Vector2(x, -z)));
+    const terrM = terraceMaterial(); if (!terrM.userData.garden) { gardenLit(terrM); terrM.userData.garden = true; }
+    const terr = new THREE.Mesh(new THREE.ShapeGeometry(shape), terrM); terr.geometry.rotateX(-Math.PI / 2); terr.position.y = y - 0.012; terr.receiveShadow = true; g.add(terr);
+    // trees: always in the same places for the same home, never on the terrace
+    let seed = Math.round((b.x1 - b.x0) * 97 + (b.y1 - b.y0) * 61) || 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const bark = gardenLit(solid("#6B5440", { rough: 0.95 }).clone()), leaves = gardenLit(solid("#6E7F4A", { rough: 0.85 }).clone()), dark = gardenLit(solid("#3F5233", { rough: 0.9 }).clone()), shade = new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: 0.22, depthWrite: false });
+    const placed = [];
+    for (let i = 0; i < 14 && placed.length < 9; i++) {
+      const a = rnd() * Math.PI * 2, rx = (b.x1 - b.x0) / 2 + T + 1.8 + rnd() * 6, rz = (b.y1 - b.y0) / 2 + T + 1.8 + rnd() * 6, x = cx + Math.cos(a) * rx, z = cz + Math.sin(a) * rz;
+      if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 3)) continue; placed.push([x, z]);
+      const t = new THREE.Group(); t.position.set(x, y, z); t.rotation.y = rnd() * 6;
+      if (placed.length % 3 === 0) {
+        // a cypress: tall and narrow
+        const h = 4.5 + rnd() * 2.5, c = new THREE.Mesh(new THREE.ConeGeometry(0.55, h, 10), dark); c.position.y = h / 2 + 0.3; c.scale.set(1, 1, 1); t.add(c);
+        const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.5, 6), bark); tr.position.y = 0.25; t.add(tr);
+      } else {
+        // an olive tree: a crooked trunk and a soft round crown of leaf clumps
+        const h = 2.2 + rnd() * 1.2, tr = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.2, h, 7), bark); tr.position.y = h / 2; tr.rotation.z = (rnd() - 0.5) * 0.25; t.add(tr);
+        for (let k = 0; k < 7; k++) { const r = 0.7 + rnd() * 0.6, l = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leaves); l.position.set((rnd() - 0.5) * 2.2, h + (rnd() - 0.3) * 0.9, (rnd() - 0.5) * 2.2); l.scale.y = 0.7; t.add(l); }
+      }
+      t.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      // a soft shadow on the grass under the crown
+      const sh = new THREE.Mesh(new THREE.CircleGeometry(placed.length % 3 === 0 ? 0.8 : 1.6, 24), shade); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.01; sh.castShadow = false; t.add(sh); g.add(t);
+    }
+    g.traverse((o) => { o.userData.noBake = true; o.userData.exterior = true; });
+    this.root.add(g);
   }
   applyWalls() {
     const mode = this.view === "walk" ? "full" : (this._wallsOverride || this.plan?.settings?.walls || this.opts.walls);
@@ -736,6 +800,11 @@ export class AtelierEngine {
     if (this._expoMoving) this.dirty = true;
     // reflections of the sky follow the daylight only (no glare at night)
     this.scene.environmentIntensity = Math.max(0.03, Lb) * 0.9;
+    // the garden: its own sun (the live sun is off in the overview) and the sky, both toned down to sit with the rooms
+    // (like a camera metering for the garden: bright noon and soft evening both land at a pleasant level; night stays dark)
+    const sn = this.skyNow || { E: 0, L: 0, sun: [1, 1, 1] }, live = this.sun.intensity > 0, ex = Math.max(1e-6, this.renderer.toneMappingExposure);
+    const OUT = Math.min(0.1, 10.7 / (ex * (sn.E * 0.5 * Math.max(0.25, Math.sin(((sn.el || 0) * Math.PI) / 180)) + Math.PI * (sn.L || 0)) + 1e-6));
+    GARDEN.gEnvK.value = OUT; GARDEN.gSunCol.value.setRGB(...sn.sun).multiplyScalar(live ? 0 : sn.E * 0.5 * OUT); GARDEN.gFill.value.setRGB(fill * 0.7, fill * 0.8, fill);
   }
   assignShadows(on) {
     const max = { low: 0, medium: 2, high: 4 }[this.quality], size = { low: 256, medium: 512, high: 1024 }[this.quality];
@@ -762,7 +831,9 @@ export class AtelierEngine {
     const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, r = Math.max(b.x1 - b.x0, b.y1 - b.y0);
     const s = this.sunState, north = ((this.plan?.north || 0) * Math.PI) / 180;
     let el = s ? Number(s.attributes?.elevation ?? 35) : 35, az = s ? Number(s.attributes?.azimuth ?? 200) : 200;
-    if (this.opts.forceTime === "night") el = -10; else if (this.opts.forceTime === "day") { el = 40; az = 210; } else if (this.opts.forceTime === "evening") { el = 7; az = 255; }
+    // a chosen time of day (in the home's settings) instead of the real sun right now
+    const ft = this.opts.forceTime || this.plan?.settings?.time;
+    if (ft === "night") el = -10; else if (ft === "day" || ft === "noon") { el = 62; az = 190; } else if (ft === "evening" || ft === "golden") { el = 7; az = 262; } else if (ft === "morning") { el = 18; az = 100; }
     const day = Math.max(0, Math.min(1, (el + 4) / 14));
     const e = (Math.max(el, 4) * Math.PI) / 180, a = (az * Math.PI) / 180 + north;
     this.sun.position.set(cx + Math.sin(a) * Math.cos(e) * r * 2, Math.sin(e) * r * 2, cz - Math.cos(a) * Math.cos(e) * r * 2);
@@ -1014,6 +1085,7 @@ export class AtelierEngine {
   snapshot() { this.composer.render(); return this.renderer.domElement.toDataURL("image/jpeg", 0.92); }
 
   dispose() {
+    this._offTex?.();
     this.bakeMgr.dispose(); clearTimeout(this._rebake);
     window.removeEventListener("keydown", this._kd); window.removeEventListener("keyup", this._ku); window.removeEventListener("blur", this._blur); window.removeEventListener("pointerdown", this._pd, true);
     for (const rec of this._refl?.values() || []) { rec.env?.dispose(); rec.rt.dispose(); } this._refl?.clear(); this._pmrem?.dispose();

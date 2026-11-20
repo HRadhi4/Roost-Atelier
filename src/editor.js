@@ -1152,6 +1152,7 @@ export class AtelierEditor {
       <label class="sl"><span>${t("Overall brightness")}</span><b data-out="ex">${round(st.exposure || 1, 2)}×</b><input type="range" data-ex min="0.5" max="2" step="0.05" value="${st.exposure || 1}"></label>
       <label class="sl"><span>${t("Lamp glow")}</span><b data-out="mood">${round(st.mood || 1, 2)}×</b><input type="range" data-mood min="0.5" max="2" step="0.05" value="${st.mood || 1}"></label>
       <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
+      <div class="field"><h3>${t("Time of day")}</h3><div class="chips">${[["", "Now"], ["morning", "Morning"], ["noon", "Noon"], ["golden", "Golden hour"], ["night", "Night"]].map(([k, l]) => `<button data-time="${k}" class="${(st.time || "") === k ? "on" : ""}">${t(l)}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
       <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ha-icon icon="mdi:home-import-outline"></ha-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
@@ -1178,6 +1179,7 @@ export class AtelierEditor {
     a.querySelector("[data-mood]").addEventListener("change", () => this.changed(false));
     a.querySelector("[data-north]").addEventListener("input", (e) => { a.querySelector('[data-out="north"]').textContent = `${e.target.value}°`; p.north = +e.target.value; this.view.engine.fitSun(); });
     a.querySelector("[data-north]").addEventListener("change", () => this.changed(false));
+    a.querySelectorAll("[data-time]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.time) st.time = b.dataset.time; else delete st.time; }, false); this.view.engine.fitSun(); this.view.engine.request(true); this.homePanel(); }));
     a.querySelector("[data-sun]").onclick = () => { set(() => (st.sun = st.sun === false)); this.homePanel(); this.view.hass = this._hass; this.view._sun = undefined; this.view.hass = this._hass; };
     a.querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { set(() => (st.quality = b.dataset.q), false); this.homePanel(); }));
   }

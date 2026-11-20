@@ -1,4 +1,5 @@
 // The live 3D home with tappable devices on top. Used by the dashboard card and by the Atelier itself.
+import { setTextureSource } from "./materials.js";
 import { AtelierEngine } from "./engine.js";
 import { KINDS, tapAction } from "./devices.js";
 import { t, isRtl } from "./i18n.js";
@@ -70,6 +71,8 @@ export class AtelierView {
     this.io = new IntersectionObserver(([e]) => this.engine.setVisible(e.isIntersecting)); this.io.observe(this.root);
   }
   set hass(h) {
+    // real textures come from Home Assistant (downloaded there once)
+    if (h && !this._texSet) { this._texSet = true; setTextureSource((id, kind) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/texture/${id}/${kind}`).then((r) => (r.ok ? r.blob() : null))); }
     this._hass = h;
     if (!this.plan) return;
     const ids = this.entities, states = {}; let changed = false;

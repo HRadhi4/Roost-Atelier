@@ -1,4 +1,5 @@
-// Real-looking finishes, painted in code (no downloads): wood planks, tiles, marble, fabric weave.
+// Real-looking finishes: painted in code (wood planks, tiles, marble, fabric weave), replaced by real scanned
+// textures from Home Assistant when they are there.
 // Each finish has a colour map, a roughness map and a bump (normal) map, so light reflects like the real thing.
 import * as THREE from "three";
 
@@ -154,6 +155,40 @@ function painted(key, painter, size = SIZE) {
   return out;
 }
 
+// Real scanned textures (Poly Haven, CC0), kept in Home Assistant once downloaded: [texture, size in metres].
+// Until one has arrived (or without internet the first time) the painted one above is used.
+export const REAL = {
+  oak: ["laminate_floor_02", 1.7], walnut: ["wood_floor", 1.7], herringbone: ["herringbone_parquet", 3.4], porcelain: ["large_floor_tiles_02", 3.0],
+  marble: ["marble_01", 1.5], deck: ["wood_planks", 1.5], grass: ["leafy_grass", 2.0], terrace: ["patterned_paving_02", 1.8],
+};
+let realSource = null; const realWait = new Map(), realListeners = new Set();
+// fetch(texture, map) -> Promise<Blob | null>; set by whatever knows how to reach Home Assistant
+const realLater = [];
+export function setTextureSource(fn) { const first = !realSource; realSource = fn; if (first) for (const [f2, m, name] of realLater.splice(0)) f2(m, name); }
+export function onTextures(fn) { realListeners.add(fn); return () => realListeners.delete(fn); }
+function realImage(id, kind) {
+  const k = `${id}/${kind}`;
+  if (!realWait.has(k)) realWait.set(k, (async () => { try { const b = await realSource?.(id, kind); return b ? await createImageBitmap(b, { imageOrientation: "flipY" }) : null; } catch (e) { return null; } })());
+  return realWait.get(k);
+}
+// swap a material's painted maps for the real ones as they arrive
+function useReal(m, name) {
+  const r = REAL[name]; if (!r) return; if (!realSource) { realLater.push([useReal, m, name]); return; }
+  const [id, size] = r, put = (slot, img, srgb) => { if (!img) return; const t = new THREE.Texture(img); t.flipY = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.repeat.set(1 / size, 1 / size); t.userData.tile = size; t.needsUpdate = true; m[slot]?.dispose?.(); m[slot] = t; };
+  Promise.all([realImage(id, "diff"), realImage(id, "nor"), realImage(id, "rough")]).then(([d, n, ro]) => {
+    if (!d) return;
+    put("map", d, true); put("normalMap", n, false); put("roughnessMap", ro, false);
+    m.color?.set("#ffffff"); m.userData.tile = size; m.roughness = 1; m.normalScale?.set(1, 1); m.needsUpdate = true;
+    for (const fn of realListeners) fn(m);
+  });
+}
+// the fine grain of real plaster on every wall (only its relief, the wall keeps its own colour)
+let plasterRelief = null;
+function plasterOn(m) {
+  if (!realSource) { realLater.push([plasterOn, m]); return; }
+  (plasterRelief ||= realImage("white_plaster_02", "nor")).then((img) => { if (!img) return; const t = new THREE.Texture(img); t.flipY = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 1); t.userData.tile = 1; t.needsUpdate = true; m.normalMap = t; m.normalScale.set(0.35, 0.35); m.userData.tile = 1; m.map = null; m.needsUpdate = true; for (const fn of realListeners) fn(m); });
+}
+
 const matCache = new Map();
 export function floorMaterial(name) {
   const k = `floor:${name}`;
@@ -167,7 +202,13 @@ export function floorMaterial(name) {
   m.normalScale.set(0.6, 0.6);
   m.userData.tile = def[2];
   m.userData.shared = true; matCache.set(k, m);
+  useReal(m, name);
   return m;
+}
+// the paving of the terrace and paths in the garden
+export function terraceMaterial() {
+  const k = "floor:terrace"; if (matCache.has(k)) return matCache.get(k);
+  const m = floorMaterial("sand").clone(); m.userData.shared = true; matCache.set(k, m); useReal(m, "terrace"); return m;
 }
 export function wallMaterial(name) {
   const k = `wall:${name}`;
@@ -178,6 +219,7 @@ export function wallMaterial(name) {
   m.normalScale.set(0.15, 0.15);
   m.userData.tile = 2;
   m.userData.shared = true; matCache.set(k, m);
+  plasterOn(m);
   return m;
 }
 export function fabric(color = "#8E8C92") {
