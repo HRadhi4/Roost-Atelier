@@ -5,6 +5,7 @@
 [![HACS](https://img.shields.io/badge/HACS-Custom-6D4BFF.svg)](https://hacs.xyz)
 [![Validate](https://github.com/HRadhi4/Roost-Atelier/actions/workflows/validate.yml/badge.svg)](https://github.com/HRadhi4/Roost-Atelier/actions/workflows/validate.yml)
 ![Licence](https://img.shields.io/badge/licence-free%20for%20personal%20use-8B6CFF)
+<a href="https://ko-fi.com/hradhi4"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
 
 <p align="center"><img src="docs/media/live.gif" width="560" alt="Lights, curtains, the AC and the TV coming on in the 3D home as they are switched in Home Assistant"></p>
 
@@ -149,6 +150,12 @@ You need an AI Task set up in Home Assistant. Select a room, open **Import**, ch
 Add **Roost Home Tour** from [Roost Cards](https://github.com/HRadhi4/Roost-card). It shows the pictures the Atelier makes. Dashboards that already use the Atelier's own live 3D card keep working.
 
 ---
+
+## Support
+
+If Roost Atelier makes your home nicer, you can buy me a coffee on Ko-fi. It helps me keep adding features and fixing problems.
+
+<a href="https://ko-fi.com/hradhi4"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=kofi&logoColor=white&style=for-the-badge" alt="Support on Ko-fi"></a>
 
 ## Licence
 

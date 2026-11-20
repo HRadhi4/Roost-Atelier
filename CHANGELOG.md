@@ -2,6 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.18.1 — 2026-11-20
+- Arabic (and the other languages) now show in your device's own clear font, the same as Roost Cards.
+
 ## 0.18.0 — 2026-11-20
 - **Languages**: Arabic, Spanish, Russian and Simplified Chinese, besides English. Pick one in the home settings (Language); Auto follows Home Assistant. Arabic turns the whole page right-to-left.
 - **Real sky**: a real sky photo all round the house (noon, afternoon, sunset or night, to match the time of day), downloaded once by Home Assistant. On by default; turn it off in the home settings.
