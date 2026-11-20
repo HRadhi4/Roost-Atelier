@@ -388,7 +388,9 @@ export class AtelierEngine {
       const head = new THREE.Mesh(new THREE.BoxGeometry(width, fw, t + 0.02), frameM); head.position.set(0, top - fw / 2, 0); g.add(head);
     }
     if (op.type === "window") {
-      const sill = new THREE.Mesh(new THREE.BoxGeometry(width + 0.06, 0.03, t + 0.08), solid("#EDEAE4", { rough: 0.3 })); sill.position.set(0, op.sill - 0.015, 0); g.add(sill);
+      // the sill sits just above the wall under the window (never at exactly the same height, which flickers) and is
+      // split into small pieces so its stored light is smooth instead of dark blotches from its hidden ends
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(width, 0.03, t + 0.08, seg(width) * 2, 1, 2), solid("#EDEAE4", { rough: 0.3 })); sill.position.set(0, op.sill + 0.005, 0); g.add(sill);
       const pane = new THREE.Mesh(new THREE.PlaneGeometry(width - fw * 2, op.height - fw * 2), glass()); pane.position.set(0, op.sill + op.height / 2, 0); pane.userData.glass = true; g.add(pane);
       const mull = new THREE.Mesh(new THREE.BoxGeometry(0.03, op.height - fw * 2, 0.04), frameM); mull.position.set(0, op.sill + op.height / 2, 0); if (width > 1.2) g.add(mull);
     } else if (op.type === "slider") {
