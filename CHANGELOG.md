@@ -2,6 +2,19 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.19.0 — 2026-11-20
+- **Tape measure**: measure between any two points on the plan (it snaps to walls and corners; Shift for a straight line) and keep it on the plan as a dimension line.
+- **Ceiling height per room**: a lower ceiling for any room; walls, lights and ceiling pieces follow it.
+- **Columns and beams**: square and round columns floor to ceiling, beams under the ceiling.
+- **Notes**: write notes anywhere on the plan; they print with it.
+- **Lock in place**: rooms, doors, windows, furniture, devices and notes can be locked so they can't be moved by accident.
+- **Feature walls**: one wall of a room in its own paint, wallpaper, stone, marble, wood slats or classic panels.
+- **Gypsum ceilings**: a lowered border round the room, with or without a hidden light, and a cornice.
+- **Skirting and frames**: skirting in white, black, wood or the floor's finish; door and window frames and doors in the colour you choose.
+- **Your own materials**: upload a photo of a tile, wood, stone or fabric and use it on floors, feature walls and furniture.
+- **Fitted joinery**: a built-in wardrobe (up to the ceiling) and a TV wall, and *Fit to the wall* for wardrobes, kitchen runs, TV units and shelves.
+- **Finishes per piece**: wood and metal for each piece of furniture, besides its fabric.
+
 ## 0.18.3 — 2026-11-20
 - **Copy, cut and paste**: pick devices or furniture, then Ctrl+C (copy), Ctrl+X (cut) and Ctrl+V (paste). They are pasted where the mouse is, also on another level.
 

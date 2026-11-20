@@ -20,8 +20,8 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
-import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES } from "./model.js";
-import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric, onTextures, terraceMaterial } from "./materials.js";
+import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES, nearestWall } from "./model.js";
+import { floorMaterial, wallMaterial, featureMaterial, solid, wood, glass, metal, fabric, onTextures, terraceMaterial } from "./materials.js";
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
 import { deviceKind, lightLook, stateOf, kelvinToHex, pretendNext } from "./devices.js";
 import { BakeManager, refreshBaked } from "./bake/index.js";
@@ -31,6 +31,18 @@ import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 const seg = (a) => Math.max(1, Math.ceil(a / 0.3));
+// a room's outline moved inwards by d (for a gypsum border round the ceiling)
+function insetPoly(pts, d) {
+  let a2 = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a2 += p[0] * q[1] - q[0] * p[1]; }
+  const sgn = a2 > 0 ? 1 : -1, lines = pts.map((p, i) => { const q = pts[(i + 1) % pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, nx = (-(q[1] - p[1]) / L) * sgn, ny = ((q[0] - p[0]) / L) * sgn; return [[p[0] + nx * d, p[1] + ny * d], [q[0] + nx * d, q[1] + ny * d]]; });
+  const cross = (l1, l2) => { const [[x1, y1], [x2, y2]] = l1, [[x3, y3], [x4, y4]] = l2, den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4); if (Math.abs(den) < 1e-9) return l1[1]; const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den; return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)]; };
+  return lines.map((l, i) => cross(lines[(i - 1 + lines.length) % lines.length], l));
+}
+// where a point sits along a room's edge (0..1) and how far it is from it
+function alongEdge(o, p, q) { const ex = q[0] - p[0], ey = q[1] - p[1], L2 = ex * ex + ey * ey || 1, t = ((o[0] - p[0]) * ex + (o[1] - p[1]) * ey) / L2; return [t, Math.abs(ex * (o[1] - p[1]) - ey * (o[0] - p[0])) / Math.sqrt(L2)]; }
+// the pieces that are built in front of a wall (not just a material on it)
+const BUILT_WALLS = new Set(["slats", "panels"]);
+const FULL_HEIGHT = new Set(["column", "round_column"]);
 // texture coordinates in metres, so a real plaster grain is the same size on every wall
 function metreUV(g) {
   const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
@@ -253,7 +265,7 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- building the home
   setPlan(plan, floorIndex = 0) {
     // the same home again (a save that changed nothing here, another level edited): nothing to rebuild
-    const { time: _time, hdr: _hdr, ...looks } = plan.settings || {}, sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], looks, plan.north]);
+    const { time: _time, hdr: _hdr, ...looks } = plan.settings || {}, sig = JSON.stringify([plan.id, floorIndex, plan.settings?.levels ? plan.floors : plan.floors[floorIndex] || plan.floors[0], looks, plan.north, plan.materials]);
     void _time;
     if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; this.fitSun(); this.request(true); return; }
     this._sig = sig;
@@ -275,8 +287,9 @@ export class AtelierEngine {
     for (const r of floor.rooms) this.addRoom(r, H, upHoles, downHoles);
     const ws = walls(floor); joinEnds(ws);
     for (const w of ws) this.addWall(w, floor, H);
+    for (const r of floor.rooms) this.roomExtras(r, floor);
     for (const it of floor.items) this.addItem(it, H);
-    for (const d of floor.devices) this.addDevice(d, H);
+    for (const d of floor.devices) this.addDevice(d, this.hAt(d.x, d.y));
     // the stairs coming up from below, seen through their opening, and the railing round it
     for (const it of arriving) {
       const rise = riseTo(plan, floorIndex - 1), g = buildItem({ ...it, h: rise }); g.position.set(it.x, -rise, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
@@ -352,7 +365,11 @@ export class AtelierEngine {
     (this._shapesNext ||= new Map()).set(k, g);
     return g;
   }
+  // the ceiling height of a room (lower under a gypsum ceiling, say); the level's own height is the most
+  roomH(r) { const H = this.H || 2.8; return r && !ROOM_TYPES[r.type]?.outdoor ? Math.max(2.0, Math.min(H, Number(r.height) || H)) : H; }
+  hAt(x, y) { return this.roomH(this.floor?.rooms.find((r) => inside([x, y], r.pts))); }
   addRoom(r, H, up = [], down = []) {
+    H = this.roomH(r);
     const cut = (list) => list.map((h) => clipTo(h, r.pts)).filter(Boolean);
     const geo = this.shape(r.pts, false, cut(up));
     const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
@@ -374,8 +391,10 @@ export class AtelierEngine {
     if (w.parapet) { this.wallBox(w, 0, len, 0, 1.0, solid("#E9E4DA", { rough: 0.9 }), solid("#E9E4DA", { rough: 0.9 }), ang, t * 0.6, true); return; }
     const left = this.sideRoom(w, 1, floor), right = this.sideRoom(w, -1, floor);
     const ext = solid("#E7DFD2", { rough: 0.95 });
-    const matL = left && !ROOM_TYPES[left.type]?.outdoor ? wallMaterial(left.wall || "warm-white") : ext;
-    const matR = right && !ROOM_TYPES[right.type]?.outdoor ? wallMaterial(right.wall || "warm-white") : ext;
+    const inner = [left, right].filter((r) => r && !ROOM_TYPES[r.type]?.outdoor);
+    if (inner.length) H = Math.max(...inner.map((r) => this.roomH(r)));
+    const matL = left && !ROOM_TYPES[left.type]?.outdoor ? this.wallMat(left, w) : ext;
+    const matR = right && !ROOM_TYPES[right.type]?.outdoor ? this.wallMat(right, w) : ext;
     const ops = openingsOn(w, floor.openings);
     let pos = 0;
     for (const { op, t0, t1 } of ops) {
@@ -387,6 +406,79 @@ export class AtelierEngine {
       pos = t1;
     }
     if (pos < len) this.wallBox(w, pos, len, 0, H, matL, matR, ang, t);
+  }
+  // which edge of a room a wall runs along (feature walls are kept per edge)
+  edgeOf(r, w) {
+    const m = [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2];
+    return r.pts.findIndex((p, i) => { const [t, d] = alongEdge(m, p, r.pts[(i + 1) % r.pts.length]); return t > 0 && t < 1 && d < 0.05; });
+  }
+  wallMat(r, w) {
+    const fin = r.walls?.[this.edgeOf(r, w)];
+    return fin && !BUILT_WALLS.has(fin) ? featureMaterial(fin) : wallMaterial(r.wall || "warm-white");
+  }
+  // what a room has besides its floor, ceiling and walls: a gypsum ceiling border, a cornice, skirting, and
+  // panelling or wood slats on a feature wall
+  roomExtras(r, floor) {
+    if (ROOM_TYPES[r.type]?.outdoor) return;
+    const rh = this.roomH(r), edges = r.pts.map((p, i) => [p, r.pts[(i + 1) % r.pts.length], i]);
+    const thick = (p, q) => nearestWall(floor, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], 0.4)?.w.thick ?? 0.15;
+    // a strip along an edge, inside the room: from s0 to s1 along it, at y0..y1, standing out `depth` from the wall
+    const strip = (p, q, s0, s1, y0, y1, depth, mat, group, out = 0) => {
+      const L = Math.hypot(q[0] - p[0], q[1] - p[1]), ux = (q[0] - p[0]) / L, uy = (q[1] - p[1]) / L;
+      let nx = -uy, ny = ux; const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+      if (!inside([mx + nx * 0.3, my + ny * 0.3], r.pts)) { nx = -nx; ny = -ny; }
+      const off = thick(p, q) / 2 + depth / 2 + out, len = s1 - s0; if (len < 0.01 || y1 - y0 < 0.005) return null;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(len, y1 - y0, depth, seg(len), seg(y1 - y0), 1), mat);
+      const mid = (s0 + s1) / 2; m.position.set(p[0] + ux * mid + nx * off, (y0 + y1) / 2, p[1] + uy * mid + ny * off); m.rotation.y = -Math.atan2(uy, ux);
+      m.castShadow = true; m.receiveShadow = true; group.add(m); return m;
+    };
+    // the stretches of an edge not taken by doors (sill 0) or, for tall things, by any opening
+    const free = (p, q, all) => {
+      const L = Math.hypot(q[0] - p[0], q[1] - p[1]), cuts = floor.openings.filter((o) => (all || !o.sill) && (() => { const [t, d] = alongEdge([o.x, o.y], p, q); return t > 0 && t < 1 && d < 0.2; })())
+        .map((o) => { const t = alongEdge([o.x, o.y], p, q)[0] * L; return [t - o.width / 2, t + o.width / 2, o]; }).sort((a, b) => a[0] - b[0]);
+      const out = []; let pos = 0; for (const [a, b, o] of cuts) { if (a > pos) out.push([pos, a, null]); out.push([Math.max(pos, a), b, o]); pos = Math.max(pos, b); } if (pos < L) out.push([pos, L, null]); return out;
+    };
+    // gypsum: a lowered border round the room (and a soft light hidden in it), or a cornice where walls meet the ceiling
+    const style = r.ceil?.style;
+    if (style === "border" || style === "tray") {
+      const bw = Math.max(0.2, Math.min(1.5, r.ceil.w ?? 0.6)), drop = Math.max(0.1, Math.min(0.6, r.ceil.drop ?? 0.25)), inner = insetPoly(r.pts, bw);
+      if (inner.every((p) => inside(p, r.pts))) {
+        const gm = solid("#F7F5F1", { rough: 0.95 });
+        const ring = new THREE.Mesh(fineShape(r.pts, true, [inner]), gm); ring.position.y = rh - drop; ring.receiveShadow = true; ring.name = "ceiling"; this.ceilings.add(ring);
+        inner.forEach((p, i) => {
+          const q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 0.02) return;
+          const m = new THREE.Mesh(new THREE.BoxGeometry(L, drop, 0.02, seg(L), 1, 1), gm); m.position.set((p[0] + q[0]) / 2, rh - drop / 2, (p[1] + q[1]) / 2); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.receiveShadow = true; this.ceilings.add(m);
+          if (style === "tray") { const glow = new THREE.Mesh(new THREE.BoxGeometry(L, 0.012, 0.03), solid("#FFF3DC", { emissive: "#FFD9A0", emissiveIntensity: 1.4 })); glow.position.set((p[0] + q[0]) / 2, rh - drop + 0.01, (p[1] + q[1]) / 2); glow.rotation.y = m.rotation.y; glow.userData.noBake = true; this.ceilings.add(glow); }
+        });
+      }
+    }
+    if (r.cornice) { const cm = solid("#F7F5F1", { rough: 0.9 }); for (const [p, q] of edges) { const L = Math.hypot(q[0] - p[0], q[1] - p[1]); strip(p, q, 0, L, rh - 0.06, rh, 0.04, cm, this.ceilings); strip(p, q, 0, L, rh - 0.1, rh - 0.06, 0.015, cm, this.ceilings); } }
+    // skirting along the walls, broken by doors
+    if (r.skirt) {
+      const sm = r.skirt === "floor" ? floorMaterial(r.floor || ROOM_TYPES[r.type]?.floor || "oak") : String(r.skirt).startsWith("wood:") ? wood(r.skirt.slice(5)) : solid(r.skirt, { rough: 0.45, clear: 0.2 }), sh = r.skirtH || 0.1;
+      for (const [p, q] of edges) for (const [a, b, o] of free(p, q, false)) if (!o) strip(p, q, a, b, 0, sh, 0.012, sm, this.rooms);
+    }
+    // a feature wall built in front of the wall: wood slats or classic moulded panels, round windows and doors
+    const wallG = new THREE.Group(); let mats = null;
+    for (const [p, q, i] of edges) {
+      const fin = r.walls?.[i]; if (!BUILT_WALLS.has(fin)) continue;
+      mats ||= { slat: wood(r.slatWood || "walnut").clone(), mould: wallMaterial(r.wall || "warm-white").clone() };
+      for (const [a, b, o] of free(p, q, true)) {
+        if (o) { if (o.sill > 0) { /* under and over a window */ } continue; }
+        if (fin === "slats") { const n = Math.max(1, Math.floor((b - a) / 0.06)), step = (b - a) / n; for (let k = 0; k < n; k++) strip(p, q, a + k * step + 0.008, a + (k + 1) * step - 0.008, 0, rh, 0.025, mats.slat, wallG); }
+        else {
+          // two rows of framed panels: a frame of thin mouldings for each, and a rail at dado height
+          const n = Math.max(1, Math.round((b - a) / 0.9)), step = (b - a) / n, mw = 0.03;
+          strip(p, q, a, b, 0.88, 0.92, 0.02, mats.mould, wallG);
+          for (const [y0, y1] of [[0.18, 0.78], [1.02, rh - 0.25]]) for (let k = 0; k < n; k++) {
+            const s0 = a + k * step + 0.1, s1 = a + (k + 1) * step - 0.1; if (s1 - s0 < 0.15 || y1 - y0 < 0.15) continue;
+            strip(p, q, s0, s1, y0, y0 + mw, 0.015, mats.mould, wallG); strip(p, q, s0, s1, y1 - mw, y1, 0.015, mats.mould, wallG);
+            strip(p, q, s0, s0 + mw, y0, y1, 0.015, mats.mould, wallG); strip(p, q, s1 - mw, s1, y0, y1, 0.015, mats.mould, wallG);
+          }
+        }
+      }
+    }
+    if (wallG.children.length) { wallG.traverse((o) => { if (o.isMesh) o.userData.cuttable = true; }); this.wallsG.add(wallG); }
   }
   wallBox(w, s0, s1, y0, y1, matL, matR, ang, t, low = false) {
     const len = s1 - s0; if (len < 0.01 || y1 - y0 < 0.01) return;
@@ -410,7 +502,8 @@ export class AtelierEngine {
   addOpening(op, w, t0, t1, ang, t, floor) {
     const ux = Math.cos(ang), uy = Math.sin(ang), mid = (t0 + t1) / 2, cx = w.a[0] + ux * mid, cz = w.a[1] + uy * mid, width = t1 - t0;
     const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = -ang; g.userData.opening = op.id; g.userData.exterior = !!w.exterior; g.userData.width = width;
-    const frameM = op.type === "window" || op.type === "slider" ? metal("#2B2D33", 0.4) : solid("#F3F1EC", { rough: 0.6 });
+    const tint = (c, glassy) => (String(c).startsWith("wood:") ? wood(c.slice(5)) : glassy ? metal(c, 0.4) : solid(c, { rough: 0.6 }));
+    const frameM = op.frame ? tint(op.frame, op.type === "window" || op.type === "slider") : op.type === "window" || op.type === "slider" ? metal("#2B2D33", 0.4) : solid("#F3F1EC", { rough: 0.6 });
     const fw = 0.05;
     const top = op.sill + op.height;
     if (op.type !== "arch") {
@@ -427,7 +520,7 @@ export class AtelierEngine {
       for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.02), glass()); p.position.set(s * width / 4, op.sill + op.height / 2, s * 0.02); p.name = s < 0 ? "slideL" : "slideR"; p.userData.glass = true; g.add(p); const fr = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - fw, op.height - fw * 2, 0.025), frameM); fr.scale.set(1, 1, 1); }
     } else if (op.type === "door") {
       const leaves = op.double ? [[-1, width / 2], [1, width / 2]] : [[op.swing >= 0 ? -1 : 1, width]];
-      const mat = op.main ? wood("walnut") : solid("#F7F5F1", { rough: 0.5 });
+      const mat = op.leaf ? tint(op.leaf, false) : op.main ? wood("walnut") : solid("#F7F5F1", { rough: 0.5 });
       for (const [side, lw] of leaves) {
         const hinge = new THREE.Group(); hinge.position.set(side * (width / 2 - fw), 0, 0); hinge.name = "leaf"; hinge.userData.side = side; hinge.userData.swing = op.swing >= 0 ? 1 : -1;
         const leaf = new THREE.Mesh(new THREE.BoxGeometry(lw - fw * (op.double ? 1 : 2), op.height - fw, 0.04), mat); leaf.position.set(-side * (lw - fw * (op.double ? 1 : 2)) / 2, (op.height - fw) / 2, 0); leaf.castShadow = true; leaf.receiveShadow = true;
@@ -441,12 +534,16 @@ export class AtelierEngine {
     this.wallsG.add(g);
   }
   addItem(it, H) {
-    // stairs joined to the level above are exactly as tall as the climb to it
-    const g = buildItem(it.kind === "stairs" && it.link != null && this.plan?.floors[it.link] ? { ...it, h: riseTo(this.plan, this.floorIndex) } : it), d = dims(it);
+    H = this.hAt(it.x, it.y);
+    // stairs joined to the level above are exactly as tall as the climb to it; columns (and wardrobes set to) reach the ceiling
+    const g = buildItem(it.kind === "stairs" && it.link != null && this.plan?.floors[it.link] ? { ...it, h: riseTo(this.plan, this.floorIndex) } : FULL_HEIGHT.has(it.kind) || (it.kind === "fitted_wardrobe" && it.toCeiling !== false) ? { ...it, h: H } : it), d = dims(it);
     const y = d.mount === "ceiling" ? H : d.mount === "wall" ? d.z : 0;
     g.position.set(it.x, y, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
     g.traverse((o) => { if (o.isMesh) o.userData.item = it.id; });
-    Object.assign(g.userData, { item: it.id, w: d.w, d: d.d, h: d.h, color: it.color });
+    // columns are cut at waist height with the walls in the overview; beams overhead are hidden there like ceilings
+    if (FULL_HEIGHT.has(it.kind)) g.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.userData.cuttable = true; } });
+    if (it.kind === "beam") g.userData.overhead = true;
+    Object.assign(g.userData, { item: it.id, w: d.w, d: d.d, h: d.h, color: it.color, look: [it.wood, it.metal, it.mat, it.toCeiling].join("|"), H });
     this.items.add(g);
   }
   // change one piece (size, colour, a new piece) without rebuilding the whole home
@@ -454,6 +551,7 @@ export class AtelierEngine {
     if (!this.items || !this.floor?.items.includes(it)) return false;
     const old = this.items.children.find((c) => c.userData.item === it.id); if (old) { this.items.remove(old); this.free(this.collect(old, new Set())); }
     this.addItem(it, this.H);
+    if (FULL_HEIGHT.has(it.kind) || it.kind === "beam") this.applyWalls();
     for (const o of this.floor.items) if (o !== it) this.moveItem(o);
     // the light is worked out again once you stop changing things
     clearTimeout(this._rebake); this._rebake = setTimeout(() => this.bakeMgr.onBuilt(), 1500);
@@ -462,8 +560,9 @@ export class AtelierEngine {
   // move one piece without rebuilding the whole home (smooth dragging)
   moveItem(it) {
     const g = this.items?.children.find((c) => c.userData.item === it.id); if (!g) return false;
-    const d = dims(it); if (d.w !== g.userData.w || d.d !== g.userData.d || d.h !== g.userData.h || it.color !== g.userData.color) return false;
-    const y = d.mount === "ceiling" ? this.H : d.mount === "wall" ? d.z : 0;
+    const d = dims(it); if (d.w !== g.userData.w || d.d !== g.userData.d || d.h !== g.userData.h || it.color !== g.userData.color || [it.wood, it.metal, it.mat, it.toCeiling].join("|") !== g.userData.look) return false;
+    const H = this.hAt(it.x, it.y); if (H !== g.userData.H && (d.mount === "ceiling" || FULL_HEIGHT.has(it.kind) || it.kind === "fitted_wardrobe")) return false;
+    const y = d.mount === "ceiling" ? H : d.mount === "wall" ? d.z : 0;
     g.position.set(it.x, y, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
     this.shadowsDirty = true; this.request(false); return true;
   }
@@ -529,6 +628,10 @@ export class AtelierEngine {
       if (o.userData.cuttable) o.material.clippingPlanes = mode === "cut" ? [this.cutPlane] : null;
     });
     this.ceilings.visible = this.view === "walk";
+    for (const g of this.items?.children || []) {
+      if (g.userData.overhead) g.visible = this.view === "walk" || mode !== "cut";
+      g.traverse((o) => { if (o.isMesh && o.userData.cuttable) o.material.clippingPlanes = mode === "cut" && this.view !== "walk" ? [this.cutPlane] : null; });
+    }
     if (this.baked) this.fitSun();
     for (const d of this.devices.values()) if (d.mount === "ceiling" && d.obj) d.obj.visible = this.view === "walk" || mode !== "cut" || d.look === "pendant" || d.look === "chandelier";
     this.shadowsDirty = true; this.request(true);

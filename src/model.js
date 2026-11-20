@@ -31,7 +31,7 @@ export function newPlan(name = "My home") {
   return {
     v: 1, name, north: 0, units: "m", style: "warm",
     settings: { quality: "auto", walls: "cut", sun: true },
-    floors: [{ id: uid("f"), name: "Ground floor", height: 2.8, elevation: 0, rooms: [], openings: [], items: [], devices: [], walls: [] }],
+    floors: [{ id: uid("f"), name: "Ground floor", height: 2.8, elevation: 0, rooms: [], openings: [], items: [], devices: [], walls: [], notes: [] }],
   };
 }
 
@@ -160,7 +160,7 @@ export function validate(plan) {
   if (!plan || typeof plan !== "object" || !Array.isArray(plan.floors) || !plan.floors.length) return newPlan();
   for (const f of plan.floors) {
     f.rooms = (f.rooms || []).filter((r) => Array.isArray(r.pts) && r.pts.length >= 3);
-    for (const k of ["openings", "items", "devices", "walls"]) f[k] = Array.isArray(f[k]) ? f[k] : [];
+    for (const k of ["openings", "items", "devices", "walls", "notes"]) f[k] = Array.isArray(f[k]) ? f[k] : [];
     f.height = Number(f.height) || 2.8;
     f.elevation = Number(f.elevation) || 0;
   }

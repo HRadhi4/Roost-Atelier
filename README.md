@@ -24,6 +24,13 @@ It is part of the **Roost** family, alongside [Roost Cards](https://github.com/H
 - **Add doors, windows, sliding doors and arches** by tapping a wall. Slide them along the wall, change the width with a slider, and flip which way the door opens.
 - **Furnish** from a library of about 40 pieces: sofas, beds, dining sets, majlis seating, kitchens, bathrooms, plants and lamps. Drag a piece near a wall and it turns to face the room and sits flat against the wall, the way a designer would place it.
 - **Pick finishes** with one tap: wood, herringbone, porcelain, marble, terrazzo and carpet floors, nine wall paints, and fabric colours.
+- **Feature walls:** give one wall of a room its own paint, wallpaper (stripes, trellis, classic, grasscloth), stone, marble slabs, wood slats or classic moulded panels.
+- **Ceilings:** set a lower ceiling height for any room, add a gypsum border (with or without a hidden light) and a cornice. Add **skirting** in white, black, wood or the floor's own finish, and pick the colour of door and window **frames** and of each door.
+- **Your own materials:** add a photo of a tile, wood, stone or fabric from your supplier (Settings → *Your materials*), say how many metres one photo covers, and use it on floors, feature walls and furniture.
+- **Each piece its own finish:** fabric, wood (light oak, ash, walnut, dark wood, white) and metal (black, brass, chrome, bronze).
+- **Structure and joinery:** columns, round columns and beams; a built-in wardrobe and a TV wall. **Fit to the wall** makes a wardrobe, kitchen run, TV wall or shelf exactly as wide as the wall it stands against.
+- **Measure and annotate:** the tape measure gives the distance between any two points (it snaps to walls and corners) and can keep it on the plan as a dimension line; **notes** can be written anywhere. Both print with the plan.
+- **Lock in place** anything you don't want to move by accident.
 - **Check the home**: the Atelier points out rooms with no door, bedrooms with no window, furniture blocking a door, and devices that aren't linked yet. Many of these it can fix in one tap.
 - **Several levels**: tap **+** next to **G** at the top to add a level. It starts with the outline of the level below. On a dashboard, each card shows one level.
 - **Stairs** (in the *Building* furniture tab) take the height of the level, and **Show the levels below in 3D** (Settings) draws the lower levels under the one you are on, so the home reads as one building.
@@ -84,8 +91,8 @@ Roost Atelier lights your home **once**, then never has to render it again.
 ### Smooth on tablets
 Tablets and phones never do the heavy work: they only show the light a computer has baked. The home is only redrawn when something changes. While you drag, it draws at lower sharpness and sharpens again when you let go. Quality adjusts to your device automatically, or you can choose it yourself. The dashboard card loads a 6 KB file; the 3D engine loads only when a card is on screen.
 
-### English and Arabic
-Follows your Home Assistant language. In Arabic the whole layout switches to right-to-left.
+### Five languages
+English, Arabic, Spanish, Russian and Simplified Chinese. Pick one in Settings (or let it follow your Home Assistant language). In Arabic the whole layout switches to right-to-left.
 
 ---
 

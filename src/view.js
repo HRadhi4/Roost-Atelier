@@ -1,5 +1,5 @@
 // The live 3D home with tappable devices on top. Used by the dashboard card and by the Atelier itself.
-import { setTextureSource } from "./materials.js";
+import { setTextureSource, setOwnMaterials } from "./materials.js";
 import { AtelierEngine } from "./engine.js";
 import { KINDS, tapAction } from "./devices.js";
 import { t, isRtl } from "./i18n.js";
@@ -72,7 +72,7 @@ export class AtelierView {
   }
   set hass(h) {
     // real textures come from Home Assistant (downloaded there once)
-    if (h && !this._texSet) { this._texSet = true; setTextureSource((id, kind) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/texture/${id}/${kind}`).then((r) => (r.ok ? r.blob() : null))); this.engine.skySource = (name) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/sky/${name}`).then((r) => (r.ok ? r.arrayBuffer() : null)); }
+    if (h && !this._texSet) { this._texSet = true; setOwnMaterials([], (file) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/file/${file}`).then((r) => (r.ok ? r.blob() : null))); setTextureSource((id, kind) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/texture/${id}/${kind}`).then((r) => (r.ok ? r.blob() : null))); this.engine.skySource = (name) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/sky/${name}`).then((r) => (r.ok ? r.arrayBuffer() : null)); }
     this._hass = h;
     if (!this.plan) return;
     const ids = this.entities, states = {}; let changed = false;
@@ -89,6 +89,7 @@ export class AtelierView {
     // a presence radar also needs the other people it can see (targets 1 to 3, left/right and ahead)
     const more = (d) => (d.kind === "radar" && /_target_1_x$/.test(d.entity || "") ? [1, 2, 3].flatMap((n) => ["x", "y"].map((k) => d.entity.replace(/_target_1_x$/, `_target_${n}_${k}`))) : [d.entity]);
     this.entities = [...new Set(plan.floors.flatMap((f) => f.devices.flatMap(more).filter(Boolean)))];
+    setOwnMaterials(plan.materials || []);
     this.engine.setPlan(plan, floor);
     this._last = null; this._sun = undefined;
     if (this._hass) this.hass = this._hass;

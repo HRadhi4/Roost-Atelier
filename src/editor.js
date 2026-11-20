@@ -4,7 +4,7 @@ import { t, isRtl, LANGS, savedLang, saveLang } from "./i18n.js";
 import { ROOM_TYPES, uid, clone, snap, round, rect, area, centroid, bounds, inside, walls, openingsOn, nearestWall, snapTargets, snapTo, planBounds, validate, newPlan } from "./model.js";
 import { SAMPLES } from "./samples.js";
 import { LIBRARY, CATEGORIES, dims } from "./furniture.js";
-import { FLOORS, WALLS, FABRICS, swatchColor, swatchCanvas } from "./materials.js";
+import { FLOORS, WALLS, FABRICS, FEATURES, WOODS, METALS, swatchColor, swatchCanvas, featureSwatch, setOwnMaterials } from "./materials.js";
 import { KINDS, LIGHT_LOOKS, LIGHT_SUBS, LIGHT_GROUPS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex, radarTargets } from "./devices.js";
 import { WALL_LOOKS } from "./lights.js";
 import { autoPlace } from "./autoplace.js";
@@ -36,10 +36,13 @@ function lightSub(d) {
 const TOOLS = [
   ["select", "mdi:cursor-default-outline", "Select"], ["room", "mdi:vector-square-plus", "Rooms"], ["door", "mdi:door", "Door"], ["window", "mdi:window-closed-variant", "Window"],
   ["slider", "mdi:door-sliding", "Slider"], ["arch", "mdi:gate-arrow-right", "Arch"], ["stairs", "mdi:stairs-up", "Stairs"], ["furniture", "mdi:sofa-outline", "Furniture"], ["devices", "mdi:lightbulb-group-outline", "Devices"],
+  ["measure", "mdi:tape-measure", "Measure"], ["note", "mdi:note-text-outline", "Note"],
   ["import", "mdi:file-image-plus-outline", "Import"], ["check", "mdi:check-decagram-outline", "Check the home"],
 ];
+// pieces that stand with their back to a wall, which can be made to fit it exactly
+const BACKED = new Set(["fitted_wardrobe", "tv_wall", "wardrobe", "kitchen_base", "kitchen_sink", "tall_cabinet", "tv_unit", "sideboard", "bookshelf", "console", "shoe_cabinet", "dresser", "desk", "cube_shelf", "display_cabinet", "vanity"]);
 const thumbs = new Map();
-function floorThumb(name) { if (!thumbs.has(name)) { const c = swatchCanvas(name); const s = document.createElement("canvas"); s.width = s.height = 64; s.getContext("2d").drawImage(c, 0, 0, 64, 64); thumbs.set(name, s.toDataURL("image/jpeg", 0.8)); } return thumbs.get(name); }
+function floorThumb(name) { if (String(name).startsWith("own:")) return ""; if (!thumbs.has(name)) { const c = swatchCanvas(name); const s = document.createElement("canvas"); s.width = s.height = 64; s.getContext("2d").drawImage(c, 0, 0, 64, 64); thumbs.set(name, s.toDataURL("image/jpeg", 0.8)); } return thumbs.get(name); }
 
 const CSS = `
 :host{display:block;height:100vh;height:100dvh;position:relative}
@@ -259,7 +262,8 @@ export class AtelierEditor {
     ]);
   }
   load(plan, unsaved = false) {
-    this.plan = plan; this.fi = 0; this.floor = plan.floors[0]; this.sel = null; this.undoStack = []; this.redoStack = []; this._fitted = false; this._userView = false;
+    setOwnMaterials(plan.materials || []);
+    this.plan = plan; this.fi = 0; this.floor = plan.floors[0]; this.sel = null; this.measure = null; this.edgePick = null; this.undoStack = []; this.redoStack = []; this._fitted = false; this._userView = false;
     this._base = plan.updated ?? null; this._unsaved = false; this._tries = 0; clearTimeout(this._retry); this.ed.classList.remove("unsaved");
     this.root.querySelector("h1").textContent = plan.name;
     if (plan.id) localStorage.setItem("roost-atelier-last", plan.id);
@@ -453,11 +457,12 @@ export class AtelierEditor {
   setStatus(s) { this.root.querySelector(".status").textContent = s; }
 
   // ------------------------------------------------------------ finding things
-  find(s) { if (!s) return null; if (s.t === "multi") return s; const f = this.floor; return (s.t === "room" ? f.rooms : s.t === "op" ? f.openings : s.t === "item" ? f.items : f.devices).find((x) => x.id === s.id); }
+  find(s) { if (!s) return null; if (s.t === "multi") return s; const f = this.floor; return (s.t === "room" ? f.rooms : s.t === "op" ? f.openings : s.t === "item" ? f.items : s.t === "note" ? f.notes || [] : f.devices).find((x) => x.id === s.id); }
   select(s) { this.sel = s; if (this.tool !== "select" && s) { this.tool = "select"; this.drawNav(); } this.draw(); this.inspector(); }
   remove(s) {
-    if (s.t === "multi") { this.snapshot(); const f = this.floor; for (const x of s.list) { const k = x.t === "item" ? "items" : "devices"; f[k] = f[k].filter((o) => o.id !== x.id); } this.sel = null; this.picking = false; this.changed(); this.inspector(); return; }
-    this.snapshot(); const f = this.floor, k = s.t === "room" ? "rooms" : s.t === "op" ? "openings" : s.t === "item" ? "items" : "devices"; f[k] = f[k].filter((x) => x.id !== s.id); this.sel = null; this.changed(); this.inspector(); }
+    if (s.t === "multi") { this.snapshot(); const f = this.floor; for (const x of s.list) { const k = x.t === "item" ? "items" : "devices"; f[k] = f[k].filter((o) => o.id !== x.id || o.locked); } this.sel = null; this.picking = false; this.changed(); this.inspector(); return; }
+    if (this.find(s)?.locked) { this.toast(t("Locked: unlock it first")); return; }
+    this.snapshot(); const f = this.floor, k = s.t === "room" ? "rooms" : s.t === "op" ? "openings" : s.t === "item" ? "items" : s.t === "note" ? "notes" : "devices"; f[k] = (f[k] || []).filter((x) => x.id !== s.id); this.sel = null; this.changed(s.t !== "note"); this.inspector(); }
 
   // ------------------------------------------------------------ floors
   drawFloors() {
@@ -482,7 +487,7 @@ export class AtelierEditor {
   // ------------------------------------------------------------ the left rail
   drawNav() {
     const nav = this.root.querySelector("nav");
-    nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ra-icon icon="${i}"></ra-icon></button>`).join("");
+    nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 || n === 11 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ra-icon icon="${i}"></ra-icon></button>`).join("");
     nav.querySelectorAll("button").forEach((b) => (b.onclick = () => this.setTool(b.dataset.t)));
   }
   setTool(k) { this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
@@ -580,6 +585,13 @@ export class AtelierEditor {
       }
       const d = dims(it), L = LIBRARY[it.kind], on = (s?.t === "item" && s.id === it.id) || (s?.t === "multi" && s.list.some((x) => x.t === "item" && x.id === it.id));
       const isRound = /round|plant|tree|ottoman|bar_stool|pendant|chandelier/.test(it.kind);
+      if (it.kind === "column" || it.kind === "round_column" || it.kind === "beam") {
+        // structure: columns drawn solid like walls, beams dashed (they are overhead)
+        const beamS = it.kind === "beam", stroke = on ? "var(--acc2)" : "var(--wall)";
+        out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${esc(it.id)}">` + (it.kind === "round_column" ? `<circle r="${d.w / 2}" fill="var(--wall)" stroke="${stroke}" stroke-width="${(on ? 2.5 : 1) * px}"/>`
+          : `<rect x="${-d.w / 2}" y="${-d.d / 2}" width="${d.w}" height="${d.d}" fill="${beamS ? "transparent" : "var(--wall)"}" stroke="${stroke}" stroke-width="${(on ? 2.5 : 1.5) * px}" ${beamS ? `stroke-dasharray="${8 * px} ${4 * px}"` : ""}/>`) + `</g>`;
+        continue;
+      }
       out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${esc(it.id)}">`;
       out += isRound ? `<ellipse rx="${d.w / 2}" ry="${d.d / 2}" fill="${light ? "#fff" : "#2A3060"}" fill-opacity=".9" stroke="${on ? "var(--acc2)" : light ? "#9AA3C9" : "#5E668F"}" stroke-width="${(on ? 2.5 : 1) * px}" ${d.mount === "ceiling" ? `stroke-dasharray="${4 * px} ${3 * px}" fill-opacity=".2"` : ""}/>`
         : `<rect x="${-d.w / 2}" y="${-d.d / 2}" width="${d.w}" height="${d.d}" rx="${Math.min(0.08, d.w / 6)}" fill="${it.kind === "rug" ? it.color || "#C9B79C" : light ? "#fff" : "#2A3060"}" fill-opacity="${it.kind === "rug" ? 0.45 : 0.92}" stroke="${on ? "var(--acc2)" : light ? "#9AA3C9" : "#5E668F"}" stroke-width="${(on ? 2.5 : 1) * px}"/>`;
@@ -648,6 +660,24 @@ export class AtelierEditor {
       if (on) out += `<rect x="${-w / 2 - 0.04}" y="${-th / 2 - 0.06}" width="${w + 0.08}" height="${th + 0.12}" rx="0.04" fill="none" stroke="var(--acc2)" stroke-width="${2.5 * px}"/>`;
       out += `</g>`;
     }
+    // notes and dimension lines kept on the plan (they print with it)
+    const ink = light ? "#161936" : "#EEF0FF", halo = light ? "#fff" : "#141831";
+    const dimLine = (a, b, col, wpx, label, attrs = "") => {
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-3) return "";
+      const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L, nx = -uy * 6 * px, ny = ux * 6 * px;
+      let deg = (Math.atan2(uy, ux) * 180) / Math.PI; if (deg > 90) deg -= 180; if (deg < -90) deg += 180;
+      return `<g ${attrs}><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="transparent" stroke-width="${14 * px}"/><path d="M${a[0]} ${a[1]}L${b[0]} ${b[1]}M${a[0] - nx} ${a[1] - ny}L${a[0] + nx} ${a[1] + ny}M${b[0] - nx} ${b[1] - ny}L${b[0] + nx} ${b[1] + ny}" stroke="${col}" stroke-width="${wpx * px}" fill="none"/>`
+        + `<text transform="translate(${(a[0] + b[0]) / 2 - uy * 12 * px} ${(a[1] + b[1]) / 2 + ux * 12 * px}) rotate(${deg})" font-size="${11 * px}" font-weight="600" text-anchor="middle" dominant-baseline="middle" fill="${col}" paint-order="stroke" stroke="${halo}" stroke-width="${3 * px}">${label ?? `${L.toFixed(2)} m`}</text></g>`;
+    };
+    for (const n of f.notes || []) {
+      const on = s?.t === "note" && s.id === n.id;
+      if (n.type === "dim") { out += dimLine(n.a, n.b, on ? "var(--acc2)" : n.color || ink, on ? 2 : 1.2, null, `data-note="${esc(n.id)}"`); continue; }
+      const lines = String(n.text || "").split("\n"), fs = n.size || 0.22;
+      out += `<g data-note="${esc(n.id)}"><text x="${n.x}" y="${n.y}" font-size="${fs}" font-weight="600" fill="${n.color || ink}" paint-order="stroke" stroke="${halo}" stroke-width="${fs * 0.18}" ${on ? `text-decoration="underline"` : ""} style="cursor:move">${lines.map((l, i) => `<tspan x="${n.x}" dy="${i ? fs * 1.2 : 0}">${esc(l) || " "}</tspan>`).join("")}</text></g>`;
+    }
+    if (this.measure) out += dimLine(this.measure.a, this.measure.b, "#F5B041", 2, null, `pointer-events="none"`);
+    // the wall of the picked room whose finish is being set
+    if (s?.t === "room" && this.edgePick != null) { const r = this.find(s), p = r?.pts[this.edgePick], q = r?.pts[(this.edgePick + 1) % (r?.pts.length || 1)]; if (p && q) out += `<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" stroke="#F5B041" stroke-width="${7 * px}" stroke-linecap="round" opacity=".8" pointer-events="none"/>`; }
     // room labels
     for (const r of f.rooms) {
       const [cx, cy] = centroid(r.pts), b = bounds(r.pts); if ((b.x1 - b.x0) * z < 60) continue;
@@ -751,7 +781,12 @@ export class AtelierEditor {
     if (this.testing) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, testDev: ds?.dataset.dev }; return; }
     if (this.tool === "stairs") { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, stairTap: this.stairPick?.step > 0 }; return; }
     if (this.tool === "room") { this.drag = { ...start, kind: "draw" }; this.drawRect = [this.snapPt(P), this.snapPt(P)]; return; }
+    // the tape measure: drag from one point to another (it snaps to walls and corners)
+    if (this.tool === "measure") { const a = this.snapPt(P); this.measure = { a, b: [...a] }; this.drag = { ...start, kind: "measure" }; return; }
+    if (this.tool === "note") { this.drag = { ...start, kind: "addnote" }; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { this.drag = { ...start, kind: "addop" }; return; }
+    const nt = tgt.closest?.("[data-note]");
+    if (nt) { const n = (f.notes || []).find((x) => x.id === nt.dataset.note); if (n) { this.drag = n.locked ? { ...start, kind: "locked" } : { ...start, kind: "note", obj: n, o0: clone(n) }; this.selectQuiet({ t: "note", id: n.id }); return; } }
     const aim = tgt.closest?.("[data-aim]");
     if (aim) { const d = f.devices.find((x) => x.id === aim.dataset.aim); this.drag = { ...start, kind: "aim", obj: d }; this.selectQuiet({ t: "dev", id: d.id }); return; }
     // several at once: Shift or Ctrl + tap (or "Select several" on a phone) adds or removes; dragging moves them all
@@ -764,11 +799,14 @@ export class AtelierEditor {
       this.drag = null; this.draw(); this.inspector(); return;
     }
     if (hitObj && this.sel?.t === "multi" && this.sel.list.some((x) => x.t === hitObj.t && x.id === hitObj.id)) {
-      const objs = this.sel.list.map((x) => this.find(x)).filter(Boolean);
+      const objs = this.sel.list.map((x) => this.find(x)).filter((o) => o && !o.locked);
       this.drag = { ...start, kind: "group", objs: objs.map((o) => [o, o.x, o.y]) }; return;
     }
-    if (ds) { const d = f.devices.find((x) => x.id === ds.dataset.dev); this.drag = { ...start, kind: "dev", obj: d, off: [d.x - P[0], d.y - P[1]] }; this.selectQuiet({ t: "dev", id: d.id }); return; }
+    if (ds) { const d = f.devices.find((x) => x.id === ds.dataset.dev); this.drag = d.locked ? { ...start, kind: "locked" } : { ...start, kind: "dev", obj: d, off: [d.x - P[0], d.y - P[1]] }; this.selectQuiet({ t: "dev", id: d.id }); return; }
     const a = tgt.closest?.("[data-v],[data-e],[data-rot],[data-op],[data-item],[data-room]");
+    // locked: it can be picked (to see or unlock it) but not moved, turned or resized
+    const lockedHit = a?.dataset.item ? f.items.find((x) => x.id === a.dataset.item) : a?.dataset.op ? f.openings.find((x) => x.id === a.dataset.op) : (a?.dataset.v != null || a?.dataset.e != null || a?.dataset.rot) ? this.find(this.sel) : null;
+    if (lockedHit?.locked) { if (a.dataset.item) this.selectQuiet({ t: "item", id: lockedHit.id }); else if (a.dataset.op) this.selectQuiet({ t: "op", id: lockedHit.id }); this.drag = { ...start, kind: "locked" }; return; }
     if (a?.dataset.v != null) { const r = this.find(this.sel); this.drag = { ...start, kind: "vertex", room: r, i: +a.dataset.v, links: this.linked(r.pts[+a.dataset.v]) }; return; }
     if (a?.dataset.e != null) { const r = this.find(this.sel), i = +a.dataset.e, p = r.pts[i], q = r.pts[(i + 1) % r.pts.length]; this.drag = { ...start, kind: "edge", room: r, i, a0: [...p], b0: [...q], la: this.linked(p), lb: this.linked(q), ops: f.openings.filter((o) => this.onEdge([o.x, o.y], p, q)).map((o) => [o, o.x, o.y]) }; return; }
     if (a?.dataset.rot) { this.drag = { ...start, kind: "rot", obj: this.find(this.sel) }; return; }
@@ -776,7 +814,7 @@ export class AtelierEditor {
     if (a?.dataset.item) { const it = f.items.find((x) => x.id === a.dataset.item); this.drag = { ...start, kind: "item", obj: it, off: [it.x - P[0], it.y - P[1]] }; this.selectQuiet({ t: "item", id: it.id }); return; }
     if (a?.dataset.room) {
       const r = f.rooms.find((x) => x.id === a.dataset.room);
-      const was = this.sel?.t === "room" && this.sel.id === r.id;
+      const was = this.sel?.t === "room" && this.sel.id === r.id && !r.locked;
       this.drag = was ? { ...start, kind: "room", room: r, pts0: clone(r.pts), items: f.items.filter((i) => inside([i.x, i.y], r.pts)).map((i) => [i, i.x, i.y]), devs: f.devices.filter((d) => inside([d.x, d.y], r.pts)).map((d) => [d, d.x, d.y]), ops: f.openings.filter((o) => r.pts.some((p, k) => this.onEdge([o.x, o.y], p, r.pts[(k + 1) % r.pts.length]))).map((o) => [o, o.x, o.y]) } : (this.boxable(e) ? { ...start, kind: "box", add: e.shiftKey || e.ctrlKey || e.metaKey, tapRoom: r } : { ...start, kind: "pan", px0: this.px, py0: this.py, tapRoom: r });
       return;
     }
@@ -795,6 +833,9 @@ export class AtelierEditor {
     this.guide = "";
     if (d.kind === "pan") { this._userView = true; this.px = d.px0 + e.clientX - d.x; this.py = d.py0 + e.clientY - d.y; this.g.setAttribute("transform", `translate(${this.px} ${this.py}) scale(${this.z})`); if (!this._panRaf) this._panRaf = requestAnimationFrame(() => { this._panRaf = 0; this.draw(); }); return; }
     if (d.kind === "draw") { this.drawRect[1] = this.snapPt(P); this.draw(); return; }
+    if (d.kind === "measure") { let b = this.snapPt(P); if (e.shiftKey) { const a = this.measure.a; if (Math.abs(b[0] - a[0]) > Math.abs(b[1] - a[1])) b = [b[0], a[1]]; else b = [a[0], b[1]]; } this.measure.b = b; this.draw(); this.measureOut(); return; }
+    if (d.kind === "locked" || d.kind === "addnote") return;
+    if (d.kind === "note") { const ox = snap(dx), oy = snap(dy), n = d.obj, o = d.o0; if (n.type === "dim") { n.a = [round(o.a[0] + ox, 3), round(o.a[1] + oy, 3)]; n.b = [round(o.b[0] + ox, 3), round(o.b[1] + oy, 3)]; } else { n.x = round(o.x + ox, 3); n.y = round(o.y + oy, 3); } this.draw(); return; }
     if (d.kind === "box") { this.boxRect = [d.P, P]; this.draw(); return; }
     if (d.kind === "group") { const ox = snap(dx), oy = snap(dy); for (const [o, x, y] of d.objs) { o.x = round(x + ox, 3); o.y = round(y + oy, 3); } return this.changed(); }
     if (d.kind === "room") {
@@ -879,6 +920,10 @@ export class AtelierEditor {
       return;
     }
     if (d.kind === "addop") { this.addOpening(this.tool, d.P); return; }
+    if (d.kind === "measure") { const m = this.measure; if (!d.moved || Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) < 0.02) this.measure = null; this.draw(); this.inspector(); return; }
+    if (d.kind === "addnote") { this.snapshot(); const n = { id: uid("n"), type: "text", x: round(snap(d.P[0]), 3), y: round(snap(d.P[1]), 3), text: t("Note"), size: 0.22 }; (this.floor.notes ||= []).push(n); this.tool = "select"; this.drawNav(); this.sel = { t: "note", id: n.id }; this.changed(false); this.inspector(); setTimeout(() => { const i = this.aside.querySelector("textarea[data-k=text]"); i?.focus(); i?.select(); }, 30); return; }
+    if (d.kind === "note") { if (d.moved) this.changed(false); return; }
+    if (d.kind === "locked") { if (d.moved) this.toast(t("Locked: unlock it first")); return; }
     if (d.kind === "box" && d.moved) {
       const [a, b] = this.boxRect || [d.P, d.P]; this.boxRect = null;
       const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
@@ -952,6 +997,8 @@ export class AtelierEditor {
       a.querySelector("[data-stoptest]").onclick = () => this.setTesting(false); return;
     }
     if (this.tool === "stairs") return this.stairPanel(a);
+    if (this.tool === "measure") return this.measurePanel(a);
+    if (this.tool === "note") { a.innerHTML = `<h2><ra-icon icon="mdi:note-text-outline"></ra-icon>${t("Note")}</h2><p class="tip">${t("Tap the plan where the note goes. Notes print with the plan.")}</p>`; return; }
     if (this.tool === "room") { a.innerHTML = `<h2><ra-icon icon="mdi:vector-square-plus"></ra-icon>${t("Rooms")}</h2><p class="tip">${t("Tap and drag on the plan to draw a room.")}</p>`; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { a.innerHTML = `<h2>${t(TOOLS.find((x) => x[0] === this.tool)[2])}</h2><p class="tip">${t("Tap a wall to add it.")}</p>`; return; }
     if (!obj) return this.homePanel(mode === "settings");
@@ -960,24 +1007,51 @@ export class AtelierEditor {
     // every slider also takes a typed number
     const slider = (key, label, min, max, step, val, unit = " m") => `<div class="sl"><span>${t(label)}</span><b class="nv"><input type="number" inputmode="decimal" data-num="${key}" min="${min}" step="${step}" value="${round(val, 2)}"><i>${unit.trim()}</i></b><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
     let h = "";
-    if (s.t === "room") {
+    const lockBtn = `<button data-lock class="${obj.locked ? "on" : ""}" title="${t(obj.locked ? "Allow moving" : "Lock in place")}"><ra-icon icon="${obj.locked ? "mdi:lock" : "mdi:lock-open-variant-outline"}"></ra-icon>${t(obj.locked ? "Locked in place" : "Lock in place")}</button>`;
+    const swatches = (attr, list, cur) => `<div class="sw">${list.map(([k, title, style]) => `<button ${attr}="${esc(k)}" title="${esc(t(title))}" class="${cur === k ? "on" : ""}" style="${style}"></button>`).join("")}</div>`;
+    const own = (this.plan.materials || []).map((m) => [`own:${m.id}`, m.name, `background:url(${m.thumb}) center/cover`]);
+    if (s.t === "note") {
+      h += head(obj.type === "dim" ? "mdi:ruler" : "mdi:note-text-outline", t(obj.type === "dim" ? "Dimension" : "Note"));
+      if (obj.type === "dim") h += `<div class="card"><div class="row between"><span class="tip">${t("Length")}</span><b>${Math.hypot(obj.b[0] - obj.a[0], obj.b[1] - obj.a[1]).toFixed(2)} m</b></div></div>`;
+      else h += `<div class="field"><h3>${t("Text")}</h3><textarea data-k="text" rows="3">${esc(obj.text || "")}</textarea></div>` + slider("size", "Text size", 0.1, 1, 0.02, obj.size || 0.22);
+      h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["", "#6D4BFF", "#E5484D", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${(obj.color || "") === c ? "on" : ""}" style="background:${c || "var(--text)"}"></button>`).join("")}</div></div>`;
+      h += `<div class="row">${lockBtn}<button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
+    } else if (s.t === "room") {
       const b = bounds(obj.pts), isRect = obj.pts.length === 4, type = ROOM_TYPES[obj.type] || ROOM_TYPES.other;
       h += head(type.icon, obj.name || t(type.name));
       h += `<div class="field"><h3>${t("Name")}</h3><input type="text" data-k="name" value="${esc(obj.name)}" placeholder="${esc(t(type.name))}"></div>`;
       h += `<div class="field"><h3>${t("Type")}</h3><div class="chips">${Object.entries(ROOM_TYPES).map(([k, v]) => `<button data-type="${k}" class="${obj.type === k ? "on" : ""}"><ra-icon icon="${v.icon}"></ra-icon>${t(v.name)}</button>`).join("")}</div></div>`;
       h += slider("rw", "Width", 0.5, 30, 0.05, round(b.x1 - b.x0, 2)) + slider("rd", "Length", 0.5, 30, 0.05, round(b.y1 - b.y0, 2));
-      h += `<div class="field"><h3>${t("Floor")}</h3><div class="sw">${Object.entries(FLOORS).map(([k, v]) => `<button data-floor="${k}" title="${esc(v[0])}" class="${(obj.floor || type.floor) === k ? "on" : ""}" style="background-image:url(${floorThumb(k)})"></button>`).join("")}</div></div>`;
+      h += `<div class="field"><h3>${t("Floor")}</h3><div class="sw">${Object.entries(FLOORS).map(([k, v]) => `<button data-floor="${k}" title="${esc(v[0])}" class="${(obj.floor || type.floor) === k ? "on" : ""}" style="background-image:url(${floorThumb(k)})"></button>`).join("")}${own.map(([k, n, st]) => `<button data-floor="${esc(k)}" title="${esc(n)}" class="${obj.floor === k ? "on" : ""}" style="${st}"></button>`).join("")}</div></div>`;
       if (!type.outdoor) h += `<div class="field"><h3>${t("Walls")}</h3><div class="sw">${Object.entries(WALLS).map(([k, v]) => `<button data-wall="${k}" title="${esc(v[0])}" class="${(obj.wall || "warm-white") === k ? "on" : ""}" style="background:${v[1]}"></button>`).join("")}</div></div>`;
+      if (!type.outdoor) {
+        const fh = this.floor.height || 2.8, cs = obj.ceil?.style || "flat";
+        h += slider("height", "Ceiling height", 2, fh, 0.05, Math.min(fh, obj.height || fh));
+        h += `<div class="field"><h3>${t("Ceiling")}</h3><div class="chips">${[["flat", "Flat"], ["border", "Gypsum border"], ["tray", "Border with hidden light"]].map(([k, l]) => `<button data-ceil="${k}" class="${cs === k ? "on" : ""}">${t(l)}</button>`).join("")}<button data-tog="cornice" class="${obj.cornice ? "on" : ""}">${t("Cornice")}</button></div></div>`;
+        if (cs !== "flat") h += slider("cw", "Border width", 0.2, 1.5, 0.05, obj.ceil?.w ?? 0.6) + slider("cd", "Drop", 0.1, 0.6, 0.01, obj.ceil?.drop ?? 0.25);
+        h += `<div class="field"><h3>${t("Skirting")}</h3><div class="chips">${[["", "None"], ["#F7F5F1", "White"], ["#2A2A2E", "Black"], ["wood:oak", "Light oak"], ["wood:walnut", "Walnut"], ["floor", "Match the floor"]].map(([k, l]) => `<button data-skirt="${k}" class="${(obj.skirt || "") === k ? "on" : ""}">${t(l)}</button>`).join("")}</div></div>`;
+        // a feature wall: pick one of the room's walls, then its finish
+        h += `<div class="field"><h3>${t("Feature wall")}</h3><div class="chips">${obj.pts.map((p, i) => { const q = obj.pts[(i + 1) % obj.pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); return L < 0.3 ? "" : `<button data-edge="${i}" class="${this.edgePick === i ? "on" : ""}">${obj.walls?.[i] ? "● " : ""}${t("Wall")} ${i + 1} · ${L.toFixed(2)} m</button>`; }).join("")}</div>`;
+        if (this.edgePick != null && obj.pts[this.edgePick]) {
+          const cur = obj.walls?.[this.edgePick] || "";
+          h += `<p class="tip">${t("The wall shown in yellow on the plan.")}</p>` + swatches("data-efin", [["", "Same as the room", "background:linear-gradient(135deg,var(--inset) 45%,var(--muted) 50%,var(--inset) 55%)"], ...Object.entries(WALLS).map(([k, v]) => [k, v[0], `background:${v[1]}`]), ...Object.entries(FEATURES).map(([k, v]) => [k, v[0], v[1] ? `background:url(${featureSwatch(k)}) center/cover` : k === "slats" ? "background:repeating-linear-gradient(90deg,#6A4630 0 5px,#3A2A22 5px 7px)" : "background:#F3EFE8;box-shadow:inset 0 0 0 4px #F3EFE8,inset 0 0 0 6px #C9C2B6"]), ...own], cur);
+          if (cur === "slats") h += `<div class="chips">${Object.entries(WOODS).map(([k, v]) => `<button data-slatwood="${k}" class="${(obj.slatWood || "walnut") === k ? "on" : ""}">${t(v[0])}</button>`).join("")}</div>`;
+        }
+        h += `</div>`;
+      }
       h += slider("gain", "Room brightness", 0.4, 2, 0.05, obj.gain || 1, "×");
       h += `<div class="row"><label><button data-match><ra-icon icon="mdi:camera-image"></ra-icon>${t("Match a photo of this room")}</button><input type="file" data-photo accept="image/*" hidden></label></div><span class="tip" data-match-out></span>`;
-      h += `<div class="row"><button data-dup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
+      h += `<div class="row">${lockBtn}<button data-dup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "op") {
       h += head(obj.type === "window" ? "mdi:window-closed-variant" : obj.type === "slider" ? "mdi:door-sliding" : obj.type === "arch" ? "mdi:gate-arrow-right" : "mdi:door", t(obj.type[0].toUpperCase() + obj.type.slice(1)));
       h += `<div class="seg">${["door", "window", "slider", "arch"].map((k) => `<button data-otype="${k}" class="${obj.type === k ? "on" : ""}">${t(k[0].toUpperCase() + k.slice(1))}</button>`).join("")}</div>`;
       h += slider("width", "Width", 0.4, 5, 0.05, obj.width) + slider("height", "Height", 0.4, 2.8, 0.05, obj.height);
       if (obj.type === "window") h += slider("sill", "Sill", 0, 1.8, 0.05, obj.sill);
       if (obj.type === "door") h += `<div class="row"><button data-flip><ra-icon icon="mdi:swap-vertical"></ra-icon>${t("Flip")}</button><button data-tog="double" class="${obj.double ? "on" : ""}"><ra-icon icon="mdi:door-open"></ra-icon>Double</button><button data-tog="main" class="${obj.main ? "on" : ""}"><ra-icon icon="mdi:home-import-outline"></ra-icon>Main</button></div>`;
-      h += `<div class="row"><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
+      const tints = [["", "As it is"], ["#F7F5F1", "White"], ["#1E1F23", "Black"], ["#6B5B4B", "Bronze"], ["wood:oak", "Light oak"], ["wood:walnut", "Walnut"]];
+      if (obj.type !== "arch") h += `<div class="field"><h3>${t("Frame")}</h3><div class="chips">${tints.map(([k, l]) => `<button data-frame="${k}" class="${(obj.frame || "") === k ? "on" : ""}">${t(l)}</button>`).join("")}</div></div>`;
+      if (obj.type === "door") h += `<div class="field"><h3>${t("Door colour")}</h3><div class="chips">${[...tints, ["#8E2F2F", "Red"], ["#2F3E5C", "Navy"]].map(([k, l]) => `<button data-leaf="${k}" class="${(obj.leaf || "") === k ? "on" : ""}">${t(l)}</button>`).join("")}</div></div>`;
+      h += `<div class="row">${lockBtn}<button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "item" && obj.kind === "stairs") {
       const S = STAIR_STYLES[obj.style || "wood"] || STAIR_STYLES.wood, up = this.plan.floors[obj.link];
       h += head("mdi:stairs-up", t(S[0]));
@@ -995,9 +1069,15 @@ export class AtelierEditor {
       h += slider("w", "Width", 0.2, 6, 0.05, d.w) + slider("d", "Depth", 0.05, 4, 0.05, d.d) + slider("h", "Height", 0.05, 3, 0.05, d.h);
       if (d.mount === "wall") h += slider("z", "Sill", 0, 2.4, 0.05, d.z);
       h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ra-icon icon="mdi:rotate-left"></ra-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ra-icon icon="mdi:rotate-right"></ra-icon></button></div></div>`;
-      h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${Object.entries(FABRICS).map(([k, c]) => `<button data-color="${c}" title="${k}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
+      const structural = ["column", "round_column", "beam"].includes(obj.kind);
+      if (BACKED.has(obj.kind) || LIBRARY[obj.kind]?.[6] === "wall") h += `<div class="row"><button data-fit><ra-icon icon="mdi:arrow-expand-horizontal"></ra-icon>${t("Fit to the wall")}</button>${obj.kind === "fitted_wardrobe" ? `<button data-tog="toCeiling" data-inv="1" class="${obj.toCeiling !== false ? "on" : ""}"><ra-icon icon="mdi:arrow-expand-vertical"></ra-icon>${t("Up to the ceiling")}</button>` : ""}</div>`;
+      h += `<div class="field"><h3>${t(structural ? "Colour" : "Fabric")}</h3><div class="sw">${(structural ? [["#ECE8E0", "#ECE8E0"], ["#F7F5F1", "#F7F5F1"], ["#9E9C98", "#9E9C98"], ["#4A4B50", "#4A4B50"]] : Object.entries(FABRICS)).map(([k, c]) => `<button data-color="${c}" title="${k}" class="${obj.color === c && !obj.mat ? "on" : ""}" style="background:${c}"></button>`).join("")}${structural ? "" : own.map(([k, n, st]) => `<button data-mat="${esc(k.slice(4))}" title="${esc(n)}" class="${obj.mat === k.slice(4) ? "on" : ""}" style="${st}"></button>`).join("")}</div></div>`;
+      if (!structural) {
+        h += `<div class="field"><h3>${t("Wood")}</h3><div class="sw">${[["", "As it is", "background:linear-gradient(135deg,var(--inset) 45%,var(--muted) 50%,var(--inset) 55%)"], ...Object.entries(WOODS).map(([k, v]) => [k, v[0], `background:${v[1]}`])].map(([k, l, st]) => `<button data-wood="${k}" title="${esc(t(l))}" class="${(obj.wood || "") === k ? "on" : ""}" style="${st}"></button>`).join("")}</div></div>`;
+        h += `<div class="field"><h3>${t("Metal")}</h3><div class="sw">${[["", "As it is", "background:linear-gradient(135deg,var(--inset) 45%,var(--muted) 50%,var(--inset) 55%)"], ...Object.entries(METALS).map(([k, v]) => [k, v, `background:${k}`])].map(([k, l, st]) => `<button data-metal="${k}" title="${esc(t(l))}" class="${(obj.metal || "") === k ? "on" : ""}" style="${st}"></button>`).join("")}</div></div>`;
+      }
       h += `<div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-samekind><ra-icon icon="mdi:shape-outline"></ra-icon>${t("All like this")}</button><button data-sameroom><ra-icon icon="mdi:floor-plan"></ra-icon>${t("All in this room")}</button></div></div>`;
-      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ra-icon icon="mdi:selection-multiple"></ra-icon>${t("Select several")}</button><button data-dup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
+      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ra-icon icon="mdi:selection-multiple"></ra-icon>${t("Select several")}</button>${lockBtn}<button data-dup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "dev") {
       const kind = obj.kind || deviceKind(obj.entity), K = KINDS[kind];
       h += head(K.icon, obj.name || t(K.name));
@@ -1014,7 +1094,7 @@ export class AtelierEditor {
       if (kind === "person" || kind === "radar") h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["#6D4BFF", "#4E8CFF", "#E86FB0", "#FF7A59", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
       if (obj.group) { const n = this.floor.devices.filter((d) => d.group === obj.group).length; h += `<div class="field"><h3>${t("Switch together")}</h3><p class="tip">${t("In a group of")} ${n}</p><div class="row"><button data-selgroup><ra-icon icon="mdi:select-group"></ra-icon>${t("Pick the group")}</button><button data-ungroup="${esc(obj.group)}"><ra-icon icon="mdi:link-variant-off"></ra-icon>${t("Ungroup")}</button></div></div>`; }
       h += `<div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-samekind><ra-icon icon="mdi:shape-outline"></ra-icon>${t("All like this")}</button><button data-sameroom><ra-icon icon="mdi:floor-plan"></ra-icon>${t("All in this room")}</button></div></div>`;
-      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ra-icon icon="mdi:selection-multiple"></ra-icon>${t("Select several")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
+      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ra-icon icon="mdi:selection-multiple"></ra-icon>${t("Select several")}</button>${lockBtn}<button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     }
     a.innerHTML = h;
     a.querySelector("[data-pick]")?.addEventListener("click", () => { this.picking = !this.picking; this.toast(t(this.picking ? "Tap more pieces to add them" : "Done selecting")); this.inspector(); });
@@ -1028,9 +1108,21 @@ export class AtelierEditor {
   bindInspector(obj, s) {
     const a = this.aside;
     const set = (fn, rebuild = true) => { if (!this._editing) { this.snapshot(); this._editing = true; } clearTimeout(this._edT); this._edT = setTimeout(() => (this._editing = false), 700); fn(); this.changed(rebuild, false, s.t === "item"); };
-    a.querySelector("[data-close]")?.addEventListener("click", () => this.select(null));
+    a.querySelector("[data-close]")?.addEventListener("click", () => { this.edgePick = null; this.select(null); });
     a.querySelector("[data-del]")?.addEventListener("click", () => this.remove(s));
-    a.querySelectorAll("input[type=text][data-k]").forEach((i) => i.addEventListener("input", () => set(() => (obj[i.dataset.k] = i.value), false)));
+    a.querySelectorAll("input[type=text][data-k],textarea[data-k]").forEach((i) => i.addEventListener("input", () => { set(() => (obj[i.dataset.k] = i.value), false); if (s.t === "note") this.draw(); }));
+    a.querySelector("[data-lock]")?.addEventListener("click", () => { this.snapshot(); obj.locked = !obj.locked; if (!obj.locked) delete obj.locked; this.changed(false); this.inspector(); });
+    a.querySelectorAll("[data-ceil]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.ceil === "flat") delete obj.ceil; else obj.ceil = { w: 0.6, drop: 0.25, ...(obj.ceil || {}), style: b.dataset.ceil }; }); this.inspector(); }));
+    a.querySelectorAll("[data-skirt]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.skirt) obj.skirt = b.dataset.skirt; else delete obj.skirt; }); this.inspector(); }));
+    a.querySelectorAll("[data-edge]").forEach((b) => (b.onclick = () => { this.edgePick = this.edgePick === +b.dataset.edge ? null : +b.dataset.edge; this.draw(); this.inspector(); }));
+    a.querySelectorAll("[data-efin]").forEach((b) => (b.onclick = () => { set(() => { obj.walls = { ...(obj.walls || {}) }; if (b.dataset.efin) obj.walls[this.edgePick] = b.dataset.efin; else delete obj.walls[this.edgePick]; if (!Object.keys(obj.walls).length) delete obj.walls; }); this.inspector(); }));
+    a.querySelectorAll("[data-slatwood]").forEach((b) => (b.onclick = () => { set(() => (obj.slatWood = b.dataset.slatwood)); this.inspector(); }));
+    a.querySelectorAll("[data-frame]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.frame) obj.frame = b.dataset.frame; else delete obj.frame; }); this.inspector(); }));
+    a.querySelectorAll("[data-leaf]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.leaf) obj.leaf = b.dataset.leaf; else delete obj.leaf; }); this.inspector(); }));
+    a.querySelectorAll("[data-wood]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.wood) obj.wood = b.dataset.wood; else delete obj.wood; }); this.inspector(); }));
+    a.querySelectorAll("[data-metal]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.metal) obj.metal = b.dataset.metal; else delete obj.metal; }); this.inspector(); }));
+    a.querySelectorAll("[data-mat]").forEach((b) => (b.onclick = () => { set(() => { obj.mat = obj.mat === b.dataset.mat ? undefined : b.dataset.mat; if (!obj.mat) delete obj.mat; }); this.inspector(); }));
+    a.querySelector("[data-fit]")?.addEventListener("click", () => { if (!this.fitToWall(obj)) this.toast(t("Move it against a wall first")); else { this.changed(true, false, true); this.inspector(); } });
     a.querySelectorAll("select[data-k]").forEach((i) => i.addEventListener("change", () => set(() => { obj[i.dataset.k] = i.value; if (i.value && !obj.name) obj.name = this._hass.states[i.value]?.attributes.friendly_name || ""; })));
     a.querySelectorAll("input[data-num]").forEach((n) => n.addEventListener("change", () => {
       const r = a.querySelector(`input[type=range][data-k="${n.dataset.num}"]`), v = parseFloat(n.value);
@@ -1048,8 +1140,11 @@ export class AtelierEditor {
           for (const p of obj.pts) { const n = k === "rw" ? round(b.x0 + (p[0] - b.x0) * f, 3) : round(b.y0 + (p[1] - b.y0) * f, 3); for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][k === "rw" ? 0 : 1] = n; p[k === "rw" ? 0 : 1] = n; }
         } else if (k === "rw" || k === "rd") { const b = bounds(obj.pts); for (const p of obj.pts) { if (k === "rw" && Math.abs(p[0] - b.x1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][0] = round(b.x0 + v, 3); p[0] = round(b.x0 + v, 3); } if (k === "rd" && Math.abs(p[1] - b.y1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][1] = round(b.y0 + v, 3); p[1] = round(b.y0 + v, 3); } } }
         else if ((k === "wl" || k === "wt") && obj.x != null) { const rm = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)); if (rm) { const b = bounds(rm.pts); if (k === "wl") obj.x = round(b.x0 + v, 3); else obj.y = round(b.y0 + v, 3); } }
+        else if (k === "cw" || k === "cd") obj.ceil = { ...(obj.ceil || { style: "border" }), [k === "cw" ? "w" : "drop"]: v };
+        else if (k === "height" && s.t === "room") { if (v >= (this.floor.height || 2.8) - 0.001) delete obj.height; else obj.height = v; }
         else { obj[k] = k === "heads" || k === "bars" ? Math.round(v) : v; if (obj.kind === "stairs" && k === "w" && STAIR_STYLES[obj.style]?.[2]) obj.d = v; }
-      }, !LIVE_KEYS.has(k));
+      }, !LIVE_KEYS.has(k) && s.t !== "note");
+      if (s.t === "note") this.draw();
       // light output, warmth and room brightness change instantly: no rebuild, no new light bake
       if (LIVE_KEYS.has(k)) { if (k === "kelvin") i.style.accentColor = kelvinToHex(v); this.view.engine.updateDevices(true); this.view.engine.request(false); }
     }));
@@ -1067,7 +1162,7 @@ export class AtelierEditor {
       this.aside.querySelector("[data-match-out]").textContent = res.text;
     });
     a.querySelector("[data-flip]")?.addEventListener("click", () => set(() => (obj.swing = (obj.swing || 1) * -1)));
-    a.querySelectorAll("[data-tog]").forEach((b) => (b.onclick = () => { set(() => (obj[b.dataset.tog] = !obj[b.dataset.tog])); this.inspector(); }));
+    a.querySelectorAll("[data-tog]").forEach((b) => (b.onclick = () => { set(() => { const k = b.dataset.tog; if (b.dataset.inv) { if (obj[k] === false) delete obj[k]; else obj[k] = false; } else { obj[k] = !obj[k]; if (!obj[k]) delete obj[k]; } }); this.inspector(); }));
     // stairs: a new style keeps where they start and arrive; or pick again where they arrive
     a.querySelectorAll("[data-stairstyle]").forEach((b) => (b.onclick = () => {
       const [from, to] = this.stairEnds(obj), st = b.dataset.stairstyle, spec = stairFrom(from, to, st, obj.link != null && this.plan.floors[obj.link] ? riseTo(this.plan, this.fi) : obj.h || this.floor.height || 2.8);
@@ -1075,7 +1170,7 @@ export class AtelierEditor {
     }));
     a.querySelector("[data-restair]")?.addEventListener("click", () => { const from = this.stairEnds(obj)[0]; this.startStairs(obj.style || "wood", obj.id); this.pickStair(from); });
     a.querySelectorAll("[data-rotby]").forEach((b) => (b.onclick = () => { set(() => (obj.rot = (((obj.rot || 0) + +b.dataset.rotby) % 360 + 360) % 360)); this.inspector(); }));
-    a.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => { set(() => (obj.color = b.dataset.color)); this.inspector(); }));
+    a.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => { set(() => { if (b.dataset.color) obj.color = b.dataset.color; else delete obj.color; delete obj.mat; }, s.t !== "note"); if (s.t === "note") this.draw(); this.inspector(); }));
     a.querySelectorAll("[data-rule]").forEach((b) => (b.onclick = () => { set(() => (obj.rule = b.dataset.rule), false); this.view.engine.updateDevices(true); this.inspector(); }));
     a.querySelectorAll("[data-look]").forEach((b) => (b.onclick = () => { set(() => { obj.look = b.dataset.look; if (obj.look === "focus" && obj.tx == null) this.aimAtWall(obj); }); this.inspector(); }));
     // one switch for many lights: every light in this room follows the same entity (or the same on/off rule)
@@ -1218,10 +1313,12 @@ export class AtelierEditor {
       <div class="field"><h3>${t("Language")}</h3><select data-lang>${LANGS.map(([k, l]) => `<option value="${k}" ${savedLang() === k ? "selected" : ""}>${k === "auto" ? t("Auto") : l}</option>`).join("")}</select></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>` : ""}</div>
       <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ra-icon icon="mdi:home-import-outline"></ra-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
+      <div class="field"><h3>${t("Your materials")}</h3><div data-own></div></div>
       <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made when you press Make dashboard pictures")}</span></div></div>
       <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ra-icon icon="mdi:image-multiple-outline"></ra-icon>${t("Make dashboard pictures")}</button><button data-preview><ra-icon icon="mdi:eye-outline"></ra-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
+    this.ownPanel(a.querySelector("[data-own]"));
     this.drawAreas(a.querySelector("[data-ha-areas]"));
     a.querySelector("[data-ha-place]")?.addEventListener("click", () => { this.placeFromHA(false); this.drawAreas(a.querySelector("[data-ha-areas]")); });
     this.drawPanos(a.querySelector("[data-panos]"));
@@ -1374,7 +1471,7 @@ export class AtelierEditor {
     if (e.target.closest?.("input,select,textarea") || e.composedPath()[0]?.matches?.("input,select,textarea")) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); }
     else if ((e.key === "Delete" || e.key === "Backspace") && this.sel) this.remove(this.sel);
-    else if (e.key === "Escape") { this.picking = false; this.select(null); }
+    else if (e.key === "Escape") { this.picking = false; this.measure = null; this.edgePick = null; this.select(null); }
     // Ctrl+A: every device on this level; Ctrl+Shift+A: every device and piece of furniture
     else if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A") && !this.testing) { e.preventDefault(); this.selectMany((x) => x.t === "dev" || (e.shiftKey && x.t === "item")); }
     // Ctrl+C / Ctrl+X / Ctrl+V: copy, cut and paste devices and furniture (also onto another level)
@@ -1382,6 +1479,56 @@ export class AtelierEditor {
     else if ((e.ctrlKey || e.metaKey) && /^[xX]$/.test(e.key) && !this.testing) { if (this.copySel()) { e.preventDefault(); this.remove(this.sel); this.toast(t("Cut")); } }
     else if ((e.ctrlKey || e.metaKey) && /^[vV]$/.test(e.key) && !this.testing) { if (this.clip?.length) { e.preventDefault(); this.paste(); } }
     else if (e.key === " " && !e.repeat) this._space = true;
+  }
+  // ------------------------------------------------------------ measuring
+  measureOut() { const o = this.aside.querySelector("[data-mlen]"), m = this.measure; if (o && m) o.textContent = `${Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]).toFixed(2)} m`; }
+  measurePanel(a) {
+    const m = this.measure, L = m ? Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) : 0;
+    a.innerHTML = `<h2><ra-icon icon="mdi:tape-measure"></ra-icon>${t("Measure")}</h2><p class="tip">${t("Drag between any two points. It snaps to walls and corners; hold Shift for a straight line.")}</p>
+      <div class="card"><div class="row between"><span class="tip">${t("Length")}</span><b data-mlen style="font-size:20px">${L ? `${L.toFixed(2)} m` : "–"}</b></div></div>
+      ${m ? `<div class="row"><button class="primary" data-keepdim><ra-icon icon="mdi:ruler"></ra-icon>${t("Keep it on the plan")}</button><button data-clearm><ra-icon icon="mdi:close"></ra-icon>${t("Clear")}</button></div>` : ""}`;
+    a.querySelector("[data-keepdim]")?.addEventListener("click", () => { this.snapshot(); const n = { id: uid("n"), type: "dim", a: [...m.a], b: [...m.b] }; (this.floor.notes ||= []).push(n); this.measure = null; this.changed(false); this.select({ t: "note", id: n.id }); });
+    a.querySelector("[data-clearm]")?.addEventListener("click", () => { this.measure = null; this.draw(); this.inspector(); });
+  }
+  // a piece made to fit: as wide as the wall it stands against (between the corners), flat against it, facing the room
+  fitToWall(it) {
+    const f = this.floor, d = dims(it), room = f.rooms.find((r) => inside([it.x, it.y], r.pts)); if (!room) return false;
+    const a = ((it.rot || 0) * Math.PI) / 180, back = [it.x - Math.sin(a) * (d.d / 2), it.y - Math.cos(a) * (d.d / 2)];
+    let best = null;
+    room.pts.forEach((p, i) => { const q = room.pts[(i + 1) % room.pts.length], ex = q[0] - p[0], ey = q[1] - p[1], L2 = ex * ex + ey * ey, k = ((back[0] - p[0]) * ex + (back[1] - p[1]) * ey) / L2; if (k < -0.05 || k > 1.05) return; const dist = Math.abs(ex * (back[1] - p[1]) - ey * (back[0] - p[0])) / Math.sqrt(L2); if (!best || dist < best.dist) best = { p, q, dist }; });
+    if (!best || best.dist > 0.8) return false;
+    const { p, q } = best, L = Math.hypot(q[0] - p[0], q[1] - p[1]), ux = (q[0] - p[0]) / L, uy = (q[1] - p[1]) / L, mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    let nx = -uy, ny = ux; if (!inside([mx + nx * 0.3, my + ny * 0.3], room.pts)) { nx = -nx; ny = -ny; }
+    const th = nearestWall(f, [mx, my], 0.4)?.w.thick ?? 0.15, ends = th; // half a wall at each corner
+    this.snapshot();
+    it.w = round(Math.max(0.3, L - ends), 3);
+    it.rot = (Math.round((Math.atan2(nx, ny) * 180) / Math.PI) + 360) % 360;
+    const off = th / 2 + d.d / 2 + (LIBRARY[it.kind]?.[6] === "wall" ? 0 : 0.005);
+    it.x = round(mx + nx * off, 3); it.y = round(my + ny * off, 3);
+    return true;
+  }
+  // ------------------------------------------------------------ your own materials (photos of tiles, wood, fabric)
+  async addOwnMaterial(file) {
+    const img = await createImageBitmap(file), k = Math.min(1, 1024 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88)), th = document.createElement("canvas"); th.width = th.height = 48; th.getContext("2d").drawImage(img, 0, 0, 48, 48);
+    const fd = new FormData(); fd.append("file", blob, "material.jpg");
+    const r = await this._hass.fetchWithAuth("/api/roost_atelier/upload", { method: "POST", body: fd }); if (!r.ok) throw new Error(await r.text());
+    const { file: name } = await r.json();
+    this.snapshot();
+    const m = { id: name.split(".")[0], file: name, name: file.name.replace(/\.[^.]+$/, "").slice(0, 30) || t("My material"), size: 0.6, thumb: th.toDataURL("image/jpeg", 0.7) };
+    (this.plan.materials ||= []).push(m); setOwnMaterials(this.plan.materials); this.changed(false);
+    return m;
+  }
+  ownPanel(el) {
+    const list = this.plan.materials || [];
+    el.innerHTML = `${list.map((m) => `<div class="row between"><span class="row"><i style="width:28px;height:28px;border-radius:6px;background:url(${m.thumb}) center/cover;display:inline-block"></i>${esc(m.name)}</span><b class="nv"><input type="number" inputmode="decimal" data-msize="${esc(m.id)}" min="0.1" step="0.05" value="${m.size}"><i>m</i></b><button data-mdel="${esc(m.id)}" title="${t("Delete")}"><ra-icon icon="mdi:delete-outline"></ra-icon></button></div>`).join("")}
+      <p class="tip">${t("A photo of a tile, wood, stone or fabric from your supplier. Set how many metres one photo covers. Then pick it for floors, feature walls or furniture.")}</p>
+      <div class="row"><label><button data-addmat><ra-icon icon="mdi:image-plus-outline"></ra-icon>${t("Add a material")}</button><input type="file" data-matfile accept="image/*" hidden></label></div>`;
+    el.querySelector("[data-addmat]").onclick = () => el.querySelector("[data-matfile]").click();
+    el.querySelector("[data-matfile]").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; this.toast(t("Saving")); try { await this.addOwnMaterial(f); this.toast(t("Added")); } catch (err) { this.toast(t("Not saved")); } this.ownPanel(el); };
+    el.querySelectorAll("[data-msize]").forEach((i) => (i.onchange = () => { const m = list.find((x) => x.id === i.dataset.msize), v = parseFloat(i.value); if (!m || !(v > 0)) return; this.snapshot(); m.size = round(v, 2); setOwnMaterials(this.plan.materials); this.changed(true); }));
+    el.querySelectorAll("[data-mdel]").forEach((b) => (b.onclick = () => this.confirm(t("Delete this material?"), () => { this.snapshot(); this.plan.materials = list.filter((x) => x.id !== b.dataset.mdel); this.changed(true); this.ownPanel(el); })));
   }
   // the picked devices and furniture, kept to paste (rooms, doors and stairs stay where they are)
   copySel() {

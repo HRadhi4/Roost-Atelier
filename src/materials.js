@@ -144,6 +144,66 @@ export const FABRICS = {
   linen: "#D8CFC0", grey: "#8E8C92", charcoal: "#45464C", navy: "#2F3E5C", sage: "#8FA08A", terracotta: "#B8674A", mustard: "#C9A040", blush: "#D9AFA3", cream: "#EEE6D8", plum: "#6A4766",
 };
 
+// wallpapers, painted in code: thin stripes, a geometric trellis, woven grasscloth and a classic damask-like pattern
+function stripes(base, line) {
+  return (c, r, hgt, w, h) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h); r.fillStyle = "#d8d8d8"; r.fillRect(0, 0, w, h); hgt.fillStyle = "#808080"; hgt.fillRect(0, 0, w, h);
+    const n = 16, s = w / n;
+    for (let i = 0; i < n; i++) { c.fillStyle = i % 2 ? line : base; c.fillRect(i * s, 0, s * (i % 2 ? 0.35 : 1), h); hgt.fillStyle = i % 2 ? "#8a8a8a" : "#808080"; hgt.fillRect(i * s, 0, s * 0.35, h); }
+    speckle(c, w, h, 0.02);
+  };
+}
+function trellis(base, line) {
+  return (c, r, hgt, w, h) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h); r.fillStyle = "#d8d8d8"; r.fillRect(0, 0, w, h); hgt.fillStyle = "#808080"; hgt.fillRect(0, 0, w, h);
+    const n = 6, s = w / n;
+    for (const k of [c, hgt]) {
+      k.strokeStyle = k === c ? line : "#9a9a9a"; k.lineWidth = 3;
+      for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) { k.beginPath(); k.ellipse(i * s, j * s, s * 0.36, s * 0.5, 0, 0, Math.PI * 2); k.stroke(); }
+    }
+    speckle(c, w, h, 0.02);
+  };
+}
+function grasscloth(base) {
+  return (c, r, hgt, w, h) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h); r.fillStyle = "#f0f0f0"; r.fillRect(0, 0, w, h); hgt.fillStyle = "#808080"; hgt.fillRect(0, 0, w, h);
+    const [br, bg, bb] = hex(base);
+    for (let y = 0; y < h; y += 2) { const v = 0.85 + rnd() * 0.3; c.fillStyle = rgb(br * v, bg * v, bb * v); c.fillRect(0, y, w, 1 + rnd() * 2); hgt.fillStyle = `rgb(${100 + rnd() * 80},${100 + rnd() * 80},${100 + rnd() * 80})`; hgt.fillRect(0, y, w, 1); }
+    for (let x = 0; x < w; x += w / 8) { c.fillStyle = "rgba(0,0,0,.05)"; c.fillRect(x, 0, 1, h); }
+  };
+}
+function damask(base, line) {
+  return (c, r, hgt, w, h) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h); r.fillStyle = "#cfcfcf"; r.fillRect(0, 0, w, h); hgt.fillStyle = "#808080"; hgt.fillRect(0, 0, w, h);
+    const n = 4, s = w / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (const k of [c, hgt]) {
+      const x = i * s + (j % 2 ? s / 2 : 0), y = j * s; k.fillStyle = k === c ? line : "#8e8e8e";
+      k.beginPath(); k.moveTo(x, y - s * 0.32); k.bezierCurveTo(x + s * 0.3, y - s * 0.1, x + s * 0.18, y + s * 0.2, x, y + s * 0.32); k.bezierCurveTo(x - s * 0.18, y + s * 0.2, x - s * 0.3, y - s * 0.1, x, y - s * 0.32); k.fill();
+      k.beginPath(); k.arc(x, y, s * 0.06, 0, Math.PI * 2); k.fillStyle = k === c ? base : "#7a7a7a"; k.fill();
+    }
+    speckle(c, w, h, 0.02);
+  };
+}
+function stone(base) {
+  return (c, r, hgt, w, h) => {
+    c.fillStyle = "#6f6a62"; c.fillRect(0, 0, w, h); r.fillStyle = "#e8e8e8"; r.fillRect(0, 0, w, h); hgt.fillStyle = "#303030"; hgt.fillRect(0, 0, w, h);
+    const [br, bg, bb] = hex(base); let y = 0;
+    while (y < h) { const rh = 18 + rnd() * 26; let x = -rnd() * 60; while (x < w) { const rw = 40 + rnd() * 90, v = 0.8 + rnd() * 0.35; c.fillStyle = rgb(br * v, bg * v, bb * v); c.fillRect(x + 2, y + 2, rw - 4, rh - 4); hgt.fillStyle = `rgb(${150 + rnd() * 60},${150 + rnd() * 60},${150 + rnd() * 60})`; hgt.fillRect(x + 2, y + 2, rw - 4, rh - 4); x += rw; } y += rh; }
+    speckle(c, w, h, 0.06);
+  };
+}
+// finishes for one wall of a room (a feature wall): paint colours, wallpapers, stone and marble, or panelling that is built
+// in front of the wall ("slats" and "panels" keep a paint colour behind them)
+export const FEATURES = {
+  "wp-stripe": ["Striped wallpaper", stripes("#E9E3D8", "#CFC4B2"), 1.0],
+  "wp-trellis": ["Trellis wallpaper", trellis("#E7E9E4", "#A9B3A2"), 0.8],
+  "wp-damask": ["Classic wallpaper", damask("#D9CBB4", "#BFAE90"), 0.8],
+  "wp-grass": ["Grasscloth", grasscloth("#C9B793"), 1.2],
+  stone: ["Stone cladding", stone("#B7A58A"), 1.6],
+  "marble-wall": ["Marble slabs", tiles("#EEECE8", "#D9D6D0", 1, 0.02, { veins: 30 }), 1.4],
+  slats: ["Wood slats", null], panels: ["Classic panels", null],
+};
+
 function painted(key, painter, size = SIZE) {
   if (cache.has(key)) return cache.get(key);
   const c = canvas(size, size), r = canvas(size, size), h = canvas(size, size);
@@ -191,6 +251,7 @@ function plasterOn(m) {
 
 const matCache = new Map();
 export function floorMaterial(name) {
+  if (String(name).startsWith("own:")) return ownMaterial(name.slice(4));
   const k = `floor:${name}`;
   if (matCache.has(k)) return matCache.get(k);
   const def = FLOORS[name] || FLOORS.oak;
@@ -238,10 +299,12 @@ export function wood(kind = "oak", color) {
   const base = { oak: "#B98A5E", walnut: "#6A4630", ash: "#D2B48E", ebony: "#3A2A22", white: "#EDEAE4" }[kind] || kind;
   const p = painted(`woodgrain:${base}`, planks(base, 0.08, { plank: 2 }));
   const m = new THREE.MeshPhysicalMaterial({ color: color || "#ffffff", map: tex(p.map, true, 1.2), roughnessMap: tex(p.rough, false, 1.2), roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.3 });
-  m.userData.tile = 1.2;
+  m.userData.tile = 1.2; m.userData.wood = true;
   m.userData.shared = true; matCache.set(k, m);
   return m;
 }
+export const WOODS = { oak: ["Light oak", "#B98A5E"], ash: ["Ash", "#D2B48E"], walnut: ["Walnut", "#6A4630"], ebony: ["Dark wood", "#3A2A22"], white: ["White", "#EDEAE4"] };
+export const METALS = { "#1B1B1F": "Black metal", "#C9A35A": "Brass", "#E6E8EB": "Chrome", "#8A7F72": "Bronze" };
 export function solid(color, { rough = 0.5, metal = 0, clear = 0, emissive, emissiveIntensity = 0, transmission = 0, opacity = 1, side } = {}) {
   const k = `solid:${color}:${rough}:${metal}:${clear}:${emissive}:${transmission}:${opacity}:${side}`;
   if (matCache.has(k)) return matCache.get(k);
@@ -252,6 +315,44 @@ export function solid(color, { rough = 0.5, metal = 0, clear = 0, emissive, emis
   m.userData.shared = true; matCache.set(k, m);
   return m;
 }
+// a finish on one wall (wallpaper, stone, marble); a paint colour name or #colour falls back to a painted wall
+export function featureMaterial(name) {
+  if (String(name).startsWith("own:")) return ownMaterial(name.slice(4));
+  const def = FEATURES[name]; if (!def || !def[1]) return wallMaterial(name);
+  const k = `feature:${name}`; if (matCache.has(k)) return matCache.get(k);
+  const p = painted(k, def[1], 1024);
+  const m = new THREE.MeshStandardMaterial({ map: tex(p.map, true, def[2]), roughnessMap: tex(p.rough, false, def[2]), normalMap: tex(p.normal, false, def[2]), roughness: name === "marble-wall" ? 0.25 : 0.85, envMapIntensity: 0.5 });
+  m.normalScale.set(0.5, 0.5); m.userData.tile = def[2]; m.userData.shared = true; matCache.set(k, m);
+  return m;
+}
+// your own materials: a photo of a tile, wood, stone or fabric uploaded to Home Assistant, repeated every `size` metres
+const ownDefs = new Map(); let ownSource = null; const ownLater = [];
+export function setOwnMaterials(list = [], source) {
+  for (const m of list) ownDefs.set(m.id, m);
+  if (source) { ownSource = source; for (const f of ownLater.splice(0)) f(); }
+}
+export const ownList = () => [...ownDefs.values()];
+export function ownMaterial(id) {
+  const def = ownDefs.get(id) || { id, size: 1 }, k = `own:${id}:${def.size}`;
+  if (matCache.has(k)) return matCache.get(k);
+  const m = new THREE.MeshPhysicalMaterial({ color: "#cfcac2", roughness: def.rough ?? 0.6, clearcoat: def.shine ? 0.4 : 0, sheen: def.kind === "fabric" ? 0.5 : 0 });
+  m.userData.tile = def.size || 1; m.userData.own = id; m.userData.shared = true; matCache.set(k, m);
+  const load = () => ownSource?.(def.file || id).then((b) => b && createImageBitmap(b, { imageOrientation: "flipY" })).then((img) => {
+    if (!img) return; const t = new THREE.Texture(img); t.flipY = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
+    t.repeat.set(1 / (def.size || 1), 1 / (def.size || 1)); t.userData.tile = def.size || 1; t.needsUpdate = true;
+    m.map = t; m.color.set("#ffffff"); m.needsUpdate = true; for (const fn of realListeners) fn(m);
+  }).catch(() => {});
+  if (ownSource) load(); else ownLater.push(load);
+  return m;
+}
+// a small picture of a finish, for the buttons that pick it
+export function featureSwatch(name) {
+  const def = FEATURES[name]; if (!def?.[1]) return null;
+  const k = `swatch:${name}`; if (cache.has(k)) return cache.get(k);
+  const p = painted(`feature:${name}`, def[1]), c = canvas(64, 64); c.getContext("2d").drawImage(p.map, 0, 0, 64, 64);
+  const url = c.toDataURL("image/jpeg", 0.8); cache.set(k, url); return url;
+}
+
 export const glass = () => solid("#DDEBF2", { rough: 0.04, transmission: 0.95, opacity: 0.35, side: THREE.DoubleSide });
 export const metal = (c = "#1B1B1F", rough = 0.35) => solid(c, { rough, metal: 1 });
 export const brass = () => solid("#C9A35A", { rough: 0.3, metal: 1 });
@@ -261,7 +362,7 @@ export const porcelain = () => solid("#FBFBFA", { rough: 0.12, clear: 0.6 });
 // Fit a material's map to an object size in metres (UVs are in metres on Atelier geometry).
 export function tileFor(m) { return m.userData?.tile || 1; }
 export function swatchColor(kind, name) {
-  if (kind === "floor") { const d = FLOORS[name]; if (!d) return "#B98A5E"; const p = painted(`floor:${name}`, d[1]); const x = p.map.getContext("2d").getImageData(SIZE / 2, SIZE / 2, 1, 1).data; return rgb(x[0], x[1], x[2]); }
+  if (kind === "floor") { if (String(name).startsWith("own:")) return "#B8B2A8"; const d = FLOORS[name]; if (!d) return "#B98A5E"; const p = painted(`floor:${name}`, d[1]); const x = p.map.getContext("2d").getImageData(SIZE / 2, SIZE / 2, 1, 1).data; return rgb(x[0], x[1], x[2]); }
   return (WALLS[name] || [0, "#F3EFE8"])[1];
 }
 export function swatchCanvas(name) { const d = FLOORS[name]; return d ? painted(`floor:${name}`, d[1]).map : null; }

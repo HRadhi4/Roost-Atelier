@@ -152,7 +152,7 @@ function insidePoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length -
 
 // a short fingerprint of everything that changes the light (not the on/off states)
 export function bakeHash(floor, extra) {
-  const keep = { h: floor.height, r: floor.rooms.map((r) => [r.pts, r.type, r.floor, r.wall]), o: floor.openings, i: floor.items.map((i) => [i.kind, i.x, i.y, i.rot, i.w, i.d, i.h, i.color, i.mount]),
+  const keep = { h: floor.height, r: floor.rooms.map((r) => [r.pts, r.type, r.floor, r.wall, r.height, r.ceil, r.cornice, r.skirt, r.walls]), o: floor.openings, i: floor.items.map((i) => [i.kind, i.x, i.y, i.rot, i.w, i.d, i.h, i.color, i.mount, i.wood, i.metal, i.mat, i.round]),
     l: floor.devices.filter((d) => (d.kind || "light") === "light" && !d.entity?.match(/^(cover|climate|media_player|lock|person|fan|vacuum|binary_sensor)\./)).map((d) => [d.x, d.y, d.look, d.kind, d.len, d.heads, d.rot, d.tilt, d.aim, d.style, d.tx, d.ty, d.tz]), extra, v: BAKE_VERSION };
   const s = JSON.stringify(keep); let h1 = 0x811c9dc5, h2 = 0x1234567;
   for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = Math.imul(h2 ^ c, 2246822519) ^ (h2 >>> 13); }

@@ -13,6 +13,12 @@ const D = (cx, cy, r = 0.9) => F(O(cx, cy, r)); // a dot
 
 // ---------------------------------------------------------------- furniture (item:…)
 const ITEMS = {
+  // structure and fitted joinery
+  column: R(8, 2, 8, 20, 0.5) + P("M6 2h12M6 22h12M10 6v12"),
+  round_column: E(12, 3.5, 4.5, 1.5) + P("M7.5 3.5v17M16.5 3.5v17") + E(12, 20.5, 4.5, 1.5) + P("M10 7v10"),
+  beam: P("M2 5h20M2 5v4h20V5") + P("M5 9v11M19 9v11") + P("M8 7h8"),
+  fitted_wardrobe: R(2, 2, 20, 19, 0.5) + P("M7 2v19M12 2v19M17 2v19M5.5 10v3M10.5 10v3M13.5 10v3M18.5 10v3M2 19h20"),
+  tv_wall: P("M2 3v15M5 3v15M8 3v15M16 3v15M19 3v15M22 3v15") + R(8.5, 5, 7, 4.5, 0.5) + R(4, 15, 16, 4, 0.8) + P("M7 22h10"),
   sofa: R(3, 9, 18, 7, 2) + P("M3 12h18M6 16v2M18 16v2M5 9V7.5A1.5 1.5 0 0 1 6.5 6h11A1.5 1.5 0 0 1 19 7.5V9"),
   sofa_l: P("M3 7h18v6H11v6H3z") + P("M3 10h8v3M7 19v1.5M19 13v1.5"),
   armchair: R(5, 9, 14, 7, 2) + P("M5 12h14M8 16v2.5M16 16v2.5M7 9V7a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v2"),
@@ -165,6 +171,11 @@ const STAIRS = {
 
 // ---------------------------------------------------------------- the app's own buttons (mdi:… names kept)
 const UI = {
+  "tape-measure": O(9, 12, 6) + O(9, 12, 2) + P("M9 18h12v-3h-2M17 18v-1.5M14 18v-1.5"),
+  "note-text-outline": P("M5 3h11l4 4v14H5z") + P("M15 3v5h5M8 11h8M8 14.5h8M8 18h5"),
+  "lock-open-variant-outline": R(5, 11, 14, 10, 2) + P("M8 11V7a4 4 0 0 1 7.5-2M12 15v2"),
+  "arrow-expand-vertical": P("M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"),
+  "image-plus-outline": R(3, 5, 14, 14, 1.5) + P("M3 16l4-4 3 3 2.5-2.5L17 17") + O(13, 9, 1.4) + P("M20 3v6M17 6h6"),
   account: O(12, 7, 3.5) + P("M5 21v-1a7 7 0 0 1 14 0v1"),
   "air-conditioner": DEVS.ac,
   "alert-circle-outline": O(12, 12, 9) + P("M12 7v6M12 16.5v.5"),

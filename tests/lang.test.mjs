@@ -21,7 +21,9 @@ grab("devices.js", /: "((?:Always|On |Recessed|Pendant)[^"]*)"/g);
 grab("model.js", /name: "([^"]+)"/g);
 grab("materials.js", /: \["([^"]+)", (?:planks|tiles|flat|weave|grass|"#)/g);
 grab("stairs.js", /: \["([^"]+)", \d/g);
-grab("editor.js", /\["[a-z]*", "([A-Z][^"]+)"\]/g);
+grab("editor.js", /\["[^"\]]*", "([A-Z][^"]+)"\]/g);
+grab("materials.js", /: \["([^"]+)", (?:stripes|trellis|damask|grasscloth|stone|tiles|null)/g);
+grab("materials.js", /"#[0-9A-F]{6}": "([^"]+)"/g);
 grab("lights.js", /\["[a-z]+", "([A-Z][^"]+)"\]/g);
 grab("editor.js", /(?:select|room|door|window|slider|arch|furniture|devices|stairs): "([A-Z][^"]+)"/g);
 const cats = [...extra].filter((x) => x.includes('"')); for (const c of cats) { extra.delete(c); for (const m of c.matchAll(/"([^"]+)"/g)) extra.add(m[1]); }

@@ -2,7 +2,7 @@
 // Origin: centre of the footprint on the floor. Front faces +z (towards the room); the back sits at -z.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { fabric, wood, solid, metal, brass, chrome, glass, porcelain } from "./materials.js";
+import { fabric, wood, solid, metal, brass, chrome, glass, porcelain, ownMaterial } from "./materials.js";
 import { buildStairs } from "./stairs.js";
 
 const geoCache = new Map();
@@ -386,7 +386,45 @@ function kidsTable(o) { const g = new THREE.Group(); B(g, o.w, 0.03, o.d, 0.01, 
 function stool(o) { const g = new THREE.Group(); C(g, o.w / 2, o.w / 2, 0.03, wood(o.wood || "oak"), 0, o.h - 0.03, 0, 28); for (let k = 0; k < 3; k++) { const a = (k * Math.PI * 2) / 3, l = mesh(new THREE.CylinderGeometry(0.014, 0.012, o.h, 8), wood(o.wood || "oak"), Math.cos(a) * o.w * 0.3, (o.h - 0.03) / 2, Math.sin(a) * o.w * 0.3); l.rotation.z = Math.cos(a) * 0.08; l.rotation.x = -Math.sin(a) * 0.08; g.add(l); } return g; }
 
 // kind: [name, category, builder, default w, d, h, mount ("floor" | "wall" | "ceiling"), default elevation]
+// ---------------------------------------------------------------- the building itself, and joinery made to fit a wall
+// a structural column, floor to ceiling (o.h is set to the room's height when placed), square or round
+function column(o) {
+  const g = new THREE.Group(), m = solid(o.color || "#ECE8E0", { rough: 0.9 });
+  if (o.round) C(g, o.w / 2, o.w / 2, o.h, m, 0, 0, 0, 40); else B(g, o.w, o.h, o.d, 0.004, m, 0, 0, 0);
+  return g;
+}
+// a beam under the ceiling: o.w long, o.d wide, o.h deep; hangs down from the ceiling
+function beam(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.004, solid(o.color || "#F2EFE9", { rough: 0.9 }), 0, -o.h, 0); return g; }
+// a built-in wardrobe, wall to wall and floor to ceiling, with a top filler and a plinth
+function fittedWardrobe(o) {
+  const g = new THREE.Group(), wd = o.wood ? wood(o.wood) : solid(o.color || "#ECE8E0", { rough: 0.45, clear: 0.2 }), n = Math.max(2, Math.round(o.w / 0.5)), plinth = 0.08, top = 0.06;
+  B(g, o.w, plinth, o.d - 0.05, 0.003, solid("#2A2A2E", { rough: 0.6 }), 0, 0, -0.025);
+  B(g, o.w, o.h - plinth, o.d - 0.02, 0.003, wd, 0, plinth, -0.01);
+  const dh = o.h - plinth - top - 0.01;
+  for (let i = 0; i < n; i++) {
+    const x = -o.w / 2 + (i + 0.5) * (o.w / n);
+    B(g, o.w / n - 0.006, dh, 0.018, 0.002, wd, x, plinth + 0.005, o.d / 2 - 0.009);
+    B(g, 0.012, Math.min(0.9, dh * 0.4), 0.02, 0.004, o.metal ? metal(o.metal) : metal("#1B1B1F"), x + (i % 2 ? -1 : 1) * (o.w / n / 2 - 0.05), plinth + dh * 0.35, o.d / 2 + 0.006);
+  }
+  return g;
+}
+// a TV wall: a panelled back as wide as the wall, a floating cabinet and a lit shelf
+function tvWall(o) {
+  const g = new THREE.Group(), back = o.wood ? wood(o.wood) : wood("walnut"), cab = solid(o.color || "#ECE8E0", { rough: 0.4, clear: 0.3 });
+  const ph = Math.min(o.h, 2.6), slats = Math.max(4, Math.round(o.w / 0.09));
+  for (let i = 0; i < slats; i++) B(g, o.w / slats - 0.012, ph, 0.025, 0.003, back, -o.w / 2 + (i + 0.5) * (o.w / slats), 0, -o.d / 2 + 0.0125);
+  B(g, Math.min(o.w - 0.2, 2.4), 0.36, o.d - 0.05, 0.006, cab, 0, 0.22, 0.02);
+  B(g, Math.min(o.w - 0.4, 1.8), 0.025, 0.25, 0.004, back, 0, 1.75, -o.d / 2 + 0.15);
+  B(g, Math.min(o.w - 0.4, 1.8) - 0.04, 0.008, 0.01, 0.002, solid("#FFF3DC", { emissive: "#FFD9A0", emissiveIntensity: 1.6 }), 0, 1.742, -o.d / 2 + 0.25);
+  return g;
+}
+
 export const LIBRARY = {
+  column: ["Column", "Building", column, 0.4, 0.4, 2.8, "floor"],
+  round_column: ["Round column", "Building", (o) => column({ ...o, round: true }), 0.4, 0.4, 2.8, "floor"],
+  beam: ["Beam", "Building", beam, 3.0, 0.25, 0.4, "ceiling"],
+  fitted_wardrobe: ["Built-in wardrobe", "Bedroom", fittedWardrobe, 2.4, 0.62, 2.8, "floor"],
+  tv_wall: ["TV wall", "Living", tvWall, 3.0, 0.45, 2.6, "floor"],
   sideboard: ["Sideboard", "Living", sideboard, 1.6, 0.45, 0.8, "floor"],
   display_cabinet: ["Glass cabinet", "Living", displayCabinet, 0.8, 0.4, 1.9, "floor"],
   cube_shelf: ["Cube shelf", "Living", cubeShelf, 1.47, 0.39, 1.47, "floor"],
@@ -493,5 +531,22 @@ export function build(it) {
   const d = dims(it);
   const g = L[2]({ ...it, ...d });
   g.userData.item = it.id;
+  finish(g, it);
   return g;
+}
+// a piece's own finishes: its wood, its metal (legs, handles, frames) and your own material on its fabric
+function finish(g, it) {
+  if (!it.wood && !it.metal && !it.mat) return;
+  const own = it.mat ? ownMaterial(it.mat) : null;
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    const swap = (m) => {
+      if (!m) return m;
+      if (it.wood && m.userData?.wood) return wood(it.wood);
+      if (it.metal && m.metalness === 1 && !m.emissive?.getHex?.()) return metal(it.metal, m.roughness);
+      if (own && m.sheen > 0) return own;
+      return m;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+  });
 }
