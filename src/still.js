@@ -23,7 +23,7 @@ export const STILL_CSS = `
 .st .hs button{all:unset;cursor:pointer;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(20,24,49,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);box-shadow:0 4px 14px rgba(0,0,0,.3);transition:transform .12s}
 .st .hs button:active{transform:scale(.9)}
 .st .hs.on button{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));border-color:transparent;box-shadow:0 0 18px color-mix(in srgb,var(--c) 70%,transparent)}
-.st .hs ha-icon{--mdc-icon-size:18px}
+.st .hs ra-icon{--mdc-icon-size:18px}
 .st .hs span{font:600 10px/1.2 Inter,sans-serif;color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
 .st .hs.room button{width:auto;height:30px;padding:0 12px;border-radius:15px;font:600 12px Inter,sans-serif;gap:6px;display:flex}
 .st .hs.door button{background:rgba(255,255,255,.88);color:#141831}
@@ -32,7 +32,7 @@ export const STILL_CSS = `
 .st .bar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:6px;z-index:5;pointer-events:none}
 .st .bar button{all:unset;pointer-events:auto;cursor:pointer;height:38px;min-width:38px;padding:0 12px;box-sizing:border-box;border-radius:19px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#fff;font:600 13px Inter,sans-serif;background:rgba(11,13,23,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14)}
 .st .bar button.name{flex:1;max-width:240px;margin:0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.st .bar button ha-icon{--mdc-icon-size:18px}
+.st .bar button ra-icon{--mdc-icon-size:18px}
 .st .bar .sp{flex:1}
 .st .menu{position:absolute;left:50%;bottom:56px;transform:translateX(-50%);z-index:7;max-height:60%;overflow:auto;padding:6px;border-radius:18px;background:rgba(20,24,49,.94);border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;min-width:180px}
 .st .menu button{all:unset;cursor:pointer;padding:10px 14px;border-radius:12px;color:#EEF0FF;font:500 14px Inter,sans-serif}
@@ -229,8 +229,8 @@ export class StillViewer {
     if (!this.nav) { this.barEl.innerHTML = ""; return; }
     const rooms = this.floor.rooms, i = rooms.indexOf(this.room);
     this.barEl.innerHTML = this.room
-      ? `<button data-b="home" aria-label="${esc(t("Whole home"))}"><ha-icon icon="mdi:home-outline"></ha-icon></button><button data-b="prev" aria-label="${esc(t("Previous room"))}"><ha-icon icon="mdi:chevron-left"></ha-icon></button><button class="name" data-b="menu">${esc(this.room.name || t("Room"))}</button><button data-b="next" aria-label="${esc(t("Next room"))}"><ha-icon icon="mdi:chevron-right"></ha-icon></button>`
-      : `<span class="sp"></span><button class="name" data-b="menu"><ha-icon icon="mdi:door-open"></ha-icon>${esc(t("Rooms"))}</button><span class="sp"></span>`;
+      ? `<button data-b="home" aria-label="${esc(t("Whole home"))}"><ra-icon icon="mdi:home-outline"></ra-icon></button><button data-b="prev" aria-label="${esc(t("Previous room"))}"><ra-icon icon="mdi:chevron-left"></ra-icon></button><button class="name" data-b="menu">${esc(this.room.name || t("Room"))}</button><button data-b="next" aria-label="${esc(t("Next room"))}"><ra-icon icon="mdi:chevron-right"></ra-icon></button>`
+      : `<span class="sp"></span><button class="name" data-b="menu"><ra-icon icon="mdi:door-open"></ra-icon>${esc(t("Rooms"))}</button><span class="sp"></span>`;
     this.barEl.querySelectorAll("button").forEach((b) => (b.onclick = (e) => {
       e.stopPropagation(); const k = b.dataset.b;
       if (k === "home") this.go(null);
@@ -293,7 +293,7 @@ export class StillViewer {
       let el = this.hs.get(s.id);
       if (!el) {
         el = document.createElement("div"); el.className = `hs${s.room ? " room" : ""}${s.door ? " door" : ""}`;
-        el.innerHTML = s.room ? `<button><ha-icon icon="${s.door ? "mdi:arrow-up-bold-circle-outline" : "mdi:door-open"}"></ha-icon>${esc(s.room.name || t("Room"))}</button>` : `<button aria-label="${esc(s.d.name || s.d.entity)}"><ha-icon></ha-icon></button>`;
+        el.innerHTML = s.room ? `<button><ra-icon icon="${s.door ? "mdi:arrow-up-bold-circle-outline" : "mdi:door-open"}"></ra-icon>${esc(s.room.name || t("Room"))}</button>` : `<button aria-label="${esc(s.d.name || s.d.entity)}"><ra-icon></ra-icon></button>`;
         el.firstElementChild.addEventListener("click", (e) => { e.stopPropagation(); this.tapSpot(s); });
         this.hotEl.appendChild(el); this.hs.set(s.id, el);
       }
@@ -306,7 +306,7 @@ export class StillViewer {
       const st = this._hass?.states[s.d.entity], on = isOn(st), kind = s.d.kind || "light";
       el.classList.toggle("on", on); el.style.setProperty("--c", COLORS[kind] || "#8B6CFF");
       const icon = kind === "light" ? (on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline") : kind === "curtain" ? (on ? "mdi:curtains" : "mdi:curtains-closed") : KINDS[kind]?.icon || "mdi:circle";
-      const ic = el.querySelector("ha-icon"); if (ic.getAttribute("icon") !== icon) ic.setAttribute("icon", icon);
+      const ic = el.querySelector("ra-icon"); if (ic.getAttribute("icon") !== icon) ic.setAttribute("icon", icon);
       // a light that is on glows on the picture, in its own colour and brightness
       if (kind === "light") {
         const g = glowOf(st);

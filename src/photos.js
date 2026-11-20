@@ -8,7 +8,7 @@ export class RoomPhotographer {
   constructor(editor) {
     this.ed = editor;
     this.bar = document.createElement("button"); this.bar.className = "studio hide";
-    this.bar.innerHTML = `<ha-icon icon="mdi:camera-iris"></ha-icon><span></span><i><b></b></i>`;
+    this.bar.innerHTML = `<ra-icon icon="mdi:camera-iris"></ra-icon><span></span><i><b></b></i>`;
     this.bar.onclick = () => { this.ed.select(null); this.ed.homePanel(); };
     editor.ed.appendChild(this.bar);
   }

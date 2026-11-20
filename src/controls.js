@@ -9,14 +9,14 @@ export const CONTROLS_CSS = `
 .ctl{display:flex;flex-direction:column;gap:10px;font:500 13px Inter,sans-serif;color:#EEF0FF}
 .ctl .hd{display:flex;align-items:center;gap:10px}
 .ctl .hd .ic{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--c) 22%,transparent);color:var(--c);flex:none}
-.ctl .hd .ic ha-icon{--mdc-icon-size:20px}
+.ctl .hd .ic ra-icon{--mdc-icon-size:20px}
 .ctl .hd b{display:block;font:600 14px Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctl .hd small{display:block;color:#9AA3D9;font-size:12px;margin-top:1px}
 .ctl .hd .tx{min-width:0;flex:1}
 .ctl button{all:unset;box-sizing:border-box;cursor:pointer;height:40px;min-width:40px;padding:0 12px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,255,255,.08);color:#EEF0FF;font:600 12px Inter,sans-serif;transition:background .12s,transform .12s;-webkit-tap-highlight-color:transparent}
 .ctl button:active{transform:scale(.94)}
 .ctl button.on{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));color:#fff}
-.ctl button ha-icon{--mdc-icon-size:18px}
+.ctl button ra-icon{--mdc-icon-size:18px}
 .ctl .pw{width:40px;padding:0;flex:none}
 .ctl .row{display:flex;gap:6px;align-items:center}
 .ctl .row>button{flex:1}
@@ -50,8 +50,8 @@ export function isOn(st) { return !!st && !["off", "closed", "locked", "standby"
 // the HTML for one device. name: what to call it; c: its colour
 export function controlsHtml(hass, entity, name, c, { compact = false } = {}) {
   const st = hass?.states[entity], dom = entity?.split(".")[0], a = st?.attributes || {}, on = isOn(st);
-  let h = `<div class="ctl" data-e="${esc(entity)}" style="--c:${c}"><div class="hd"><span class="ic"><ha-icon icon="${esc(a.icon || icons[dom] || "mdi:circle")}"></ha-icon></span><span class="tx"><b>${esc(name || a.friendly_name || entity)}</b><small>${esc(stateWord(st, dom))}</small></span>`;
-  const pw = ["light", "switch", "fan", "climate", "media_player", "input_boolean"].includes(dom) ? `<button class="pw ${on ? "on" : ""}" data-a="power" aria-label="${t("On or off")}"><ha-icon icon="mdi:power"></ha-icon></button>` : "";
+  let h = `<div class="ctl" data-e="${esc(entity)}" style="--c:${c}"><div class="hd"><span class="ic"><ra-icon icon="${esc(a.icon || icons[dom] || "mdi:circle")}"></ra-icon></span><span class="tx"><b>${esc(name || a.friendly_name || entity)}</b><small>${esc(stateWord(st, dom))}</small></span>`;
+  const pw = ["light", "switch", "fan", "climate", "media_player", "input_boolean"].includes(dom) ? `<button class="pw ${on ? "on" : ""}" data-a="power" aria-label="${t("On or off")}"><ra-icon icon="mdi:power"></ra-icon></button>` : "";
   h += pw + `</div>`;
   if (!st || compact) return h + `</div>`;
   if (dom === "light" && (a.supported_color_modes || []).some((m) => m !== "onoff")) {
@@ -60,22 +60,22 @@ export function controlsHtml(hass, entity, name, c, { compact = false } = {}) {
   }
   if (dom === "climate") {
     const tt = a.temperature;
-    if (tt != null) h += `<div class="big"><button data-a="tdown" aria-label="${t("Cooler")}"><ha-icon icon="mdi:minus"></ha-icon></button><b>${tt}°</b><button data-a="tup" aria-label="${t("Warmer")}"><ha-icon icon="mdi:plus"></ha-icon></button></div>`;
+    if (tt != null) h += `<div class="big"><button data-a="tdown" aria-label="${t("Cooler")}"><ra-icon icon="mdi:minus"></ra-icon></button><b>${tt}°</b><button data-a="tup" aria-label="${t("Warmer")}"><ra-icon icon="mdi:plus"></ra-icon></button></div>`;
     const modes = (a.hvac_modes || []).filter((m) => MODES[m] && m !== "off");
-    if (modes.length) h += `<div class="chips">${modes.map((m) => `<button data-a="mode" data-v="${m}" class="${st.state === m ? "on" : ""}"><ha-icon icon="${MODES[m][1]}"></ha-icon>${t(MODES[m][0])}</button>`).join("")}</div>`;
+    if (modes.length) h += `<div class="chips">${modes.map((m) => `<button data-a="mode" data-v="${m}" class="${st.state === m ? "on" : ""}"><ra-icon icon="${MODES[m][1]}"></ra-icon>${t(MODES[m][0])}</button>`).join("")}</div>`;
   }
   if (dom === "cover") {
-    h += `<div class="row"><button data-a="close"><ha-icon icon="mdi:arrow-collapse-horizontal"></ha-icon>${t("Close")}</button><button data-a="stop"><ha-icon icon="mdi:stop"></ha-icon></button><button data-a="open"><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon>${t("Open")}</button></div>`;
+    h += `<div class="row"><button data-a="close"><ra-icon icon="mdi:arrow-collapse-horizontal"></ra-icon>${t("Close")}</button><button data-a="stop"><ra-icon icon="mdi:stop"></ra-icon></button><button data-a="open"><ra-icon icon="mdi:arrow-expand-horizontal"></ra-icon>${t("Open")}</button></div>`;
     if (a.current_position != null) h += `<label class="sl"><span>${t("How open")}<b data-o="pos">${a.current_position}%</b></span><input type="range" data-a="pos" min="0" max="100" value="${a.current_position}"></label>`;
   }
   if (dom === "fan" && a.percentage != null) h += `<label class="sl"><span>${t("Speed")}<b data-o="spd">${a.percentage}%</b></span><input type="range" data-a="spd" min="0" max="100" step="${a.percentage_step || 1}" value="${a.percentage}"></label>`;
   if (dom === "media_player" && on) {
-    h += `<div class="row"><button data-a="vdown" aria-label="${t("Quieter")}"><ha-icon icon="mdi:volume-minus"></ha-icon></button><button data-a="mute" class="${a.is_volume_muted ? "on" : ""}" aria-label="${t("Mute")}"><ha-icon icon="mdi:volume-off"></ha-icon></button><button data-a="vup" aria-label="${t("Louder")}"><ha-icon icon="mdi:volume-plus"></ha-icon></button><button data-a="play" aria-label="${t("Play or pause")}"><ha-icon icon="${st.state === "playing" ? "mdi:pause" : "mdi:play"}"></ha-icon></button></div>`;
+    h += `<div class="row"><button data-a="vdown" aria-label="${t("Quieter")}"><ra-icon icon="mdi:volume-minus"></ra-icon></button><button data-a="mute" class="${a.is_volume_muted ? "on" : ""}" aria-label="${t("Mute")}"><ra-icon icon="mdi:volume-off"></ra-icon></button><button data-a="vup" aria-label="${t("Louder")}"><ra-icon icon="mdi:volume-plus"></ra-icon></button><button data-a="play" aria-label="${t("Play or pause")}"><ra-icon icon="${st.state === "playing" ? "mdi:pause" : "mdi:play"}"></ra-icon></button></div>`;
     if (a.source_list?.length) h += `<select data-a="source">${a.source_list.map((s) => `<option ${s === a.source ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>`;
   }
-  if (dom === "lock") h += `<div class="row"><button data-a="lock" class="${st.state === "locked" ? "on" : ""}"><ha-icon icon="mdi:lock"></ha-icon>${t("Lock")}</button><button data-a="unlock" class="${st.state === "unlocked" ? "on" : ""}"><ha-icon icon="mdi:lock-open-variant"></ha-icon>${t("Unlock")}</button></div>`;
-  if (dom === "vacuum") h += `<div class="row"><button data-a="vstart"><ha-icon icon="mdi:play"></ha-icon>${t("Clean")}</button><button data-a="vdock"><ha-icon icon="mdi:home-import-outline"></ha-icon>${t("Back to dock")}</button></div>`;
-  h += `<button class="more" data-a="more"><ha-icon icon="mdi:dots-horizontal"></ha-icon>${t("More")}</button></div>`;
+  if (dom === "lock") h += `<div class="row"><button data-a="lock" class="${st.state === "locked" ? "on" : ""}"><ra-icon icon="mdi:lock"></ra-icon>${t("Lock")}</button><button data-a="unlock" class="${st.state === "unlocked" ? "on" : ""}"><ra-icon icon="mdi:lock-open-variant"></ra-icon>${t("Unlock")}</button></div>`;
+  if (dom === "vacuum") h += `<div class="row"><button data-a="vstart"><ra-icon icon="mdi:play"></ra-icon>${t("Clean")}</button><button data-a="vdock"><ra-icon icon="mdi:home-import-outline"></ra-icon>${t("Back to dock")}</button></div>`;
+  h += `<button class="more" data-a="more"><ra-icon icon="mdi:dots-horizontal"></ra-icon>${t("More")}</button></div>`;
   return h;
 }
 

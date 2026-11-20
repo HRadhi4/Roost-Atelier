@@ -12,14 +12,14 @@ const WORKER = new URL(`./pdf.worker.min.mjs?v=${__VERSION__}`, import.meta.url)
 
 export function importPanel(ed, a) {
   const aiTasks = Object.keys(ed._hass.states).filter((e) => e.startsWith("ai_task."));
-  a.innerHTML = `<h2><ha-icon icon="mdi:file-image-plus-outline"></ha-icon>${t("Import")}</h2>
+  a.innerHTML = `<h2><ra-icon icon="mdi:file-image-plus-outline"></ra-icon>${t("Import")}</h2>
     <div class="card"><b>${t("From CAD or PDF")}</b><span class="tip">DXF · PDF · JPG · PNG. Walls become rooms; gaps become doors and windows.</span>
-      <label><button class="primary" data-pick-plan><ha-icon icon="mdi:upload"></ha-icon>Choose file</button><input type="file" data-plan accept=".dxf,.pdf,.png,.jpg,.jpeg,.webp" hidden></label>
+      <label><button class="primary" data-pick-plan><ra-icon icon="mdi:upload"></ra-icon>Choose file</button><input type="file" data-plan accept=".dxf,.pdf,.png,.jpg,.jpeg,.webp" hidden></label>
       <div data-plan-out></div></div>
     <div class="card"><b>${t("From a photo")}</b><span class="tip">${t("A photo of a room. Furniture, ceiling lights, curtains, windows, the AC and the TV are found and put in place.")}</span>
       <select data-ai><option value="">${t("This device (free, private)")}</option>${aiTasks.map((e) => `<option value="${e}">${esc(ed._hass.states[e].attributes.friendly_name || e)}${t(" (more detail)")}</option>`).join("")}</select>
       <span class="tip" data-ai-tip></span>
-      <label><button class="primary" data-pick-photo><ha-icon icon="mdi:camera-plus-outline"></ha-icon>${t("Choose photos")}</button><input type="file" data-photo accept="image/*" multiple hidden></label>
+      <label><button class="primary" data-pick-photo><ra-icon icon="mdi:camera-plus-outline"></ra-icon>${t("Choose photos")}</button><input type="file" data-photo accept="image/*" multiple hidden></label>
       <span class="tip">${t("Choose one photo of each room, or several at once: they are read one after another. What is already in a room is not added again.")}</span>
       <div data-photo-out></div></div>`;
   const tip = () => { const v = a.querySelector("[data-ai]").value; a.querySelector("[data-ai-tip]").textContent = v ? t("Uses your AI provider. Best at telling light types apart and at sizes.") : t("Runs on this device: the photo never leaves it. The first time it downloads its reading model (about 150 MB) once."); };
@@ -57,7 +57,7 @@ function show(ed, out, r, src, redo, opts) {
   out.innerHTML = `<div class="row between"><span>${t("Rooms")}</span><b>${r.rooms.length}</b></div><div class="row between"><span>${t("Doors")} / ${t("Window")}</span><b>${r.openings.length}</b></div>${r.items?.length ? `<div class="row between"><span>${t("Furniture")}</span><b>${r.items.length}</b></div>` : ""}
     ${src ? `<label class="sl"><span>Drawing width</span><b data-o>${width} m</b><input type="range" data-scale min="${round(width * 0.4, 1)}" max="${round(width * 2.5, 1)}" step="0.1" value="${width}"></label><span class="tip">Move until the rooms have their real size (a door is about 0.9 m).</span>` : ""}
     <div class="field"><span class="tip">Widest doorway between rooms</span><div class="seg"><button data-gap="1" class="${opts.gap < 1.4 ? "on" : ""}">Normal doors</button><button data-gap="1.9" class="${opts.gap >= 1.4 ? "on" : ""}">Wide double doors</button></div></div>
-    <div class="row"><button class="primary" data-use><ha-icon icon="mdi:check"></ha-icon>Use this plan</button></div>`;
+    <div class="row"><button class="primary" data-use><ra-icon icon="mdi:check"></ra-icon>Use this plan</button></div>`;
   out.querySelector("[data-scale]")?.addEventListener("input", (e) => (out.querySelector("[data-o]").textContent = `${e.target.value} m`));
   out.querySelector("[data-scale]")?.addEventListener("change", (e) => again({ metresPerPx: +e.target.value / src.width }));
   out.querySelectorAll("[data-gap]").forEach((b) => (b.onclick = () => again({ gap: +b.dataset.gap })));
@@ -119,10 +119,10 @@ export function reviewFound(ed, out, found, pic, q = {}) {
     const room = rooms.find((r) => r.id === st.room);
     out.innerHTML = `${pic ? `<img src="${pic}" style="width:100%;border-radius:14px;max-height:200px;object-fit:cover">` : ""}
       <div class="field"><h3>${t("Room")}</h3><select data-room>${rooms.map((r) => `<option value="${esc(r.id)}" ${r.id === st.room ? "selected" : ""}>${esc(r.name || t(ROOM_TYPES[r.type]?.name || "Room"))}</option>`).join("")}</select></div>
-      <div class="field"><h3>${t("Which wall were you facing? (as drawn on the plan)")}</h3><div class="seg">${[["top", "mdi:arrow-up"], ["right", "mdi:arrow-right"], ["bottom", "mdi:arrow-down"], ["left", "mdi:arrow-left"]].map(([k, ic]) => `<button data-face="${k}" class="${st.facing === k ? "on" : ""}" title="${t(k)}"><ha-icon icon="${ic}"></ha-icon></button>`).join("")}</div></div>
-      ${GROUPS.map(([g, title, ic]) => { const rows = found.map((x, i) => [x, i]).filter(([x]) => group(x.kind) === g); return rows.length ? `<div class="field"><h3><ha-icon icon="${ic}" style="--mdc-icon-size:14px"></ha-icon> ${t(title)}</h3><div class="list">${rows.map(([x, i]) => `<button data-i="${i}" class="${st.on[i] ? "on" : ""}"><span style="width:18px;height:18px;border-radius:6px;background:${/^#[0-9a-f]{6}$/i.test(x.colour || "") ? x.colour : "#9a9a9a"};flex:none"></span><span>${x.count > 1 ? `${x.count} × ` : ""}${esc(label(x.kind, t))}<small>${st.have[i] ? `${esc(t("Already there"))}: ${st.have[i]} · ` : ""}${esc(x.name || "")}${x.w ? ` · ${[x.w, x.d, x.h].filter(Boolean).map((v) => round(v, 2)).join(" × ")} m` : ""}</small></span></button>`).join("")}</div></div>` : ""; }).join("")}
+      <div class="field"><h3>${t("Which wall were you facing? (as drawn on the plan)")}</h3><div class="seg">${[["top", "mdi:arrow-up"], ["right", "mdi:arrow-right"], ["bottom", "mdi:arrow-down"], ["left", "mdi:arrow-left"]].map(([k, ic]) => `<button data-face="${k}" class="${st.facing === k ? "on" : ""}" title="${t(k)}"><ra-icon icon="${ic}"></ra-icon></button>`).join("")}</div></div>
+      ${GROUPS.map(([g, title, ic]) => { const rows = found.map((x, i) => [x, i]).filter(([x]) => group(x.kind) === g); return rows.length ? `<div class="field"><h3><ra-icon icon="${ic}" style="--mdc-icon-size:14px"></ra-icon> ${t(title)}</h3><div class="list">${rows.map(([x, i]) => `<button data-i="${i}" class="${st.on[i] ? "on" : ""}"><span style="width:18px;height:18px;border-radius:6px;background:${/^#[0-9a-f]{6}$/i.test(x.colour || "") ? x.colour : "#9a9a9a"};flex:none"></span><span>${x.count > 1 ? `${x.count} × ` : ""}${esc(label(x.kind, t))}<small>${st.have[i] ? `${esc(t("Already there"))}: ${st.have[i]} · ` : ""}${esc(x.name || "")}${x.w ? ` · ${[x.w, x.d, x.h].filter(Boolean).map((v) => round(v, 2)).join(" × ")} m` : ""}</small></span></button>`).join("")}</div></div>` : ""; }).join("")}
       <p class="tip">${t("Tap a line to leave it out. Everything can be moved afterwards.")}</p>
-      <div class="row"><button class="primary" data-add><ha-icon icon="mdi:plus"></ha-icon>${t("Add to")} ${esc(room.name || t(ROOM_TYPES[room.type]?.name || "Room"))}</button></div>`;
+      <div class="row"><button class="primary" data-add><ra-icon icon="mdi:plus"></ra-icon>${t("Add to")} ${esc(room.name || t(ROOM_TYPES[room.type]?.name || "Room"))}</button></div>`;
     out.querySelector("[data-room]").onchange = (e) => { st.room = e.target.value; settle0(); draw(); };
     out.querySelectorAll("[data-face]").forEach((b) => (b.onclick = () => { st.facing = b.dataset.face; draw(); }));
     out.querySelectorAll("[data-i]").forEach((b) => (b.onclick = () => { st.on[+b.dataset.i] = !st.on[+b.dataset.i]; b.classList.toggle("on", st.on[+b.dataset.i]); }));

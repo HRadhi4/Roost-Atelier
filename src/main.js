@@ -1,5 +1,6 @@
 // Roost Atelier: the dashboard card and the Atelier sidebar page. Heavy parts load only when needed.
 import { langFor, t, isRtl } from "./i18n.js";
+import "./icons.js";
 
 const VERSION = __VERSION__;
 const loadView = () => import("./view.js");

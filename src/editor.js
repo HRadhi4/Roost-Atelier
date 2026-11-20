@@ -14,6 +14,7 @@ import { settle } from "./collide.js";
 import { AtelierView, VIEW_CSS } from "./view.js";
 import { check } from "./check.js";
 import { ItemPreview } from "./preview.js";
+import { hasIcon } from "./icons.js";
 import { STAIR_STYLES, SPIRAL_TURN, stairFrom, riseTo, stairSvg, stairHole, stairsArriving, minRun } from "./stairs.js";
 
 const LIVE_KEYS = new Set(["lumens", "kelvin", "gain", "power"]);
@@ -26,6 +27,12 @@ function when(ms) { if (!ms) return ""; const d = new Date(ms < 1e12 ? ms * 1000
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const ICON_ROOM = Object.fromEntries(Object.entries(ROOM_TYPES).map(([k, v]) => [k, v.icon]));
 const DEV_COL = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
+// which fitting from the library a light on the plan is (for its icon)
+function lightSub(d) {
+  const look = d.look || "flush";
+  for (const [k, [lk, opts]] of Object.entries(LIGHT_SUBS)) if (lk === look && Object.entries(opts).every(([a, v]) => d[a] === v)) return k;
+  return { spots: "downlight", downlight: "downlight", linear: "linear", wall: "wall", table: "table", floor: "floor", pendant: "pendant", chandelier: "chandelier", panel: "panel", flush: "flush", track: "track", focus: "focus", step: "step", bollard: "bollard", uplight: "uplight", flood: "flood" }[look] || "flush";
+}
 const TOOLS = [
   ["select", "mdi:cursor-default-outline", "Select"], ["room", "mdi:vector-square-plus", "Rooms"], ["door", "mdi:door", "Door"], ["window", "mdi:window-closed-variant", "Window"],
   ["slider", "mdi:door-sliding", "Slider"], ["arch", "mdi:gate-arrow-right", "Arch"], ["stairs", "mdi:stairs-up", "Stairs"], ["furniture", "mdi:sofa-outline", "Furniture"], ["devices", "mdi:lightbulb-group-outline", "Devices"],
@@ -52,7 +59,7 @@ button:hover{background:var(--inset)}
 button.on,button.primary{color:#fff;background:linear-gradient(135deg,var(--acc1),var(--acc2));box-shadow:0 0 14px rgba(109,75,255,.35)}
 button[disabled]{opacity:.35;pointer-events:none}
 button.danger{color:#FF7A7A}
-ha-icon{--mdc-icon-size:20px;display:inline-flex}
+ra-icon{--mdc-icon-size:20px;display:inline-flex}
 .seg{display:flex;gap:2px;padding:3px;border-radius:14px;background:var(--inset)}
 .seg button{min-height:34px;border-radius:11px}
 .seg.wrap{flex-wrap:wrap}.seg.wrap button{flex:1 1 auto;white-space:nowrap;padding:6px 12px}
@@ -69,13 +76,13 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .devs{position:absolute;inset:0;pointer-events:none}
 .plan .dv{position:absolute;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;background:var(--c);box-shadow:0 0 12px color-mix(in srgb,var(--c) 60%,transparent);pointer-events:auto;cursor:grab;border:2px solid transparent}
 .plan .dv.sel{border-color:#fff;box-shadow:0 0 0 3px var(--acc1)}
-.plan .dv ha-icon{--mdc-icon-size:16px}
+.plan .dv ra-icon{--mdc-icon-size:16px}
 .plan .dv.off{background:#3A3F63;box-shadow:none;color:#9AA3D9}
 .plan .hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:12px;pointer-events:none;white-space:nowrap}
 .plan .ceil{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);font:600 12px Inter,sans-serif;cursor:pointer;z-index:2}
 .plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
 .ceilmode .plan .dv:not(.lamp){opacity:.18;pointer-events:none}
-.plan .dv.lamp{width:20px;height:20px}.plan .dv.lamp ha-icon{--mdc-icon-size:12px}
+.plan .dv.lamp{width:20px;height:20px}.plan .dv.lamp ra-icon{--mdc-icon-size:12px}
 .plan .zoom button.on{background:var(--acc1);color:#FFFFFF}
 .plan .zoom{position:absolute;bottom:12px;inset-inline-start:12px;display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--border)}
 .three{position:relative;border-inline-start:1px solid var(--border);min-width:0}
@@ -107,6 +114,13 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
 .lib .tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:14px;background:var(--inset);cursor:grab;touch-action:none;font-size:11px;text-align:center}
 .lib .tile svg{width:56px;height:40px}
+/* icons instead of names: the name shows on hover (and on a long press on a phone) */
+.lib.icons{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px}
+.lib.icons .tile{position:relative;aspect-ratio:1;justify-content:center;padding:8px;--mdc-icon-size:30px;color:var(--text)}
+.lib.icons .tile.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff}
+.lib.icons .tile:hover{outline:2px solid var(--acc2)}
+.lib.icons .tile svg{width:100%;height:100%}.lib.icons .tile ra-icon{--mdc-icon-size:32px}
+.tipbox{position:fixed;z-index:20;pointer-events:none;padding:6px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.35);white-space:nowrap;transform:translate(-50%,-100%)}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:2px}
 .tabs button{flex:0 0 auto;padding:0 12px;height:32px;border-radius:10px;background:var(--inset);font-size:12px;white-space:nowrap}
 .tabs button.on{background:linear-gradient(135deg,var(--acc1),var(--acc2))}
@@ -127,7 +141,7 @@ h3.sub{margin:8px 0 0;font-size:12px;color:var(--muted);text-transform:uppercase
 .shots .shot{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
 .shots img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:var(--inset)}
 .issue{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:14px;background:var(--inset)}
-.issue ha-icon{color:#F5B041}.issue.ok ha-icon{color:#5FBF77}
+.issue ra-icon{color:#F5B041}.issue.ok ra-icon{color:#5FBF77}
 .ghost{position:fixed;z-index:20;pointer-events:none;transform:translate(-50%,-50%);padding:8px 12px;border-radius:12px;background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .menu{position:absolute;top:52px;inset-inline-start:12px;width:320px;max-height:70vh;overflow:auto;padding:12px;border-radius:18px;background:var(--panel);border:1px solid var(--border);box-shadow:0 18px 50px rgba(0,0,0,.4);z-index:10;display:flex;flex-direction:column;gap:10px}
 .dialog .col{display:flex;flex-direction:column;gap:8px;margin-top:14px}.dialog .col button{min-height:44px}
@@ -161,14 +175,14 @@ export class AtelierEditor {
     this.tool = "select"; this.sel = null; this.layout = "split"; this.z = 40; this.px = 60; this.py = 60; this.cat = "Living";
     this.undoStack = []; this.redoStack = []; this.status = "";
     root.innerHTML = `<style>${CSS}</style><div class="ed" dir="${rtl ? "rtl" : "ltr"}" data-layout="split">
-      <header><div class="title"><button class="homes" title="${t("Homes")}"><ha-icon icon="mdi:home-outline"></ha-icon><h1></h1><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>
-        <button data-a="undo" title="${t("Undo")}"><ha-icon icon="mdi:undo"></ha-icon></button><button data-a="redo" title="${t("Redo")}"><ha-icon icon="mdi:redo"></ha-icon></button>
+      <header><div class="title"><button class="homes" title="${t("Homes")}"><ra-icon icon="mdi:home-outline"></ra-icon><h1></h1><ra-icon icon="mdi:chevron-down"></ra-icon></button></div>
+        <button data-a="undo" title="${t("Undo")}"><ra-icon icon="mdi:undo"></ra-icon></button><button data-a="redo" title="${t("Redo")}"><ra-icon icon="mdi:redo"></ra-icon></button>
         <div class="seg floors"></div><span class="status"></span>
-        <div class="seg layout"><button data-l="plan" title="Plan"><ha-icon icon="mdi:floor-plan"></ha-icon></button><button data-l="split" title="Split"><ha-icon icon="mdi:view-split-vertical"></ha-icon></button><button data-l="three" title="${t("3D")}"><ha-icon icon="mdi:cube-outline"></ha-icon></button></div>
-        <button data-a="test" class="test" title="${t("Try it: tap devices to switch them, without editing")}"><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${t("Try it")}</span></button>
-        <button data-a="settings" title="${t("Settings")}"><ha-icon icon="mdi:tune-variant"></ha-icon></button></header>
+        <div class="seg layout"><button data-l="plan" title="Plan"><ra-icon icon="mdi:floor-plan"></ra-icon></button><button data-l="split" title="Split"><ra-icon icon="mdi:view-split-vertical"></ra-icon></button><button data-l="three" title="${t("3D")}"><ra-icon icon="mdi:cube-outline"></ra-icon></button></div>
+        <button data-a="test" class="test" title="${t("Try it: tap devices to switch them, without editing")}"><ra-icon icon="mdi:gesture-tap-button"></ra-icon><span>${t("Try it")}</span></button>
+        <button data-a="settings" title="${t("Settings")}"><ra-icon icon="mdi:tune-variant"></ra-icon></button></header>
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
-        <button class="ceil" data-ceiling title="Ceiling"><ha-icon icon="mdi:ceiling-light-outline"></ha-icon><span></span></button><div class="zoom"><button data-sizes title="Sizes"><ha-icon icon="mdi:ruler"></ha-icon></button><button data-print title="Print"><ha-icon icon="mdi:printer-outline"></ha-icon></button><button data-z="in"><ha-icon icon="mdi:plus"></ha-icon></button><button data-z="fit"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button><button data-z="out"><ha-icon icon="mdi:minus"></ha-icon></button></div></div>
+        <button class="ceil" data-ceiling title="Ceiling"><ra-icon icon="mdi:ceiling-light-outline"></ra-icon><span></span></button><div class="zoom"><button data-sizes title="Sizes"><ra-icon icon="mdi:ruler"></ra-icon></button><button data-print title="Print"><ra-icon icon="mdi:printer-outline"></ra-icon></button><button data-z="in"><ra-icon icon="mdi:plus"></ra-icon></button><button data-z="fit"><ra-icon icon="mdi:fit-to-screen-outline"></ra-icon></button><button data-z="out"><ra-icon icon="mdi:minus"></ra-icon></button></div></div>
         <div class="three"></div></main><aside></aside></div>`;
     this.ed = root.querySelector(".ed"); this.svg = root.querySelector("svg"); this.g = root.querySelector("svg .w"); this.devsEl = root.querySelector(".devs");
     this.planEl = root.querySelector(".plan"); this.aside = root.querySelector("aside");
@@ -189,6 +203,13 @@ export class AtelierEditor {
     this.bindPlan();
     this.ro = new ResizeObserver(() => { if (!this._userView && this.plan) this.fit(); this.draw(); }); this.ro.observe(this.planEl);
     this.keys = (e) => this.key(e); window.addEventListener("keydown", this.keys);
+    // names of icons: shown while the pointer rests on one (or a finger presses it a moment)
+    const tip = document.createElement("div"); tip.className = "tipbox"; tip.hidden = true; root.querySelector(".ed").appendChild(tip);
+    let tipT = 0;
+    const showTip = (el) => { const r = el.getBoundingClientRect(); tip.textContent = el.dataset.tip; tip.hidden = false; const w = tip.offsetWidth, x = Math.max(w / 2 + 6, Math.min(window.innerWidth - w / 2 - 6, r.left + r.width / 2)); tip.style.left = `${x}px`; tip.style.top = `${Math.max(tip.offsetHeight + 6, r.top - 6)}px`; };
+    root.addEventListener("pointerover", (e) => { const el = e.target.closest?.("[data-tip]"); clearTimeout(tipT); if (!el) { tip.hidden = true; return; } tipT = setTimeout(() => showTip(el), e.pointerType === "mouse" ? 250 : 450); });
+    root.addEventListener("pointerout", (e) => { if (!e.relatedTarget?.closest?.("[data-tip]")) { clearTimeout(tipT); tip.hidden = true; } });
+    root.addEventListener("pointerdown", () => { clearTimeout(tipT); tip.hidden = true; }, true);
     window.addEventListener("keyup", (e) => { if (e.key === " ") this._space = false; });
   }
   set narrow(n) { this._narrow = n; }
@@ -324,14 +345,14 @@ export class AtelierEditor {
   // several pieces selected together: line them up, spread them evenly, copy or remove them as one
   multiPanel() {
     const a = this.aside, list = this.sel.list.map((x) => this.find(x)).filter(Boolean);
-    const b = (k, icon, label) => `<button data-al="${k}" title="${t(label)}"><ha-icon icon="${icon}"></ha-icon></button>`;
-    a.innerHTML = `<div class="row between"><h2><ha-icon icon="mdi:selection-multiple"></ha-icon>${list.length} ${t("selected")}</h2><button data-close title="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>
+    const b = (k, icon, label) => `<button data-al="${k}" title="${t(label)}"><ra-icon icon="${icon}"></ra-icon></button>`;
+    a.innerHTML = `<div class="row between"><h2><ra-icon icon="mdi:selection-multiple"></ra-icon>${list.length} ${t("selected")}</h2><button data-close title="${t("Close")}"><ra-icon icon="mdi:close"></ra-icon></button></div>
       <p class="tip">${t("Drag any of them to move them all. Shift or Ctrl + tap adds or removes one.")}</p>
       <div class="field"><h3>${t("Line up")}</h3><div class="row">${b("left", "mdi:align-horizontal-left", "Left edges")}${b("cx", "mdi:align-horizontal-center", "Centres, up and down")}${b("right", "mdi:align-horizontal-right", "Right edges")}${b("top", "mdi:align-vertical-top", "Top edges")}${b("cy", "mdi:align-vertical-center", "Centres, side to side")}${b("bottom", "mdi:align-vertical-bottom", "Bottom edges")}</div></div>
       ${list.length > 2 ? `<div class="field"><h3>${t("Spread evenly")}</h3><div class="row">${b("sx", "mdi:distribute-horizontal-center", "Side to side")}${b("sy", "mdi:distribute-vertical-center", "Up and down")}</div></div>` : ""}
-      ${(() => { const devs = list.filter((o) => this.floor.devices.includes(o)), g = devs[0]?.group; return devs.length > 1 ? `<div class="field"><h3>${t("Switch together")}</h3><div class="row">${g && devs.every((d) => d.group === g) ? `<button data-ungroup="${esc(g)}"><ha-icon icon="mdi:link-variant-off"></ha-icon>${t("Ungroup")}</button>` : `<button class="primary" data-group><ha-icon icon="mdi:link-variant"></ha-icon>${t("Group these devices")}</button>`}</div></div>` : ""; })()}
-      <div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-invert><ha-icon icon="mdi:select-inverse"></ha-icon>${t("Everything else")}</button><button data-alldev><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon>${t("All devices")}</button></div></div>
-      <div class="row"><button data-mdup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-mdel><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      ${(() => { const devs = list.filter((o) => this.floor.devices.includes(o)), g = devs[0]?.group; return devs.length > 1 ? `<div class="field"><h3>${t("Switch together")}</h3><div class="row">${g && devs.every((d) => d.group === g) ? `<button data-ungroup="${esc(g)}"><ra-icon icon="mdi:link-variant-off"></ra-icon>${t("Ungroup")}</button>` : `<button class="primary" data-group><ra-icon icon="mdi:link-variant"></ra-icon>${t("Group these devices")}</button>`}</div></div>` : ""; })()}
+      <div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-invert><ra-icon icon="mdi:select-inverse"></ra-icon>${t("Everything else")}</button><button data-alldev><ra-icon icon="mdi:lightbulb-group-outline"></ra-icon>${t("All devices")}</button></div></div>
+      <div class="row"><button data-mdup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-mdel><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     const half = (o) => { if (!o.kind || !LIBRARY[o.kind]) return [0, 0]; const d = dims(o), r = ((o.rot || 0) % 180 + 180) % 180 === 90; return r ? [d.d / 2, d.w / 2] : [d.w / 2, d.d / 2]; };
     const items = () => this.sel.list.map((x) => [x, this.find(x)]).filter(([, o]) => o);
     a.querySelector("[data-close]").onclick = () => { this.picking = false; this.select(null); };
@@ -409,7 +430,7 @@ export class AtelierEditor {
     const m = this.root.querySelector(".menu"); if (!m) return;
     let list = [];
     try { list = await ws(this._hass, { type: "roost_atelier/versions", plan_id: this.plan.id }); } catch (e) { /* none */ }
-    m.innerHTML = `<h3>${t("Earlier versions")} · ${esc(this.plan.name)}</h3>${list.length ? `<div class="list">${list.map((v) => `<button data-v="${v.updated}"><ha-icon icon="mdi:history"></ha-icon><span>${esc(when(v.updated))}<small>${v.rooms} ${t("Rooms").toLowerCase()} · ${v.items} ${t("Furniture").toLowerCase()}</small></span></button>`).join("")}</div>` : `<p class="muted">${t("No earlier versions yet. One is kept each time you save, up to 10.")}</p>`}`;
+    m.innerHTML = `<h3>${t("Earlier versions")} · ${esc(this.plan.name)}</h3>${list.length ? `<div class="list">${list.map((v) => `<button data-v="${v.updated}"><ra-icon icon="mdi:history"></ra-icon><span>${esc(when(v.updated))}<small>${v.rooms} ${t("Rooms").toLowerCase()} · ${v.items} ${t("Furniture").toLowerCase()}</small></span></button>`).join("")}</div>` : `<p class="muted">${t("No earlier versions yet. One is kept each time you save, up to 10.")}</p>`}`;
     m.querySelectorAll("[data-v]").forEach((b) => (b.onclick = async () => {
       m.remove();
       const p = await ws(this._hass, { type: "roost_atelier/version", plan_id: this.plan.id, updated: +b.dataset.v });
@@ -422,7 +443,7 @@ export class AtelierEditor {
     const m = this.root.querySelector(".menu"); if (!m) return;
     let list = [];
     try { list = await ws(this._hass, { type: "roost_atelier/deleted" }); } catch (e) { /* none */ }
-    m.innerHTML = `<h3>${t("Deleted homes")}</h3>${list.length ? `<div class="list">${list.map((v) => `<button data-u="${esc(v.id)}"><ha-icon icon="mdi:delete-restore"></ha-icon><span>${esc(v.name)}<small>${t("Deleted")} ${esc(when(v.deleted_at))}</small></span></button>`).join("")}</div>` : `<p class="muted">${t("Nothing deleted.")}</p>`}`;
+    m.innerHTML = `<h3>${t("Deleted homes")}</h3>${list.length ? `<div class="list">${list.map((v) => `<button data-u="${esc(v.id)}"><ra-icon icon="mdi:delete-restore"></ra-icon><span>${esc(v.name)}<small>${t("Deleted")} ${esc(when(v.deleted_at))}</small></span></button>`).join("")}</div>` : `<p class="muted">${t("Nothing deleted.")}</p>`}`;
     m.querySelectorAll("[data-u]").forEach((b) => (b.onclick = async () => {
       m.remove();
       const r = await ws(this._hass, { type: "roost_atelier/undelete", plan_id: b.dataset.u });
@@ -441,7 +462,7 @@ export class AtelierEditor {
   // ------------------------------------------------------------ floors
   drawFloors() {
     const el = this.root.querySelector(".floors"), fl = this.plan.floors;
-    el.innerHTML = fl.map((f, i) => `<button data-fl="${i}" class="${i === this.fi ? "on" : ""}" title="${esc(f.name)}">${i === 0 ? "G" : i}</button>`).join("") + `<button data-fl="add" title="${t("Add level")}"><ha-icon icon="mdi:plus"></ha-icon></button>`;
+    el.innerHTML = fl.map((f, i) => `<button data-fl="${i}" class="${i === this.fi ? "on" : ""}" title="${esc(f.name)}">${i === 0 ? "G" : i}</button>`).join("") + `<button data-fl="add" title="${t("Add level")}"><ra-icon icon="mdi:plus"></ra-icon></button>`;
     el.querySelectorAll("[data-fl]").forEach((b) => (b.onclick = () => (b.dataset.fl === "add" ? this.addFloor() : this.useFloor(+b.dataset.fl))));
   }
   useFloor(i) { this.fi = i; this.floor = this.plan.floors[i]; this.sel = null; this.view.setPlan(this.plan, i); this._userView = false; this.fit(); this.drawFloors(); this.inspector(); }
@@ -461,7 +482,7 @@ export class AtelierEditor {
   // ------------------------------------------------------------ the left rail
   drawNav() {
     const nav = this.root.querySelector("nav");
-    nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ha-icon icon="${i}"></ha-icon></button>`).join("");
+    nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ra-icon icon="${i}"></ra-icon></button>`).join("");
     nav.querySelectorAll("button").forEach((b) => (b.onclick = () => this.setTool(b.dataset.t)));
   }
   setTool(k) { this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
@@ -508,10 +529,10 @@ export class AtelierEditor {
   }
   stairPanel(a) {
     const sp = this.stairPick || { step: 0 };
-    const styles = Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile${sp.style === k ? " on" : ""}" data-stair="${k}"><svg viewBox="-1.3 -2.1 2.6 4.2">${stairSvg({ style: k, w: S[2] ? 1.8 : 1.1, d: 3.6, h: 2.8, rot: 0 }, 0.05, "currentColor", "none")}</svg><span>${t(S[0])}</span></div>`).join("");
+    const styles = Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile${sp.style === k ? " on" : ""}" data-stair="${k}" data-tip="${esc(t(S[0]))}" aria-label="${esc(t(S[0]))}" role="button"><ra-icon icon="stair:${k}"></ra-icon></div>`).join("");
     const lv = (i) => esc(this.plan.floors[i]?.name || t("Level"));
     const say = sp.step === 0 ? t("Pick a style of stairs.") : sp.step === 1 ? `${t("Tap where the stairs start on")} ${lv(sp.from)}.` : `${t("Now tap where the stairs arrive on")} ${lv(sp.from + 1)}. ${t("The level below is shown faintly.")}`;
-    a.innerHTML = `<h2><ha-icon icon="mdi:stairs-up"></ha-icon>${t("Stairs")}</h2><p class="tip">${say}</p>${sp.step === 2 ? "" : `<div class="lib">${styles}</div>`}<div class="row"><button data-cancel>${t("Cancel")}</button></div>`;
+    a.innerHTML = `<h2><ra-icon icon="mdi:stairs-up"></ra-icon>${t("Stairs")}</h2><p class="tip">${say}</p>${sp.step === 2 ? "" : `<div class="lib icons">${styles}</div>`}<div class="row"><button data-cancel>${t("Cancel")}</button></div>`;
     a.querySelectorAll("[data-stair]").forEach((el) => (el.onclick = () => this.startStairs(el.dataset.stair, sp.edit)));
     a.querySelector("[data-cancel]").onclick = () => { const back = sp.from; this.stairPick = null; this.tool = "select"; if (back !== this.fi && this.plan.floors[back]) this.useFloor(back); this.drawNav(); this.draw(); this.inspector(); };
   }
@@ -678,13 +699,13 @@ export class AtelierEditor {
     for (const d of f.devices) {
       seen.add(d.id);
       let el = this.devsEl.querySelector(`[data-dev="${esc(d.id)}"]`);
-      if (!el) { el = document.createElement("div"); el.className = "dv"; el.dataset.dev = d.id; el.innerHTML = `<ha-icon></ha-icon>`; this.devsEl.appendChild(el); }
+      if (!el) { el = document.createElement("div"); el.className = "dv"; el.dataset.dev = d.id; el.innerHTML = `<ra-icon></ra-icon>`; this.devsEl.appendChild(el); }
       const kind = d.kind || deviceKind(d.entity), [sx, sy] = spot.get(d.id), st = hotNow.get(d.id);
       el.classList.toggle("off", !!this.testing && !!st && !(st.on || st.open === true || (kind === "curtain" && st.open > 0.05)));
       el.style.left = `${sx}px`; el.style.top = `${sy}px`; el.style.transform = `translate(-50%,-50%) scale(${Math.max(0.6, Math.min(1, z / 45))})`; el.style.setProperty("--c", DEV_COL[kind] || "#8B6CFF");
       el.classList.toggle("sel", (s?.t === "dev" && s.id === d.id) || (s?.t === "multi" && s.list.some((x) => x.t === "dev" && x.id === d.id)));
       el.classList.toggle("lamp", kind === "light" && ["downlight", "focus", "track", "linear", "spots", "panel"].includes(d.look));
-      el.querySelector("ha-icon").setAttribute("icon", KINDS[kind]?.icon || "mdi:circle");
+      el.querySelector("ra-icon").setAttribute("icon", kind === "light" ? (hasIcon(`light:${lightSub(d)}`) ? `light:${lightSub(d)}` : "dev:light") : `dev:${kind}`);
       el.title = d.name || "";
     }
     this.devsEl.querySelectorAll(".dv").forEach((el) => { if (!seen.has(el.dataset.dev)) el.remove(); });
@@ -925,15 +946,15 @@ export class AtelierEditor {
     if (this.tool === "import") return this.importPanel();
     if (this.tool === "check") return this.checkPanel();
     if (this.testing) {
-      a.innerHTML = `<h2><ha-icon icon="mdi:gesture-tap-button"></ha-icon>${t("Trying it out")}</h2><p class="tip">${t("Tap lights, TVs, ACs, fans, curtains and doors on the plan or in 3D to switch them. Devices without a working entity switch only here. Nothing in your home plan changes.")}</p><div class="row"><button class="primary" data-stoptest>${t("Back to editing")}</button></div>`;
+      a.innerHTML = `<h2><ra-icon icon="mdi:gesture-tap-button"></ra-icon>${t("Trying it out")}</h2><p class="tip">${t("Tap lights, TVs, ACs, fans, curtains and doors on the plan or in 3D to switch them. Devices without a working entity switch only here. Nothing in your home plan changes.")}</p><div class="row"><button class="primary" data-stoptest>${t("Back to editing")}</button></div>`;
       a.querySelector("[data-stoptest]").onclick = () => this.setTesting(false); return;
     }
     if (this.tool === "stairs") return this.stairPanel(a);
-    if (this.tool === "room") { a.innerHTML = `<h2><ha-icon icon="mdi:vector-square-plus"></ha-icon>${t("Rooms")}</h2><p class="tip">${t("Tap and drag on the plan to draw a room.")}</p>`; return; }
+    if (this.tool === "room") { a.innerHTML = `<h2><ra-icon icon="mdi:vector-square-plus"></ra-icon>${t("Rooms")}</h2><p class="tip">${t("Tap and drag on the plan to draw a room.")}</p>`; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { a.innerHTML = `<h2>${t(TOOLS.find((x) => x[0] === this.tool)[2])}</h2><p class="tip">${t("Tap a wall to add it.")}</p>`; return; }
     if (!obj) return this.homePanel(mode === "settings");
     if (s.t === "multi") return this.multiPanel();
-    const head = (icon, title) => `<div class="row between"><h2><ha-icon icon="${icon}"></ha-icon>${esc(title)}</h2><button data-close title="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
+    const head = (icon, title) => `<div class="row between"><h2><ra-icon icon="${icon}"></ra-icon>${esc(title)}</h2><button data-close title="${t("Close")}"><ra-icon icon="mdi:close"></ra-icon></button></div>`;
     // every slider also takes a typed number
     const slider = (key, label, min, max, step, val, unit = " m") => `<div class="sl"><span>${t(label)}</span><b class="nv"><input type="number" inputmode="decimal" data-num="${key}" min="${min}" step="${step}" value="${round(val, 2)}"><i>${unit.trim()}</i></b><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
     let h = "";
@@ -941,20 +962,20 @@ export class AtelierEditor {
       const b = bounds(obj.pts), isRect = obj.pts.length === 4, type = ROOM_TYPES[obj.type] || ROOM_TYPES.other;
       h += head(type.icon, obj.name || t(type.name));
       h += `<div class="field"><h3>${t("Name")}</h3><input type="text" data-k="name" value="${esc(obj.name)}" placeholder="${esc(t(type.name))}"></div>`;
-      h += `<div class="field"><h3>${t("Type")}</h3><div class="chips">${Object.entries(ROOM_TYPES).map(([k, v]) => `<button data-type="${k}" class="${obj.type === k ? "on" : ""}"><ha-icon icon="${v.icon}"></ha-icon>${t(v.name)}</button>`).join("")}</div></div>`;
+      h += `<div class="field"><h3>${t("Type")}</h3><div class="chips">${Object.entries(ROOM_TYPES).map(([k, v]) => `<button data-type="${k}" class="${obj.type === k ? "on" : ""}"><ra-icon icon="${v.icon}"></ra-icon>${t(v.name)}</button>`).join("")}</div></div>`;
       h += slider("rw", "Width", 0.5, 30, 0.05, round(b.x1 - b.x0, 2)) + slider("rd", "Length", 0.5, 30, 0.05, round(b.y1 - b.y0, 2));
       h += `<div class="field"><h3>${t("Floor")}</h3><div class="sw">${Object.entries(FLOORS).map(([k, v]) => `<button data-floor="${k}" title="${esc(v[0])}" class="${(obj.floor || type.floor) === k ? "on" : ""}" style="background-image:url(${floorThumb(k)})"></button>`).join("")}</div></div>`;
       if (!type.outdoor) h += `<div class="field"><h3>${t("Walls")}</h3><div class="sw">${Object.entries(WALLS).map(([k, v]) => `<button data-wall="${k}" title="${esc(v[0])}" class="${(obj.wall || "warm-white") === k ? "on" : ""}" style="background:${v[1]}"></button>`).join("")}</div></div>`;
       h += slider("gain", "Room brightness", 0.4, 2, 0.05, obj.gain || 1, "×");
-      h += `<div class="row"><label><button data-match><ha-icon icon="mdi:camera-image"></ha-icon>${t("Match a photo of this room")}</button><input type="file" data-photo accept="image/*" hidden></label></div><span class="tip" data-match-out></span>`;
-      h += `<div class="row"><button data-dup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      h += `<div class="row"><label><button data-match><ra-icon icon="mdi:camera-image"></ra-icon>${t("Match a photo of this room")}</button><input type="file" data-photo accept="image/*" hidden></label></div><span class="tip" data-match-out></span>`;
+      h += `<div class="row"><button data-dup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "op") {
       h += head(obj.type === "window" ? "mdi:window-closed-variant" : obj.type === "slider" ? "mdi:door-sliding" : obj.type === "arch" ? "mdi:gate-arrow-right" : "mdi:door", t(obj.type[0].toUpperCase() + obj.type.slice(1)));
       h += `<div class="seg">${["door", "window", "slider", "arch"].map((k) => `<button data-otype="${k}" class="${obj.type === k ? "on" : ""}">${t(k[0].toUpperCase() + k.slice(1))}</button>`).join("")}</div>`;
       h += slider("width", "Width", 0.4, 5, 0.05, obj.width) + slider("height", "Height", 0.4, 2.8, 0.05, obj.height);
       if (obj.type === "window") h += slider("sill", "Sill", 0, 1.8, 0.05, obj.sill);
-      if (obj.type === "door") h += `<div class="row"><button data-flip><ha-icon icon="mdi:swap-vertical"></ha-icon>${t("Flip")}</button><button data-tog="double" class="${obj.double ? "on" : ""}"><ha-icon icon="mdi:door-open"></ha-icon>Double</button><button data-tog="main" class="${obj.main ? "on" : ""}"><ha-icon icon="mdi:home-import-outline"></ha-icon>Main</button></div>`;
-      h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      if (obj.type === "door") h += `<div class="row"><button data-flip><ra-icon icon="mdi:swap-vertical"></ra-icon>${t("Flip")}</button><button data-tog="double" class="${obj.double ? "on" : ""}"><ra-icon icon="mdi:door-open"></ra-icon>Double</button><button data-tog="main" class="${obj.main ? "on" : ""}"><ra-icon icon="mdi:home-import-outline"></ra-icon>Main</button></div>`;
+      h += `<div class="row"><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "item" && obj.kind === "stairs") {
       const S = STAIR_STYLES[obj.style || "wood"] || STAIR_STYLES.wood, up = this.plan.floors[obj.link];
       h += head("mdi:stairs-up", t(S[0]));
@@ -962,19 +983,19 @@ export class AtelierEditor {
       h += `<p class="tip">${up ? `${t("Goes up to")} ${esc(up.name || "")}` : t("Not joined to a level above yet")}</p>`;
       h += `<div class="field"><h3>${t("Style")}</h3><div class="chips">${Object.entries(STAIR_STYLES).map(([k, x]) => `<button data-stairstyle="${k}" class="${(obj.style || "wood") === k ? "on" : ""}">${t(x[0])}</button>`).join("")}</div></div>`;
       h += slider("w", S[2] ? "Size across" : "Width", S[2] ? 1.2 : 0.7, S[2] ? 2.6 : 3, 0.05, obj.w || S[1]);
-      h += `<div class="row"><button data-restair><ha-icon icon="mdi:stairs-up"></ha-icon>${t(up ? "Change where they arrive" : "Join to the level above")}</button></div>`;
-      h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
-      h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      h += `<div class="row"><button data-restair><ra-icon icon="mdi:stairs-up"></ra-icon>${t(up ? "Change where they arrive" : "Join to the level above")}</button></div>`;
+      h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ra-icon icon="mdi:rotate-left"></ra-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ra-icon icon="mdi:rotate-right"></ra-icon></button></div></div>`;
+      h += `<div class="row"><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "item") {
       const L = LIBRARY[obj.kind], d = dims(obj);
       h += head("mdi:sofa-outline", t(L?.[0] || obj.kind));
       h += `<div class="pv" title="${esc(t("Drag to turn"))}"></div>`;
       h += slider("w", "Width", 0.2, 6, 0.05, d.w) + slider("d", "Depth", 0.05, 4, 0.05, d.d) + slider("h", "Height", 0.05, 3, 0.05, d.h);
       if (d.mount === "wall") h += slider("z", "Sill", 0, 2.4, 0.05, d.z);
-      h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
+      h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ra-icon icon="mdi:rotate-left"></ra-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ra-icon icon="mdi:rotate-right"></ra-icon></button></div></div>`;
       h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${Object.entries(FABRICS).map(([k, c]) => `<button data-color="${c}" title="${k}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
-      h += `<div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-samekind><ha-icon icon="mdi:shape-outline"></ha-icon>${t("All like this")}</button><button data-sameroom><ha-icon icon="mdi:floor-plan"></ha-icon>${t("All in this room")}</button></div></div>`;
-      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ha-icon icon="mdi:selection-multiple"></ha-icon>${t("Select several")}</button><button data-dup><ha-icon icon="mdi:content-copy"></ha-icon>${t("Duplicate")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      h += `<div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-samekind><ra-icon icon="mdi:shape-outline"></ra-icon>${t("All like this")}</button><button data-sameroom><ra-icon icon="mdi:floor-plan"></ra-icon>${t("All in this room")}</button></div></div>`;
+      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ra-icon icon="mdi:selection-multiple"></ra-icon>${t("Select several")}</button><button data-dup><ra-icon icon="mdi:content-copy"></ra-icon>${t("Duplicate")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "dev") {
       const kind = obj.kind || deviceKind(obj.entity), K = KINDS[kind];
       h += head(K.icon, obj.name || t(K.name));
@@ -984,14 +1005,14 @@ export class AtelierEditor {
         + slider("lumens", obj.look === "track" ? "Light output (each head)" : obj.look === "linear" ? "Light output (per metre)" : "Light output", 100, 5000, 50, obj.lumens || LUMENS[obj.look || "flush"], " lm")
         + `<label class="sl"><span>${t("Warmth")}</span><b data-out="kelvin">${obj.kelvin || KELVIN[obj.look || "flush"]} K</b><input type="range" data-k="kelvin" min="2200" max="6500" step="100" value="${obj.kelvin || KELVIN[obj.look || "flush"]}" style="accent-color:${kelvinToHex(obj.kelvin || KELVIN[obj.look || "flush"])}"></label>`
         + this.lampFields(obj, slider)
-        + (this.floor.rooms.some((r) => inside([obj.x, obj.y], r.pts)) ? `<div class="row"><button data-linkroom><ha-icon icon="mdi:link-variant"></ha-icon>${t(obj.entity ? "Same switch for every light in this room" : "Same on and off for every light in this room")}</button></div>` : "")
+        + (this.floor.rooms.some((r) => inside([obj.x, obj.y], r.pts)) ? `<div class="row"><button data-linkroom><ra-icon icon="mdi:link-variant"></ra-icon>${t(obj.entity ? "Same switch for every light in this room" : "Same on and off for every light in this room")}</button></div>` : "")
         + (obj.entity ? "" : `<div class="field"><h3>${t("Not smart: when is it on?")}</h3><div class="chips">${Object.entries(RULES).filter(([k]) => k !== "demo").map(([k, v]) => `<button data-rule="${k}" class="${(obj.rule || "on") === k ? "on" : ""}">${t(v)}</button>`).join("")}</div>${obj.rule === "schedule" ? `<div class="row"><input type="text" data-k="from" value="${esc(obj.from || "18:00")}" style="width:90px"> – <input type="text" data-k="to" value="${esc(obj.to || "23:00")}" style="width:90px"></div>` : ""}</div>`);
-      if (kind === "ac") h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><b>${obj.rot || 0}°</b><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
-      if (kind === "radar") h += `<div class="field"><h3>${t("Facing")}</h3><div class="row"><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="180">${t("Turn round")}</button></div><p class="note">${t("The arrow on the plan shows where the sensor looks. Walk in front of it: if the person moves the wrong way, flip left and right.")}</p><div class="row"><button data-tog="flip" class="${obj.flip ? "on" : ""}"><ha-icon icon="mdi:swap-horizontal"></ha-icon>${t("Flip left and right")}</button></div></div>`;
+      if (kind === "ac") h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ra-icon icon="mdi:rotate-left"></ra-icon></button><b>${obj.rot || 0}°</b><button data-rotby="90"><ra-icon icon="mdi:rotate-right"></ra-icon></button></div></div>`;
+      if (kind === "radar") h += `<div class="field"><h3>${t("Facing")}</h3><div class="row"><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="180">${t("Turn round")}</button></div><p class="note">${t("The arrow on the plan shows where the sensor looks. Walk in front of it: if the person moves the wrong way, flip left and right.")}</p><div class="row"><button data-tog="flip" class="${obj.flip ? "on" : ""}"><ra-icon icon="mdi:swap-horizontal"></ra-icon>${t("Flip left and right")}</button></div></div>`;
       if (kind === "person" || kind === "radar") h += `<div class="field"><h3>${t("Colour")}</h3><div class="sw">${["#6D4BFF", "#4E8CFF", "#E86FB0", "#FF7A59", "#2EC4B6", "#F5B041"].map((c) => `<button data-color="${c}" class="${obj.color === c ? "on" : ""}" style="background:${c}"></button>`).join("")}</div></div>`;
-      if (obj.group) { const n = this.floor.devices.filter((d) => d.group === obj.group).length; h += `<div class="field"><h3>${t("Switch together")}</h3><p class="tip">${t("In a group of")} ${n}</p><div class="row"><button data-selgroup><ha-icon icon="mdi:select-group"></ha-icon>${t("Pick the group")}</button><button data-ungroup="${esc(obj.group)}"><ha-icon icon="mdi:link-variant-off"></ha-icon>${t("Ungroup")}</button></div></div>`; }
-      h += `<div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-samekind><ha-icon icon="mdi:shape-outline"></ha-icon>${t("All like this")}</button><button data-sameroom><ha-icon icon="mdi:floor-plan"></ha-icon>${t("All in this room")}</button></div></div>`;
-      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ha-icon icon="mdi:selection-multiple"></ha-icon>${t("Select several")}</button><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+      if (obj.group) { const n = this.floor.devices.filter((d) => d.group === obj.group).length; h += `<div class="field"><h3>${t("Switch together")}</h3><p class="tip">${t("In a group of")} ${n}</p><div class="row"><button data-selgroup><ra-icon icon="mdi:select-group"></ra-icon>${t("Pick the group")}</button><button data-ungroup="${esc(obj.group)}"><ra-icon icon="mdi:link-variant-off"></ra-icon>${t("Ungroup")}</button></div></div>`; }
+      h += `<div class="field"><h3>${t("Pick")}</h3><div class="row"><button data-samekind><ra-icon icon="mdi:shape-outline"></ra-icon>${t("All like this")}</button><button data-sameroom><ra-icon icon="mdi:floor-plan"></ra-icon>${t("All in this room")}</button></div></div>`;
+      h += `<div class="row"><button data-pick class="${this.picking ? "on" : ""}"><ra-icon icon="mdi:selection-multiple"></ra-icon>${t("Select several")}</button><button class="danger" data-del><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>`;
     }
     a.innerHTML = h;
     a.querySelector("[data-pick]")?.addEventListener("click", () => { this.picking = !this.picking; this.toast(t(this.picking ? "Tap more pieces to add them" : "Done selecting")); this.inspector(); });
@@ -1091,11 +1112,11 @@ export class AtelierEditor {
     // a row of choices for one setting (style by default); the first is what an unset value means
     const styles = (list, dflt, key = "style") => `<div class="seg wrap">${list.map(([v, n]) => `<button data-opt="${key}" data-val="${v}" class="${(obj[key] || dflt) === v ? "on" : ""}">${t(n)}</button>`).join("")}</div>`;
     const look = obj.look || "flush", room = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)), b = room && bounds(room.pts);
-    const rot = `<div class="field"><h3>${t("Turn")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
+    const rot = `<div class="field"><h3>${t("Turn")}</h3><div class="row"><button data-rotby="-90"><ra-icon icon="mdi:rotate-left"></ra-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ra-icon icon="mdi:rotate-right"></ra-icon></button></div></div>`;
     let h = "";
     if (look === "track") {
       h += slider("len", "Length", 0.5, 6, 0.05, obj.len || 1.5) + slider("heads", "Heads", 1, 8, 1, obj.heads || 3, "") + slider("tilt", "Tilt", 0, 60, 1, obj.tilt ?? 25, "°") + rot;
-      h += `<div class="field"><h3>${t("Point the heads")}</h3><div class="row"><button data-aimby="-45"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-aimby="180"><ha-icon icon="mdi:swap-horizontal"></ha-icon></button><button data-aimby="45"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
+      h += `<div class="field"><h3>${t("Point the heads")}</h3><div class="row"><button data-aimby="-45"><ra-icon icon="mdi:rotate-left"></ra-icon></button><button data-aimby="180"><ra-icon icon="mdi:swap-horizontal"></ra-icon></button><button data-aimby="45"><ra-icon icon="mdi:rotate-right"></ra-icon></button></div></div>`;
     }
     if (look === "linear") {
       h += styles([["strip", "Strip"], ["slot", "Magnetic slot"], ["cove", "Hidden cove"], ["profile", "Aluminium profile"], ["neon", "Neon flex"], ["pendant", "Hanging bar"], ["washer", "Wall washer"]], "strip");
@@ -1114,26 +1135,26 @@ export class AtelierEditor {
     if (look === "chandelier") h += `<div class="seg"><button data-style="crystal" class="${obj.style !== "candle" ? "on" : ""}">${t("Crystal ring")}</button><button data-style="candle" class="${obj.style === "candle" ? "on" : ""}">${t("Candle arms")}</button></div>`;
     if (look === "focus") h += `<p class="tip">${t("Drag the small target on the plan onto the painting or wall it should light.")}</p>` + slider("tz", "Aim height", 0.2, 2.6, 0.05, obj.tz ?? 1.4);
     if (b) h += slider("wl", "From the left wall", 0, round(b.x1 - b.x0, 2), 0.01, round(obj.x - b.x0, 2)) + slider("wt", "From the top wall", 0, round(b.y1 - b.y0, 2), 0.01, round(obj.y - b.y0, 2));
-    if (b && look !== "floor") h += `<div class="field"><h3>${t("Fill the room evenly")}</h3><div class="row"><input type="number" data-rows min="1" max="10" value="2" style="width:56px"> × <input type="number" data-cols min="1" max="10" value="3" style="width:56px"><button class="primary" data-grid><ha-icon icon="mdi:grid"></ha-icon>${t("Make the grid")}</button></div></div>`;
+    if (b && look !== "floor") h += `<div class="field"><h3>${t("Fill the room evenly")}</h3><div class="row"><input type="number" data-rows min="1" max="10" value="2" style="width:56px"> × <input type="number" data-cols min="1" max="10" value="3" style="width:56px"><button class="primary" data-grid><ra-icon icon="mdi:grid"></ra-icon>${t("Make the grid")}</button></div></div>`;
     return h;
   }
   aimAtWall(obj) { const nw = nearestWall(this.floor, [obj.x, obj.y], 4); if (nw) { obj.tx = round(nw.q[0], 3); obj.ty = round(nw.q[1], 3); obj.tz = obj.tz ?? 1.4; } }
   libSvg(kind) { const L = LIBRARY[kind], k = 50 / Math.max(L[3], L[4] * 1.4), w = L[3] * k, d = L[4] * k; return `<svg viewBox="-30 -22 60 44"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`; }
   library() {
     const a = this.aside, items = Object.entries(LIBRARY).filter(([k, L]) => L[1] === this.cat && k !== "stairs");
-    a.innerHTML = `<h2><ha-icon icon="mdi:sofa-outline"></ha-icon>${t("Furniture")}</h2><div class="tabs">${CATEGORIES.map((c) => `<button data-cat="${c}" class="${this.cat === c ? "on" : ""}">${t(c)}</button>`).join("")}</div>
-      <p class="tip">${t("Drag a piece onto the plan.")}</p><div class="lib">${items.map(([k, L]) => `<div class="tile" data-kind="${k}">${this.libSvg(k)}<span>${t(L[0])}</span><small class="tip">${L[3]} × ${L[4]} m</small></div>`).join("")}</div>`;
+    a.innerHTML = `<h2><ra-icon icon="mdi:sofa-outline"></ra-icon>${t("Furniture")}</h2><div class="tabs">${CATEGORIES.map((c) => `<button data-cat="${c}" class="${this.cat === c ? "on" : ""}">${t(c)}</button>`).join("")}</div>
+      <p class="tip">${t("Drag a piece onto the plan.")}</p><div class="lib icons">${items.map(([k, L]) => `<div class="tile" data-kind="${k}" data-tip="${esc(t(L[0]))} · ${L[3]} × ${L[4]} m" aria-label="${esc(t(L[0]))}" role="button"><ra-icon icon="item:${k}"></ra-icon></div>`).join("")}</div>`;
     a.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { this.cat = b.dataset.cat; this.library(); }));
     a.querySelectorAll(".tile[data-kind]").forEach((el) => this.dragNew(el, el.dataset.kind, false, LIBRARY[el.dataset.kind][0]));
     if (this.cat === "Building") {
-      const lib = a.querySelector(".lib"); lib.insertAdjacentHTML("afterbegin", Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile" data-stair="${k}"><svg viewBox="-1.3 -2.1 2.6 4.2">${stairSvg({ style: k, w: S[2] ? 1.8 : 1.1, d: 3.6, h: 2.8 }, 0.05, "currentColor", "none")}</svg><span>${t(S[0])}</span><small class="tip">${t("Joins two levels")}</small></div>`).join(""));
+      const lib = a.querySelector(".lib"); lib.insertAdjacentHTML("afterbegin", Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile" data-stair="${k}" data-tip="${esc(t(S[0]))} · ${esc(t("Joins two levels"))}" aria-label="${esc(t(S[0]))}" role="button"><ra-icon icon="stair:${k}"></ra-icon></div>`).join(""));
       lib.querySelectorAll("[data-stair]").forEach((el) => (el.onclick = () => this.startStairs(el.dataset.stair)));
     }
   }
   deviceLibrary() {
     const a = this.aside;
-    const tiles = (list) => `<div class="lib">${list.map((k) => `<div class="tile" data-kind="light:${k}" data-name="${LIGHT_SUBS[k][2]}"><ha-icon icon="${LIGHT_SUBS[k][3]}" style="--mdc-icon-size:28px;color:#F5B041"></ha-icon><span>${t(LIGHT_SUBS[k][2])}</span></div>`).join("")}</div>`;
-    a.innerHTML = `<h2><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p>${LIGHT_GROUPS.map(([title, list]) => `<h3 class="sub">${t(title)}</h3>${tiles(list)}`).join("")}<h3 class="sub">${t("Devices")}</h3><div class="lib">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}"><ha-icon icon="${K.icon}" style="--mdc-icon-size:28px;color:${DEV_COL[k]}"></ha-icon><span>${t(K.name)}</span></div>`).join("")}</div>`;
+    const tiles = (list) => `<div class="lib icons">${list.map((k) => `<div class="tile" data-kind="light:${k}" data-name="${LIGHT_SUBS[k][2]}" data-tip="${esc(t(LIGHT_SUBS[k][2]))}" aria-label="${esc(t(LIGHT_SUBS[k][2]))}" role="button"><ra-icon icon="light:${k}" style="color:#F5B041"></ra-icon></div>`).join("")}</div>`;
+    a.innerHTML = `<h2><ra-icon icon="mdi:lightbulb-group-outline"></ra-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p>${LIGHT_GROUPS.map(([title, list]) => `<h3 class="sub">${t(title)}</h3>${tiles(list)}`).join("")}<h3 class="sub">${t("Devices")}</h3><div class="lib icons">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}" data-tip="${esc(t(K.name))}" aria-label="${esc(t(K.name))}" role="button"><ra-icon icon="dev:${k}" style="color:${DEV_COL[k]}"></ra-icon></div>`).join("")}</div>`;
     a.querySelectorAll(".tile").forEach((el) => this.dragNew(el, el.dataset.kind, true, el.dataset.name || KINDS[el.dataset.kind].name));
   }
   dragNew(el, kind, isDevice, label) {
@@ -1179,22 +1200,22 @@ export class AtelierEditor {
   homePanel(settings) {
     const a = this.aside, p = this.plan, f = this.floor, st = p.settings;
     const total = f.rooms.filter((r) => !ROOM_TYPES[r.type]?.outdoor).reduce((s, r) => s + Math.abs(area(r.pts)), 0);
-    a.innerHTML = `<h2><ha-icon icon="mdi:home-outline"></ha-icon>${esc(p.name)}</h2>
+    a.innerHTML = `<h2><ra-icon icon="mdi:home-outline"></ra-icon>${esc(p.name)}</h2>
       <div class="card"><div class="row between"><span class="tip">${t("Rooms")}</span><b>${f.rooms.length}</b></div><div class="row between"><span class="tip">m²</span><b>${round(total, 1)}</b></div><div class="row between"><span class="tip">${t("Furniture")}</span><b>${f.items.length}</b></div><div class="row between"><span class="tip">${t("Devices")}</span><b>${f.devices.length}</b></div></div>
       <div class="field"><h3>${t("Name")}</h3><input type="text" data-name value="${esc(p.name)}"></div>
       <div class="field"><h3>${t("Walls")}</h3><div class="seg"><button data-walls="cut" class="${st.walls !== "full" ? "on" : ""}">${t("Cut walls")}</button><button data-walls="full" class="${st.walls === "full" ? "on" : ""}">${t("Full walls")}</button></div></div>
-      ${p.floors.length > 1 ? `<div class="row"><button data-levels class="${st.levels ? "on" : ""}"><ha-icon icon="mdi:layers-outline"></ha-icon>${t("Show the levels below in 3D")}</button></div>` : ""}
+      ${p.floors.length > 1 ? `<div class="row"><button data-levels class="${st.levels ? "on" : ""}"><ra-icon icon="mdi:layers-outline"></ra-icon>${t("Show the levels below in 3D")}</button></div>` : ""}
       <label class="sl"><span>${t("Height")}</span><b data-out="fh">${f.height} m</b><input type="range" data-fh min="2.4" max="4.5" step="0.05" value="${f.height}"></label>
       <label class="sl"><span>${t("North")}</span><b data-out="north">${p.north || 0}°</b><input type="range" data-north min="0" max="359" step="1" value="${p.north || 0}"></label>
       <label class="sl"><span>${t("Overall brightness")}</span><b data-out="ex">${round(st.exposure || 1, 2)}×</b><input type="range" data-ex min="0.5" max="2" step="0.05" value="${st.exposure || 1}"></label>
       <label class="sl"><span>${t("Lamp glow")}</span><b data-out="mood">${round(st.mood || 1, 2)}×</b><input type="range" data-mood min="0.5" max="2" step="0.05" value="${st.mood || 1}"></label>
-      <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
+      <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ra-icon icon="mdi:white-balance-sunny"></ra-icon></button></div>
       <div class="field"><h3>${t("Time of day")}</h3><div class="chips">${[["", "Now"], ["morning", "Morning"], ["noon", "Noon"], ["golden", "Golden hour"], ["night", "Night"]].map(([k, l]) => `<button data-time="${k}" class="${(st.time || "") === k ? "on" : ""}">${t(l)}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
-      <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
-      <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ha-icon icon="mdi:home-import-outline"></ha-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
+      <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>` : ""}</div>
+      <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ra-icon icon="mdi:home-import-outline"></ra-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
       <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made when you press Make dashboard pictures")}</span></div></div>
-      <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ha-icon icon="mdi:image-multiple-outline"></ha-icon>${t("Make dashboard pictures")}</button><button data-preview><ha-icon icon="mdi:eye-outline"></ha-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
+      <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ra-icon icon="mdi:image-multiple-outline"></ra-icon>${t("Make dashboard pictures")}</button><button data-preview><ra-icon icon="mdi:eye-outline"></ra-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
     this.drawAreas(a.querySelector("[data-ha-areas]"));
@@ -1268,7 +1289,7 @@ export class AtelierEditor {
   async showPano(url, roomId) {
     void url;
     const d = document.createElement("div"); d.className = "dialog";
-    d.innerHTML = `<div style="width:min(96vw,1100px);display:flex;flex-direction:column;gap:10px"><div class="row" style="justify-content:space-between;align-items:center"><b>${t("How the Roost Home Tour card will look")}</b><button data-x style="background:var(--panel)"><ha-icon icon="mdi:close"></ha-icon></button></div><div style="height:min(76vh,620px);border-radius:22px;overflow:hidden;position:relative;background:#0B0D17" data-host></div><span class="tip" data-note></span></div>`;
+    d.innerHTML = `<div style="width:min(96vw,1100px);display:flex;flex-direction:column;gap:10px"><div class="row" style="justify-content:space-between;align-items:center"><b>${t("How the Roost Home Tour card will look")}</b><button data-x style="background:var(--panel)"><ra-icon icon="mdi:close"></ra-icon></button></div><div style="height:min(76vh,620px);border-radius:22px;overflow:hidden;position:relative;background:#0B0D17" data-host></div><span class="tip" data-note></span></div>`;
     this.root.querySelector(".ed").appendChild(d);
     const host = d.querySelector("[data-host]");
     let close = () => d.remove();
@@ -1301,7 +1322,7 @@ export class AtelierEditor {
   }
   checkPanel() {
     const a = this.aside, issues = check(this.plan, this.floor);
-    a.innerHTML = `<h2><ha-icon icon="mdi:check-decagram-outline"></ha-icon>${t("Check the home")}</h2>${issues.length ? issues.map((i, n) => `<div class="issue" data-n="${n}"><ha-icon icon="mdi:alert-circle-outline"></ha-icon><div>${esc(i.text)}${i.fix ? `<div class="row" style="margin-top:6px"><button class="primary" data-fix="${n}">${esc(i.fixLabel || "Fix")}</button></div>` : ""}</div></div>`).join("") : `<div class="issue ok"><ha-icon icon="mdi:check-circle-outline"></ha-icon><div>${t("Looks good")}</div></div>`}`;
+    a.innerHTML = `<h2><ra-icon icon="mdi:check-decagram-outline"></ra-icon>${t("Check the home")}</h2>${issues.length ? issues.map((i, n) => `<div class="issue" data-n="${n}"><ra-icon icon="mdi:alert-circle-outline"></ra-icon><div>${esc(i.text)}${i.fix ? `<div class="row" style="margin-top:6px"><button class="primary" data-fix="${n}">${esc(i.fixLabel || "Fix")}</button></div>` : ""}</div></div>`).join("") : `<div class="issue ok"><ra-icon icon="mdi:check-circle-outline"></ra-icon><div>${t("Looks good")}</div></div>`}`;
     a.querySelectorAll(".issue[data-n]").forEach((el) => (el.onclick = (e) => { if (e.target.closest("[data-fix]")) return; const i = issues[+el.dataset.n]; if (i.sel) { this.sel = i.sel; this.draw(); } }));
     a.querySelectorAll("[data-fix]").forEach((b) => (b.onclick = () => { this.snapshot(); issues[+b.dataset.fix].fix(); this.changed(); this.checkPanel(); }));
   }
@@ -1315,10 +1336,10 @@ export class AtelierEditor {
     this.root.querySelector(".menu")?.remove();
     const m = document.createElement("div"); m.className = "menu";
     const plans = this.plans || [];
-    m.innerHTML = `${plans.length ? `<h3>${t("Homes")}</h3><div class="list">${plans.map((p) => `<button data-open="${esc(p.id)}" class="${p.id === this.plan?.id ? "on" : ""}"><ha-icon icon="mdi:home-outline"></ha-icon><span>${esc(p.name)}<small>${p.rooms ?? ""} ${t("Rooms").toLowerCase()}</small></span></button>`).join("")}</div>` : ""}
-      <h3>${t("New home")} · ${t("Start from")}</h3><div class="list"><button data-new="blank"><ha-icon icon="mdi:vector-square"></ha-icon><span>${t("Blank")}</span></button>${SAMPLES.map((s) => `<button data-new="${esc(s.id)}"><ha-icon icon="mdi:floor-plan"></ha-icon><span>${esc(s.name)}<small>${s.size}</small></span></button>`).join("")}<button data-new="import"><ha-icon icon="mdi:file-image-plus-outline"></ha-icon><span>${t("From CAD or PDF")}<small>DXF · PDF · JPG · PNG</small></span></button></div>
-      <h3>${t("Backups")}</h3><div class="list"><button data-x="export"><ha-icon icon="mdi:file-download-outline"></ha-icon><span>${t("Save to a file")}<small>${t("A copy of this home on this device")}</small></span></button><button data-x="import"><ha-icon icon="mdi:file-upload-outline"></ha-icon><span>${t("Load from a file")}</span></button>${this.plan?.id ? `<button data-x="versions"><ha-icon icon="mdi:history"></ha-icon><span>${t("Earlier versions")}</span></button>` : ""}<button data-x="deleted"><ha-icon icon="mdi:delete-restore"></ha-icon><span>${t("Deleted homes")}</span></button></div>
-      ${this.plan?.id ? `<div class="row"><button class="danger" data-delhome><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")} “${esc(this.plan.name)}”</button></div>` : ""}`;
+    m.innerHTML = `${plans.length ? `<h3>${t("Homes")}</h3><div class="list">${plans.map((p) => `<button data-open="${esc(p.id)}" class="${p.id === this.plan?.id ? "on" : ""}"><ra-icon icon="mdi:home-outline"></ra-icon><span>${esc(p.name)}<small>${p.rooms ?? ""} ${t("Rooms").toLowerCase()}</small></span></button>`).join("")}</div>` : ""}
+      <h3>${t("New home")} · ${t("Start from")}</h3><div class="list"><button data-new="blank"><ra-icon icon="mdi:vector-square"></ra-icon><span>${t("Blank")}</span></button>${SAMPLES.map((s) => `<button data-new="${esc(s.id)}"><ra-icon icon="mdi:floor-plan"></ra-icon><span>${esc(s.name)}<small>${s.size}</small></span></button>`).join("")}<button data-new="import"><ra-icon icon="mdi:file-image-plus-outline"></ra-icon><span>${t("From CAD or PDF")}<small>DXF · PDF · JPG · PNG</small></span></button></div>
+      <h3>${t("Backups")}</h3><div class="list"><button data-x="export"><ra-icon icon="mdi:file-download-outline"></ra-icon><span>${t("Save to a file")}<small>${t("A copy of this home on this device")}</small></span></button><button data-x="import"><ra-icon icon="mdi:file-upload-outline"></ra-icon><span>${t("Load from a file")}</span></button>${this.plan?.id ? `<button data-x="versions"><ra-icon icon="mdi:history"></ra-icon><span>${t("Earlier versions")}</span></button>` : ""}<button data-x="deleted"><ra-icon icon="mdi:delete-restore"></ra-icon><span>${t("Deleted homes")}</span></button></div>
+      ${this.plan?.id ? `<div class="row"><button class="danger" data-delhome><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")} “${esc(this.plan.name)}”</button></div>` : ""}`;
     this.root.querySelector(".ed").appendChild(m);
     const close = (e) => { if (!m.contains(e.target) && !e.composedPath().includes(this.root.querySelector(".homes"))) { m.remove(); this.root.removeEventListener("pointerdown", close, true); } };
     setTimeout(() => this.root.addEventListener("pointerdown", close, true));

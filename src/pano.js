@@ -16,7 +16,7 @@ export const PANO_CSS = `
 .pv360 .hs button{all:unset;cursor:pointer;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(20,24,49,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);box-shadow:0 4px 14px rgba(0,0,0,.3);transition:transform .12s}
 .pv360 .hs button:active{transform:scale(.9)}
 .pv360 .hs.on button{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));border-color:transparent;box-shadow:0 0 18px color-mix(in srgb,var(--c) 70%,transparent)}
-.pv360 .hs ha-icon{--mdc-icon-size:18px}
+.pv360 .hs ra-icon{--mdc-icon-size:18px}
 .pv360 .hs span{font:600 10px/1.2 Inter,sans-serif;color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
 .pv360 .pop{position:absolute;z-index:6;width:min(268px,calc(100% - 24px));padding:12px;border-radius:20px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);box-sizing:border-box;cursor:default}
 .pv360 .msg{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;padding:20px}
@@ -106,7 +106,7 @@ export class PanoViewer {
     for (const { d, p } of this.devices || []) {
       let el = this.hs.get(d.id);
       if (!el) {
-        el = document.createElement("div"); el.className = "hs"; el.innerHTML = `<button><ha-icon></ha-icon></button><span></span>`;
+        el = document.createElement("div"); el.className = "hs"; el.innerHTML = `<button><ra-icon></ra-icon></button><span></span>`;
         el.firstElementChild.addEventListener("click", (e) => { e.stopPropagation(); this.openId === d.id && this.popEl ? this.closePop() : this.open(d.id); });
         this.hotEl.appendChild(el); this.hs.set(d.id, el);
       }
@@ -118,7 +118,7 @@ export class PanoViewer {
       const st = this._hass?.states[d.entity], on = isOn(st), kind = d.kind || "light";
       el.classList.toggle("on", on); el.style.setProperty("--c", COLORS[kind] || "#8B6CFF");
       const icon = kind === "light" ? (on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline") : kind === "curtain" ? (on ? "mdi:curtains" : "mdi:curtains-closed") : KINDS[kind]?.icon || "mdi:circle";
-      const ic = el.querySelector("ha-icon"); if (ic.getAttribute("icon") !== icon) ic.setAttribute("icon", icon);
+      const ic = el.querySelector("ra-icon"); if (ic.getAttribute("icon") !== icon) ic.setAttribute("icon", icon);
       el.dataset.x = x; el.dataset.y = y;
     }
   }
