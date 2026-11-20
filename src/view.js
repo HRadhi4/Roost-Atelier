@@ -11,7 +11,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const COLORS = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
 
 export const VIEW_CSS = `
-.pcover{position:absolute;inset:0;z-index:4;pointer-events:none}.pcover img{width:100%;height:100%;object-fit:cover;display:block}.pcover span{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:6px 12px;border-radius:12px;background:rgba(11,13,23,.7);color:#fff;font:500 12px Inter,sans-serif;white-space:nowrap}
+.pcover{position:absolute;inset:0;z-index:4;pointer-events:none}.pcover img{width:100%;height:100%;object-fit:cover;display:block}.pcover span{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:6px 12px;border-radius:12px;background:rgba(11,13,23,.7);color:#fff;font:500 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;white-space:nowrap}
 .av{position:relative;width:100%;height:100%;overflow:hidden;border-radius:inherit;background:radial-gradient(120% 90% at 50% 10%,var(--av-sky1,#1a2050),var(--av-sky2,#0B0D17));transition:background .6s}
 .av.day{--av-sky1:#f4efe6;--av-sky2:#dfe6f2}
 .av canvas{position:absolute;inset:0}
@@ -26,25 +26,25 @@ export const VIEW_CSS = `
 .av .hs span:empty{display:none}
 .av .bar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:8px;justify-content:center;pointer-events:none}
 .av .bar .grp{display:flex;gap:4px;padding:4px;border-radius:16px;background:rgba(20,24,49,.62);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);pointer-events:auto}
-.av .bar button{all:unset;cursor:pointer;height:36px;min-width:36px;padding:0 10px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px;color:#C9CEF0;font:600 12px Inter,sans-serif;transition:background .12s,color .12s}
+.av .bar button{all:unset;cursor:pointer;height:36px;min-width:36px;padding:0 10px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px;color:#C9CEF0;font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;transition:background .12s,color .12s}
 .av .bar button.on{color:#fff;background:linear-gradient(135deg,#6D4BFF,#8B6CFF);box-shadow:0 0 14px rgba(109,75,255,.45)}
 .av .bar ra-icon{--mdc-icon-size:18px}
 .av .bar .lbl{display:none}
 @media (min-width:600px){.av .bar .lbl{display:inline}}
-.av .prog{position:absolute;top:12px;inset-inline-end:12px;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(20,24,49,.62);color:#fff;font:600 11px Inter,sans-serif;backdrop-filter:blur(10px);transition:opacity .2s}
+.av .prog{position:absolute;top:12px;inset-inline-end:12px;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(20,24,49,.62);color:#fff;font:600 11px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;backdrop-filter:blur(10px);transition:opacity .2s}
 .av .prog i{display:block;width:60px;height:4px;border-radius:2px;background:rgba(255,255,255,.2);overflow:hidden}
 .av .prog i b{display:block;height:100%;background:linear-gradient(90deg,#6D4BFF,#8B6CFF);width:0}
 .av .prog.hide{opacity:0}
 .av .pop{position:absolute;z-index:6;width:min(268px,calc(100% - 24px));padding:12px;border-radius:20px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);box-sizing:border-box}
-.av .side{position:absolute;z-index:6;top:10px;bottom:62px;inset-inline-end:10px;width:min(320px,calc(100% - 20px));padding:14px;border-radius:22px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;color:#EEF0FF;font:500 13px Inter,sans-serif}
+.av .side{position:absolute;z-index:6;top:10px;bottom:62px;inset-inline-end:10px;width:min(320px,calc(100% - 20px));padding:14px;border-radius:22px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;color:#EEF0FF;font:500 13px Inter,-apple-system,'Segoe UI',Roboto,sans-serif}
 .av .side .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.av .side .top b{font:600 16px "Space Grotesk",Inter,sans-serif}
+.av .side .top b{font:600 16px "Space Grotesk",Inter,-apple-system,'Segoe UI',Roboto,sans-serif}
 .av .side .top button{all:unset;cursor:pointer;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(255,255,255,.08)}
-.av .side h4{all:unset;font:600 11px Inter,sans-serif;color:#9AA3D9;text-transform:uppercase;letter-spacing:.06em}
+.av .side h4{all:unset;font:600 11px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#9AA3D9;text-transform:uppercase;letter-spacing:.06em}
 .av .side .card{padding:12px;border-radius:16px;background:rgba(255,255,255,.05)}
 .av .side .card.pick{cursor:pointer}
 ${CONTROLS_CSS}
-.av .empty{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;padding:20px}
+.av .empty{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;text-align:center;padding:20px}
 `;
 
 export class AtelierView {

@@ -11,7 +11,7 @@ const COLORS = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6C
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 export const STILL_CSS = `
-.st{position:relative;width:100%;height:100%;overflow:hidden;border-radius:inherit;background:#0B0D17;touch-action:none;user-select:none;-webkit-user-select:none;font-family:Inter,sans-serif}
+.st{position:relative;width:100%;height:100%;overflow:hidden;border-radius:inherit;background:#0B0D17;touch-action:none;user-select:none;-webkit-user-select:none;font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif}
 .st .stage{position:absolute;inset:0}
 .st .stage img,.st .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover}
 .st .stage.pano{cursor:grab}
@@ -24,18 +24,18 @@ export const STILL_CSS = `
 .st .hs button:active{transform:scale(.9)}
 .st .hs.on button{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));border-color:transparent;box-shadow:0 0 18px color-mix(in srgb,var(--c) 70%,transparent)}
 .st .hs ra-icon{--mdc-icon-size:18px}
-.st .hs span{font:600 10px/1.2 Inter,sans-serif;color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
-.st .hs.room button{width:auto;height:30px;padding:0 12px;border-radius:15px;font:600 12px Inter,sans-serif;gap:6px;display:flex}
+.st .hs span{font:600 10px/1.2 Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
+.st .hs.room button{width:auto;height:30px;padding:0 12px;border-radius:15px;font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;gap:6px;display:flex}
 .st .hs.door button{background:rgba(255,255,255,.88);color:#141831}
 .st .pop{position:absolute;z-index:6;width:min(268px,calc(100% - 24px));padding:12px;border-radius:20px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);box-sizing:border-box}
-.st .msg{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;padding:24px;line-height:1.5}
+.st .msg{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;text-align:center;padding:24px;line-height:1.5}
 .st .bar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:6px;z-index:5;pointer-events:none}
-.st .bar button{all:unset;pointer-events:auto;cursor:pointer;height:38px;min-width:38px;padding:0 12px;box-sizing:border-box;border-radius:19px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#fff;font:600 13px Inter,sans-serif;background:rgba(11,13,23,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14)}
+.st .bar button{all:unset;pointer-events:auto;cursor:pointer;height:38px;min-width:38px;padding:0 12px;box-sizing:border-box;border-radius:19px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#fff;font:600 13px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:rgba(11,13,23,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14)}
 .st .bar button.name{flex:1;max-width:240px;margin:0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st .bar button ra-icon{--mdc-icon-size:18px}
 .st .bar .sp{flex:1}
 .st .menu{position:absolute;left:50%;bottom:56px;transform:translateX(-50%);z-index:7;max-height:60%;overflow:auto;padding:6px;border-radius:18px;background:rgba(20,24,49,.94);border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;min-width:180px}
-.st .menu button{all:unset;cursor:pointer;padding:10px 14px;border-radius:12px;color:#EEF0FF;font:500 14px Inter,sans-serif}
+.st .menu button{all:unset;cursor:pointer;padding:10px 14px;border-radius:12px;color:#EEF0FF;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif}
 .st .menu button.cur{background:rgba(139,108,255,.25)}
 ${CONTROLS_CSS}
 `;

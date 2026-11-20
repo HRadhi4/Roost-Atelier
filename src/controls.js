@@ -6,14 +6,14 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const MODES = { off: ["Off", "mdi:power"], cool: ["Cool", "mdi:snowflake"], dry: ["Dry", "mdi:water-percent"], fan_only: ["Fan", "mdi:fan"], heat: ["Heat", "mdi:fire"], heat_cool: ["Auto", "mdi:autorenew"], auto: ["Auto", "mdi:autorenew"] };
 
 export const CONTROLS_CSS = `
-.ctl{display:flex;flex-direction:column;gap:10px;font:500 13px Inter,sans-serif;color:#EEF0FF}
+.ctl{display:flex;flex-direction:column;gap:10px;font:500 13px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#EEF0FF}
 .ctl .hd{display:flex;align-items:center;gap:10px}
 .ctl .hd .ic{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--c) 22%,transparent);color:var(--c);flex:none}
 .ctl .hd .ic ra-icon{--mdc-icon-size:20px}
-.ctl .hd b{display:block;font:600 14px Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctl .hd b{display:block;font:600 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctl .hd small{display:block;color:#9AA3D9;font-size:12px;margin-top:1px}
 .ctl .hd .tx{min-width:0;flex:1}
-.ctl button{all:unset;box-sizing:border-box;cursor:pointer;height:40px;min-width:40px;padding:0 12px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,255,255,.08);color:#EEF0FF;font:600 12px Inter,sans-serif;transition:background .12s,transform .12s;-webkit-tap-highlight-color:transparent}
+.ctl button{all:unset;box-sizing:border-box;cursor:pointer;height:40px;min-width:40px;padding:0 12px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,255,255,.08);color:#EEF0FF;font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;transition:background .12s,transform .12s;-webkit-tap-highlight-color:transparent}
 .ctl button:active{transform:scale(.94)}
 .ctl button.on{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));color:#fff}
 .ctl button ra-icon{--mdc-icon-size:18px}
@@ -21,7 +21,7 @@ export const CONTROLS_CSS = `
 .ctl .row{display:flex;gap:6px;align-items:center}
 .ctl .row>button{flex:1}
 .ctl .big{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.ctl .big b{font:600 26px "Space Grotesk",Inter,sans-serif}
+.ctl .big b{font:600 26px "Space Grotesk",Inter,-apple-system,'Segoe UI',Roboto,sans-serif}
 .ctl .sl{display:flex;flex-direction:column;gap:4px}
 .ctl .sl span{display:flex;justify-content:space-between;color:#9AA3D9;font-size:12px}
 .ctl input[type=range]{width:100%;accent-color:var(--c);height:24px;margin:0}

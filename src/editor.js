@@ -52,7 +52,7 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0 12px;b
 header .title{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 header .test{display:flex;align-items:center;gap:6px;padding:0 12px}header .test.on{background:var(--acc1);color:#FFFFFF}
 .ed.testing nav{opacity:.35;pointer-events:none}.ed.testing .plan .hint{display:none}
-header h1{all:unset;font:600 17px "Space Grotesk",Inter,sans-serif;white-space:nowrap}
+header h1{all:unset;font:600 17px "Space Grotesk",Inter,-apple-system,'Segoe UI',Roboto,sans-serif;white-space:nowrap}
 button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;height:auto;min-height:40px;min-width:40px;padding:6px 12px;text-align:center;line-height:1.25;overflow-wrap:anywhere;color:var(--text);transition:background .12s,transform .12s}
 button:active{transform:scale(.96)}
 button:hover{background:var(--inset)}
@@ -79,7 +79,7 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .dv ra-icon{--mdc-icon-size:16px}
 .plan .dv.off{background:#3A3F63;box-shadow:none;color:#9AA3D9}
 .plan .hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:12px;pointer-events:none;white-space:nowrap}
-.plan .ceil{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);font:600 12px Inter,sans-serif;cursor:pointer;z-index:2}
+.plan .ceil{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;cursor:pointer;z-index:2}
 .plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
 .ceilmode .plan .dv:not(.lamp){opacity:.18;pointer-events:none}
 .plan .dv.lamp{width:20px;height:20px}.plan .dv.lamp ra-icon{--mdc-icon-size:12px}
@@ -88,8 +88,8 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .three{position:relative;border-inline-start:1px solid var(--border);min-width:0}
 aside{grid-row:2;border-inline-start:1px solid var(--border);background:var(--panel);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px;z-index:2}
 aside>*{flex:none}
-aside h2{all:unset;font:600 15px "Space Grotesk",Inter,sans-serif;display:flex;align-items:center;gap:8px}
-aside h3{all:unset;font:600 11px Inter,sans-serif;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+aside h2{all:unset;font:600 15px "Space Grotesk",Inter,-apple-system,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;gap:8px}
+aside h3{all:unset;font:600 11px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .row.between{justify-content:space-between}
 .field{display:flex;flex-direction:column;gap:6px}
@@ -103,7 +103,7 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .nv{display:flex;align-items:center;gap:4px}.nv i{font-style:normal;font-weight:500;color:var(--muted,#9AA3D9)}
 .nv input{width:64px;height:28px;padding:0 6px;border-radius:8px;border:1px solid var(--border);background:var(--inset);color:inherit;font:inherit;font-weight:700;text-align:end;-moz-appearance:textfield}
 .nv input::-webkit-inner-spin-button,.nv input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-.sl b{font:600 13px "Space Grotesk",Inter,sans-serif;min-width:52px;text-align:end}
+.sl b{font:600 13px "Space Grotesk",Inter,-apple-system,'Segoe UI',Roboto,sans-serif;min-width:52px;text-align:end}
 .sl input{grid-column:1/-1}
 .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
 .chips button{height:auto;min-height:58px;flex-direction:column;gap:4px;padding:8px 4px;border-radius:14px;background:var(--inset);font-size:11px;text-align:center}
@@ -130,7 +130,7 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .list small{display:block;color:var(--muted);font-size:11px}
 .pv{height:190px;margin:2px 0 4px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 30%,#2a2f52,#12152a)}
 .pv3{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
-.studio{position:absolute;bottom:16px;inset-inline-start:80px;z-index:6;display:flex;align-items:center;gap:8px;max-width:min(460px,70%);height:40px;padding:0 14px;border-radius:14px;background:rgba(20,24,49,.92);border:1px solid var(--border);color:var(--text);font:600 12px Inter,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer}
+.studio{position:absolute;bottom:16px;inset-inline-start:80px;z-index:6;display:flex;align-items:center;gap:8px;max-width:min(460px,70%);height:40px;padding:0 14px;border-radius:14px;background:rgba(20,24,49,.92);border:1px solid var(--border);color:var(--text);font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer}
 .studio.hide{display:none}
 .studio span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .studio i{flex:0 0 90px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
@@ -392,7 +392,7 @@ export class AtelierEditor {
     Object.assign(this, keep); this.draw();
     const H = (b.y1 - b.y0 + 2 * m) * z, today = new Date().toLocaleDateString();
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(this.plan.name)}</title><style>
-      @page{size:A4 landscape;margin:12mm}body{margin:0;font-family:Inter,Arial,sans-serif;color:#161936}
+      @page{size:A4 landscape;margin:12mm}body{margin:0;font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#161936}
       svg{width:100%;height:auto;--wall:#2A2F45;--text:#161936;--muted:#5E668F;--grid:transparent;--inset:#EEF0FA;--border:#C9CEF0;--acc1:#6D4BFF;--acc2:#8B6CFF;--panel:#fff;--track:#DDE1F0}
       header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #C9CEF0;padding-bottom:6px;margin-bottom:8px}h1{font-size:18px;margin:0}small{color:#5E668F}
       .hs,[data-rot],[data-aim]{display:none}</style></head><body>
@@ -651,7 +651,7 @@ export class AtelierEditor {
     // room labels
     for (const r of f.rooms) {
       const [cx, cy] = centroid(r.pts), b = bounds(r.pts); if ((b.x1 - b.x0) * z < 60) continue;
-      out += `<text x="${cx}" y="${cy}" font-size="${12 * px}" font-weight="600" text-anchor="middle" fill="var(--text)" pointer-events="none" font-family="Space Grotesk,Inter,sans-serif">${esc(r.name || t(ROOM_TYPES[r.type]?.name || "Room"))}</text><text x="${cx}" y="${cy + 15 * px}" font-size="${10 * px}" text-anchor="middle" fill="var(--muted)" pointer-events="none">${round(Math.abs(area(r.pts)), 1)} m²</text>`;
+      out += `<text x="${cx}" y="${cy}" font-size="${12 * px}" font-weight="600" text-anchor="middle" fill="var(--text)" pointer-events="none" font-family="Space Grotesk,Inter,-apple-system,'Segoe UI',Roboto,sans-serif">${esc(r.name || t(ROOM_TYPES[r.type]?.name || "Room"))}</text><text x="${cx}" y="${cy + 15 * px}" font-size="${10 * px}" text-anchor="middle" fill="var(--muted)" pointer-events="none">${round(Math.abs(area(r.pts)), 1)} m²</text>`;
     }
     // selected room handles and sizes
     if (s?.t === "room") {

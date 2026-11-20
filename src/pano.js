@@ -17,10 +17,10 @@ export const PANO_CSS = `
 .pv360 .hs button:active{transform:scale(.9)}
 .pv360 .hs.on button{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));border-color:transparent;box-shadow:0 0 18px color-mix(in srgb,var(--c) 70%,transparent)}
 .pv360 .hs ra-icon{--mdc-icon-size:18px}
-.pv360 .hs span{font:600 10px/1.2 Inter,sans-serif;color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
+.pv360 .hs span{font:600 10px/1.2 Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
 .pv360 .pop{position:absolute;z-index:6;width:min(268px,calc(100% - 24px));padding:12px;border-radius:20px;background:rgba(20,24,49,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px rgba(0,0,0,.4);box-sizing:border-box;cursor:default}
-.pv360 .msg{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;padding:20px}
-.pv360 .name{position:absolute;left:14px;top:12px;padding:6px 12px;border-radius:12px;background:rgba(11,13,23,.55);color:#fff;font:600 13px Inter,sans-serif;backdrop-filter:blur(8px)}
+.pv360 .msg{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;text-align:center;padding:20px}
+.pv360 .name{position:absolute;left:14px;top:12px;padding:6px 12px;border-radius:12px;background:rgba(11,13,23,.55);color:#fff;font:600 13px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;backdrop-filter:blur(8px)}
 ${CONTROLS_CSS}
 `;
 

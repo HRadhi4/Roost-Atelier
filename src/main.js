@@ -42,7 +42,7 @@ class RoostAtelierCard extends HTMLElement {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     // the pictures of the home are shown by Roost Cards (Roost Home Tour); the Atelier only makes them
     const moved = this._config.view === "still" || this._config.view === "360";
-    const { VIEW_CSS, AtelierView } = moved ? { VIEW_CSS: `.av{position:absolute;inset:0;display:grid;place-items:center;background:#0B0D17;padding:24px}.av .empty{color:#9AA3D9;font:500 14px Inter,sans-serif;text-align:center;line-height:1.6}` } : await loadView();
+    const { VIEW_CSS, AtelierView } = moved ? { VIEW_CSS: `.av{position:absolute;inset:0;display:grid;place-items:center;background:#0B0D17;padding:24px}.av .empty{color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;text-align:center;line-height:1.6}` } : await loadView();
     this.shadowRoot.innerHTML = `<style>${VIEW_CSS} ha-card{overflow:hidden;border-radius:var(--ha-card-border-radius,24px);position:relative}</style><ha-card></ha-card>`;
     this.card = this.shadowRoot.querySelector("ha-card"); this.card.style.height = this.height();
     let id = this._config.plan;
@@ -102,7 +102,7 @@ class RoostAtelierPanel extends HTMLElement {
     if (this._booting || !this._hass) return; this._booting = true;
     langFor(this._hass);
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `<div style="display:grid;place-items:center;height:100vh;color:#9AA3D9;font:500 14px Inter,sans-serif;background:#0B0D17">Atelier…</div>`;
+    this.shadowRoot.innerHTML = `<div style="display:grid;place-items:center;height:100vh;color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0B0D17">Atelier…</div>`;
     const { AtelierEditor } = await import("./editor.js");
     this.editor = new AtelierEditor(this.shadowRoot, this, { rtl: isRtl() });
     this.editor.narrow = this._narrow; this.editor.hass = this._hass;
