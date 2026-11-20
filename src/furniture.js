@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { fabric, wood, solid, metal, brass, chrome, glass, porcelain } from "./materials.js";
+import { buildStairs } from "./stairs.js";
 
 const geoCache = new Map();
 function rbox(w, h, d, r) {
@@ -318,19 +319,8 @@ function wallPanels(o) {
 }
 
 // kind: [name, category, builder, default w, d, h, mount ("floor" | "wall" | "ceiling"), default elevation]
-// a straight flight of stairs going up towards the back, with a handrail on the open side
-function stairs(o) {
-  const g = new THREE.Group(), n = Math.max(3, Math.round(o.h / 0.175)), rh = o.h / n, td = o.d / n, mat = wood(o.wood || "oak");
-  for (let i = 0; i < n; i++) B(g, o.w, rh * (i + 1), td, 0.004, mat, 0, 0, o.d / 2 - (i + 0.5) * td);
-  const rail = metal("#2B2D33", 0.35), side = o.side === "left" ? -1 : 1, ang = Math.atan2(o.h, o.d), len = Math.hypot(o.h, o.d);
-  const bar = mesh(new THREE.CylinderGeometry(0.02, 0.02, len, 10), rail, side * (o.w / 2 - 0.03), o.h / 2 + 0.9, 0);
-  bar.rotation.x = -(Math.PI / 2 - ang); g.add(bar);
-  for (const k of [0.05, 0.5, 0.95]) { const z = o.d / 2 - k * o.d, y = k * o.h; g.add(mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.9, 8), rail, side * (o.w / 2 - 0.03), y + 0.45 + rh, z)); }
-  return g;
-}
-
 export const LIBRARY = {
-  stairs: ["Stairs", "Building", stairs, 1.0, 3.6, 2.8, "floor"],
+  stairs: ["Stairs", "Building", buildStairs, 1.0, 3.6, 2.8, "floor"],
   sofa: ["Sofa", "Living", (o) => sofa(o), 2.2, 0.95, 0.8, "floor"],
   sofa_l: ["Corner sofa", "Living", sofaL, 2.8, 1.6, 0.8, "floor"],
   armchair: ["Armchair", "Living", armchair, 0.8, 0.8, 0.8, "floor"],

@@ -161,7 +161,7 @@ export class AtelierView {
     if (dom === "lock" || dom === "alarm_control_panel" || dom === "sensor" || dom === "binary_sensor" || dom === "person" || dom === "device_tracker") return this.more(id);
     if (tapAction(this._hass, d.entity) === false) this.more(id);
   }
-  more(id) { const d = this.dev(id); if (d?.entity) this.onMoreInfo?.(d.entity); else this.onDemo?.(d); }
+  more(id) { const d = this.dev(id); if (this.testing && (!d?.entity || !this._hass?.states[d.entity])) { this.engine.pretend(id); return; } if (d?.entity) this.onMoreInfo?.(d.entity); else this.onDemo?.(d); }
   tap(hit) { if (hit.device) this.toggle(hit.device); else this.onPick?.(hit); }
   // ---------------------------------------------------------------- the controls of a device
   // in the 3D and top views a small pop-up next to it; walking in a room, a side panel with everything in that room

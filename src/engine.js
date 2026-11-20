@@ -20,14 +20,17 @@ import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
 import { deviceKind, lightLook, stateOf, kelvinToHex, pretendNext } from "./devices.js";
 import { BakeManager } from "./bake/index.js";
 import { emittersFor, lampModel, aimModel, anchorOf } from "./lights.js";
+import { stairHole, stairsArriving, holeRails, clipTo, riseTo } from "./stairs.js";
 import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 const seg = (a) => Math.max(1, Math.ceil(a / 0.3));
 const wallGeo = (l, h, t) => new THREE.BoxGeometry(l, h, t, seg(l), seg(h), 1);
 // floors and ceilings are split into small pieces so the stored light has enough detail
-function fineShape(pts, flip) {
+function fineShape(pts, flip, holes = []) {
   const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, flip ? y : -y)));
+  // openings for stairs going through the floor or the ceiling
+  for (const h of holes) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, flip ? y : -y))));
   let g = new THREE.ShapeGeometry(shape); g.deleteAttribute("normal");
   g = new TessellateModifier(0.32, 10).modify(g);
   g = mergeVertices(g); g.computeVertexNormals();
@@ -228,12 +231,20 @@ export class AtelierEngine {
     this.H = H;
     this.rooms = new THREE.Group(); this.wallsG = new THREE.Group(); this.items = new THREE.Group(); this.devG = new THREE.Group(); this.ceilings = new THREE.Group();
     this.root.add(this.rooms, this.wallsG, this.items, this.devG, this.ceilings);
-    for (const r of floor.rooms) this.addRoom(r, H);
+    // stairs: those arriving from the level below open this floor; those going up from here open the ceiling
+    const arriving = stairsArriving(plan, floorIndex), leaving = floor.items.filter((i) => i.kind === "stairs" && i.link != null && plan.floors[i.link]);
+    const upHoles = arriving.map(stairHole), downHoles = leaving.map(stairHole);
+    for (const r of floor.rooms) this.addRoom(r, H, upHoles, downHoles);
     const ws = walls(floor); joinEnds(ws);
     for (const w of ws) this.addWall(w, floor, H);
     for (const it of floor.items) this.addItem(it, H);
     for (const d of floor.devices) this.addDevice(d, H);
-    this.addGround(floor);
+    // the stairs coming up from below, seen through their opening, and the railing round it
+    for (const it of arriving) {
+      const rise = riseTo(plan, floorIndex - 1), g = buildItem({ ...it, h: rise }); g.position.set(it.x, -rise, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
+      g.userData.item = undefined; g.traverse((o) => { if (o.isMesh) o.userData.stairs = it.id; }); this.items.add(g); this.items.add(holeRails(it));
+    }
+    this.addGround(floor, arriving.length > 0);
     for (const [k, g] of this._shapes || []) if (!this._shapesNext?.has(k)) g.dispose();
     this._shapes = this._shapesNext || new Map(); this._shapesNext = null;
     if (plan.settings?.levels && plan.floors.length > 1) this.addLevelsBelow(plan, floorIndex);
@@ -284,21 +295,22 @@ export class AtelierEngine {
     this.root.add(g);
   }
   // floor and ceiling shapes are kept between rebuilds: an unchanged room reuses its own (cutting them is slow)
-  shape(pts, flip) {
-    const k = (flip ? "c" : "f") + JSON.stringify(pts);
+  shape(pts, flip, holes = []) {
+    const k = (flip ? "c" : "f") + JSON.stringify(pts) + (holes.length ? JSON.stringify(holes) : "");
     let g = this._shapes?.get(k);
-    if (!g) { g = fineShape(pts, flip); g.userData.kept = true; }
+    if (!g) { g = fineShape(pts, flip, holes); g.userData.kept = true; }
     (this._shapesNext ||= new Map()).set(k, g);
     return g;
   }
-  addRoom(r, H) {
-    const geo = this.shape(r.pts, false);
+  addRoom(r, H, up = [], down = []) {
+    const cut = (list) => list.map((h) => clipTo(h, r.pts)).filter(Boolean);
+    const geo = this.shape(r.pts, false, cut(up));
     const type = ROOM_TYPES[r.type] || ROOM_TYPES.other;
     const m = new THREE.Mesh(geo, floorMaterial(r.floor || type.floor));
     m.receiveShadow = true; m.userData.room = r.id; m.name = "floor";
     this.rooms.add(m);
     if (!type.outdoor) {
-      const c = new THREE.Mesh(this.shape(r.pts, true), solid("#F7F5F1", { rough: 0.95 })); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
+      const c = new THREE.Mesh(this.shape(r.pts, true, cut(down)), solid("#F7F5F1", { rough: 0.95 })); c.position.y = H; c.receiveShadow = true; c.name = "ceiling";
       this.ceilings.add(c);
     }
   }
@@ -377,7 +389,8 @@ export class AtelierEngine {
     this.wallsG.add(g);
   }
   addItem(it, H) {
-    const g = buildItem(it), d = dims(it);
+    // stairs joined to the level above are exactly as tall as the climb to it
+    const g = buildItem(it.kind === "stairs" && it.link != null && this.plan?.floors[it.link] ? { ...it, h: riseTo(this.plan, this.floorIndex) } : it), d = dims(it);
     const y = d.mount === "ceiling" ? H : d.mount === "wall" ? d.z : 0;
     g.position.set(it.x, y, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
     g.traverse((o) => { if (o.isMesh) o.userData.item = it.id; });
@@ -402,13 +415,13 @@ export class AtelierEngine {
     g.position.set(it.x, y, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
     this.shadowsDirty = true; this.request(false); return true;
   }
-  addGround(floor) {
+  addGround(floor, open = false) {
     const b = planBounds(floor), w = b.x1 - b.x0 + 40, d = b.y1 - b.y0 + 40;
     const geo = new THREE.PlaneGeometry(w, d); geo.rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, -0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true; m.userData.noBake = true;
     this.root.add(m);
     const slab = new THREE.Mesh(new THREE.BoxGeometry(b.x1 - b.x0 + 0.4, 0.12, b.y1 - b.y0 + 0.4), solid("#D6D0C6", { rough: 0.9 }));
-    slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; slab.userData.noBake = true; this.root.add(slab);
+    slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; slab.userData.noBake = true; if (!open) this.root.add(slab);
     this.bounds = b;
   }
   applyWalls() {

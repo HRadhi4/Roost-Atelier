@@ -14,6 +14,7 @@ import { settle } from "./collide.js";
 import { AtelierView, VIEW_CSS } from "./view.js";
 import { check } from "./check.js";
 import { ItemPreview } from "./preview.js";
+import { STAIR_STYLES, SPIRAL_TURN, stairFrom, riseTo, stairSvg, stairHole, stairsArriving, minRun } from "./stairs.js";
 
 const LIVE_KEYS = new Set(["lumens", "kelvin", "gain", "power"]);
 const ws = (hass, msg) => hass.connection.sendMessagePromise(msg);
@@ -27,7 +28,7 @@ const ICON_ROOM = Object.fromEntries(Object.entries(ROOM_TYPES).map(([k, v]) => 
 const DEV_COL = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
 const TOOLS = [
   ["select", "mdi:cursor-default-outline", "Select"], ["room", "mdi:vector-square-plus", "Rooms"], ["door", "mdi:door", "Door"], ["window", "mdi:window-closed-variant", "Window"],
-  ["slider", "mdi:door-sliding", "Slider"], ["arch", "mdi:gate-arrow-right", "Arch"], ["furniture", "mdi:sofa-outline", "Furniture"], ["devices", "mdi:lightbulb-group-outline", "Devices"],
+  ["slider", "mdi:door-sliding", "Slider"], ["arch", "mdi:gate-arrow-right", "Arch"], ["stairs", "mdi:stairs-up", "Stairs"], ["furniture", "mdi:sofa-outline", "Furniture"], ["devices", "mdi:lightbulb-group-outline", "Devices"],
   ["import", "mdi:file-image-plus-outline", "Import"], ["check", "mdi:check-decagram-outline", "Check the home"],
 ];
 const thumbs = new Map();
@@ -42,6 +43,8 @@ const CSS = `
 .ed[data-layout=plan] main,.ed[data-layout=three] main{grid-template-columns:1fr}
 header{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--border);background:var(--panel);z-index:3}
 header .title{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+header .test{display:flex;align-items:center;gap:6px;padding:0 12px}header .test.on{background:var(--acc1);color:#FFFFFF}
+.ed.testing nav{opacity:.35;pointer-events:none}.ed.testing .plan .hint{display:none}
 header h1{all:unset;font:600 17px "Space Grotesk",Inter,sans-serif;white-space:nowrap}
 button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;height:40px;min-width:40px;padding:0 10px;color:var(--text);transition:background .12s,transform .12s}
 button:active{transform:scale(.96)}
@@ -154,6 +157,7 @@ export class AtelierEditor {
         <button data-a="undo" title="${t("Undo")}"><ha-icon icon="mdi:undo"></ha-icon></button><button data-a="redo" title="${t("Redo")}"><ha-icon icon="mdi:redo"></ha-icon></button>
         <div class="seg floors"></div><span class="status"></span>
         <div class="seg layout"><button data-l="plan" title="Plan"><ha-icon icon="mdi:floor-plan"></ha-icon></button><button data-l="split" title="Split"><ha-icon icon="mdi:view-split-vertical"></ha-icon></button><button data-l="three" title="${t("3D")}"><ha-icon icon="mdi:cube-outline"></ha-icon></button></div>
+        <button data-a="test" class="test" title="${t("Try it: tap devices to switch them, without editing")}"><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${t("Try it")}</span></button>
         <button data-a="settings" title="${t("Settings")}"><ha-icon icon="mdi:tune-variant"></ha-icon></button></header>
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
         <button class="ceil" data-ceiling title="Ceiling"><ha-icon icon="mdi:ceiling-light-outline"></ha-icon><span></span></button><div class="zoom"><button data-sizes title="Sizes"><ha-icon icon="mdi:ruler"></ha-icon></button><button data-print title="Print"><ha-icon icon="mdi:printer-outline"></ha-icon></button><button data-z="in"><ha-icon icon="mdi:plus"></ha-icon></button><button data-z="fit"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button><button data-z="out"><ha-icon icon="mdi:minus"></ha-icon></button></div></div>
@@ -165,6 +169,7 @@ export class AtelierEditor {
     root.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => this.setLayout(b.dataset.l)));
     root.querySelector('[data-a="undo"]').onclick = () => this.undo();
     root.querySelector('[data-a="redo"]').onclick = () => this.redo();
+    root.querySelector('[data-a="test"]').onclick = () => this.setTesting(!this.testing);
     root.querySelector('[data-a="settings"]').onclick = () => { this.sel = null; this.tool = "select"; this.drawNav(); this.inspector("settings"); this.draw(); };
     // ceiling mode: furniture fades, only the lights stay, ready to place and line up
     const cb = root.querySelector("[data-ceiling]"); cb.querySelector("span").textContent = t("Ceiling");
@@ -191,8 +196,8 @@ export class AtelierEditor {
   async start() {
     this.view = new AtelierView(this.root.querySelector(".three"), { editing: true, canBake: true, onMoreInfo: () => {} });
     this.view.hass = this._hass;
-    this.view.onPick = (hit) => { if (hit.item) this.select({ t: "item", id: hit.item }); else if (hit.room) this.select({ t: "room", id: hit.room }); };
-    this.view.onDemo = (d) => this.select({ t: "dev", id: d.id });
+    this.view.onPick = (hit) => { if (this.testing) return; if (hit.item) this.select({ t: "item", id: hit.item }); else if (hit.room) this.select({ t: "room", id: hit.room }); };
+    this.view.onDemo = (d) => { if (!this.testing) this.select({ t: "dev", id: d.id }); };
     // light is baked here (this computer), then photos of the whole floor and every room are made in the background
     this.photographer = new RoomPhotographer(this);
     this.emitPhotos = () => { if (!this.sel && this.tool === "select") this.homePanel(); };
@@ -439,10 +444,59 @@ export class AtelierEditor {
   // ------------------------------------------------------------ the left rail
   drawNav() {
     const nav = this.root.querySelector("nav");
-    nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 6 || n === 8 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ha-icon icon="${i}"></ha-icon></button>`).join("");
+    nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ha-icon icon="${i}"></ha-icon></button>`).join("");
     nav.querySelectorAll("button").forEach((b) => (b.onclick = () => this.setTool(b.dataset.t)));
   }
-  setTool(k) { this.tool = k; if (k !== "select") this.sel = null; this.drawNav(); this.draw(); this.inspector(); }
+  setTool(k) { this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
+
+  // trying the home out: tapping a device switches it (for real, or just here when it has no working entity);
+  // nothing opens for editing and nothing in the home is changed
+  setTesting(on) {
+    this.testing = on; this.ed.classList.toggle("testing", on);
+    this.root.querySelector('[data-a="test"]').classList.toggle("on", on);
+    this.view.testing = on;
+    if (on) { this.tool = "select"; this.stairPick = null; this.sel = null; this.drawNav(); }
+    this.draw(); this.inspector();
+  }
+
+  // ------------------------------------------------------------ stairs between two levels
+  // 1. pick a style  2. tap where they start on this level  3. tap where they arrive on the level above
+  startStairs(style, edit) {
+    this.tool = "stairs"; this.sel = null; this.stairPick = { style, step: 1, from: this.fi, edit }; this.stairHover = null;
+    this.drawNav(); this.draw(); this.inspector();
+  }
+  // the bottom and top of a stair on the plan
+  stairEnds(it) {
+    const a = ((it.rot || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    if (STAIR_STYLES[it.style]?.[2]) { const e = a + (SPIRAL_TURN * Math.PI) / 180; return [[it.x, it.y], [it.x + Math.sin(e), it.y + Math.cos(e)]]; }
+    const h = (it.d || 3.6) / 2; return [[it.x + h * sn, it.y + h * c], [it.x - h * sn, it.y - h * c]];
+  }
+  pickStair(P) {
+    const sp = this.stairPick; if (!sp) return;
+    if (sp.step === 1) {
+      sp.start = P; sp.step = 2;
+      if (!this.plan.floors[sp.from + 1]) { this.addFloor(); this.toast(t("Added a level above for the stairs")); }
+      else this.useFloor(sp.from + 1);
+      this.tool = "stairs"; this.drawNav(); this.draw(); this.inspector(); return;
+    }
+    const below = this.plan.floors[sp.from], rise = riseTo(this.plan, sp.from), spec = stairFrom(sp.start, P, sp.style, rise);
+    this.snapshot();
+    const old = sp.edit && below.items.find((i) => i.id === sp.edit);
+    const it = Object.assign(old || { id: uid("i"), kind: "stairs" }, { x: spec.x, y: spec.y, w: old && !STAIR_STYLES[sp.style][2] && !STAIR_STYLES[old.style]?.[2] ? old.w : spec.w, d: spec.d, h: spec.h, rot: spec.rot, style: sp.style, link: sp.from + 1 });
+    if (!old) below.items.push(it);
+    if (spec.short) this.toast(`${t("Made longer so the steps are comfortable")} (${round(minRun(rise), 1)} m)`);
+    this.stairPick = null; this.tool = "select"; this.useFloor(sp.from); this.sel = { t: "item", id: it.id };
+    this.changed(true); this.drawNav(); this.draw(); this.inspector();
+  }
+  stairPanel(a) {
+    const sp = this.stairPick || { step: 0 };
+    const styles = Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile${sp.style === k ? " on" : ""}" data-stair="${k}"><svg viewBox="-1.3 -2.1 2.6 4.2">${stairSvg({ style: k, w: S[2] ? 1.8 : 1.1, d: 3.6, h: 2.8, rot: 0 }, 0.05, "currentColor", "none")}</svg><span>${t(S[0])}</span></div>`).join("");
+    const lv = (i) => esc(this.plan.floors[i]?.name || t("Level"));
+    const say = sp.step === 0 ? t("Pick a style of stairs.") : sp.step === 1 ? `${t("Tap where the stairs start on")} ${lv(sp.from)}.` : `${t("Now tap where the stairs arrive on")} ${lv(sp.from + 1)}. ${t("The level below is shown faintly.")}`;
+    a.innerHTML = `<h2><ha-icon icon="mdi:stairs-up"></ha-icon>${t("Stairs")}</h2><p class="tip">${say}</p>${sp.step === 2 ? "" : `<div class="lib">${styles}</div>`}<div class="row"><button data-cancel>${t("Cancel")}</button></div>`;
+    a.querySelectorAll("[data-stair]").forEach((el) => (el.onclick = () => this.startStairs(el.dataset.stair, sp.edit)));
+    a.querySelector("[data-cancel]").onclick = () => { const back = sp.from; this.stairPick = null; this.tool = "select"; if (back !== this.fi && this.plan.floors[back]) this.useFloor(back); this.drawNav(); this.draw(); this.inspector(); };
+  }
   setLayout(l) { this.layout = l; this.ed.dataset.layout = l; this.root.querySelectorAll("[data-l]").forEach((b) => b.classList.toggle("on", b.dataset.l === l)); requestAnimationFrame(() => { this.view.engine.resize(); this.view.engine.frame(this.view.engine.view || "3d"); if (l !== "three") this.fit(); this.draw(); }); }
 
   // ------------------------------------------------------------ the 2D plan
@@ -479,6 +533,12 @@ export class AtelierEditor {
     // furniture footprints (faded in ceiling mode)
     if (this.ceiling) out += `<g opacity=".22" pointer-events="none">`;
     for (const it of f.items) {
+      if (it.kind === "stairs") {
+        const on = (s?.t === "item" && s.id === it.id) || (s?.t === "multi" && s.list.some((x) => x.t === "item" && x.id === it.id));
+        out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${esc(it.id)}">${stairSvg(it, px * (on ? 2.2 : 1.2), on ? "var(--acc2)" : light ? "#7E87B5" : "#8A93C8", light ? "#fff" : "#2A3060")}</g>`;
+        if (z > 30 && it.link != null && this.plan.floors[it.link]) out += `<text x="${it.x}" y="${it.y}" font-size="${10 * px}" text-anchor="middle" dominant-baseline="middle" fill="var(--text)" pointer-events="none" paint-order="stroke" stroke="${light ? "#fff" : "#141831"}" stroke-width="${3 * px}">${esc(t("Up to"))} ${esc(this.plan.floors[it.link].name || "")}</text>`;
+        continue;
+      }
       const d = dims(it), L = LIBRARY[it.kind], on = (s?.t === "item" && s.id === it.id) || (s?.t === "multi" && s.list.some((x) => x.t === "item" && x.id === it.id));
       const isRound = /round|plant|tree|ottoman|bar_stool|pendant|chandelier/.test(it.kind);
       out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${esc(it.id)}">`;
@@ -573,6 +633,20 @@ export class AtelierEditor {
       if (it) { const d = dims(it), a = ((it.rot || 0) * Math.PI) / 180, hx = it.x - Math.sin(a) * (d.d / 2 + 26 * px), hy = it.y - Math.cos(a) * (d.d / 2 + 26 * px); out += `<line x1="${it.x}" y1="${it.y}" x2="${hx}" y2="${hy}" stroke="var(--acc1)" stroke-width="${1.5 * px}" pointer-events="none"/><circle data-rot="1" cx="${hx}" cy="${hy}" r="${11 * px}" fill="#fff" stroke="var(--acc1)" stroke-width="${2.5 * px}"/>`; }
     }
     if (this.drawRect) { const [a, b] = this.drawRect; out += `<rect x="${Math.min(a[0], b[0])}" y="${Math.min(a[1], b[1])}" width="${Math.abs(b[0] - a[0])}" height="${Math.abs(b[1] - a[1])}" fill="rgba(109,75,255,.18)" stroke="var(--acc2)" stroke-width="${2 * px}"/><text x="${(a[0] + b[0]) / 2}" y="${(a[1] + b[1]) / 2}" font-size="${13 * px}" font-weight="600" text-anchor="middle" fill="var(--text)">${round(Math.abs(b[0] - a[0]), 2)} × ${round(Math.abs(b[1] - a[1]), 2)} m</text>`; }
+    // stairs coming up from the level below: their opening in this floor
+    for (const it of stairsArriving(this.plan, this.fi)) {
+      const hole = stairHole(it);
+      out += `<g opacity=".7" pointer-events="none"><g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})">${stairSvg(it, px, light ? "#9AA3C9" : "#5E668F", "none")}</g><polygon points="${hole.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--acc2)" stroke-width="${1.5 * px}" stroke-dasharray="${5 * px} ${3 * px}"/></g>`;
+      if (z > 30) out += `<text x="${it.x}" y="${it.y}" font-size="${10 * px}" text-anchor="middle" dominant-baseline="middle" fill="var(--text)" pointer-events="none" paint-order="stroke" stroke="${light ? "#fff" : "#141831"}" stroke-width="${3 * px}">${esc(t("Stairs down"))}</text>`;
+    }
+    // placing stairs: the level below faintly, where they start, and how they would run to the pointer
+    const sp = this.tool === "stairs" ? this.stairPick : null;
+    if (sp?.step === 2 && this.plan.floors[sp.from]) {
+      out += `<g opacity=".45" pointer-events="none">${this.plan.floors[sp.from].rooms.map((r) => `<polygon points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="${1.2 * px}" stroke-dasharray="${6 * px} ${4 * px}"/>`).join("")}</g>`;
+      out += `<circle cx="${sp.start[0]}" cy="${sp.start[1]}" r="${7 * px}" fill="var(--acc1)" stroke="#fff" stroke-width="${2 * px}" pointer-events="none"/>`;
+      if (this.stairHover) { const it = stairFrom(sp.start, this.stairHover, sp.style, riseTo(this.plan, sp.from)); out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" opacity=".85" pointer-events="none">${stairSvg(it, 1.4 * px, "var(--acc2)", "rgba(109,75,255,.15)")}</g>`; }
+    }
+    if (sp?.step === 1 && this.stairHover) out += `<circle cx="${this.stairHover[0]}" cy="${this.stairHover[1]}" r="${7 * px}" fill="var(--acc1)" fill-opacity=".6" pointer-events="none"/>`;
     if (this.guide) out += `<path d="${this.guide}" stroke="#F5B041" stroke-width="${1 * px}" stroke-dasharray="${4 * px} ${3 * px}" fill="none" pointer-events="none"/>`;
     this.g.innerHTML = out;
     // devices as icons on top
@@ -597,6 +671,12 @@ export class AtelierEditor {
   bindPlan() {
     const el = this.planEl, ptrs = new Map();
     el.addEventListener("wheel", (e) => { e.preventDefault(); const r = el.getBoundingClientRect(); this.zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
+    // placing stairs: show where they would go as the pointer moves
+    el.addEventListener("pointermove", (e) => {
+      if (this.tool !== "stairs" || !this.stairPick?.step || this.drag) return;
+      this.stairHover = this.snapPt(this.toPlan(e.clientX, e.clientY));
+      if (!this._hovRaf) this._hovRaf = requestAnimationFrame(() => { this._hovRaf = 0; this.draw(); });
+    });
     el.addEventListener("pointerdown", (e) => {
       // the plan's own buttons (zoom, ceiling, sizes, print) keep their taps: never start a drag from them
       if (e.composedPath().some((n) => n.tagName === "BUTTON" || n.classList?.contains("zoom"))) return;
@@ -618,6 +698,8 @@ export class AtelierEditor {
   down(e) {
     const tgt = e.target, P = this.toPlan(e.clientX, e.clientY), f = this.floor, ds = tgt.closest?.("[data-dev]");
     const start = { x: e.clientX, y: e.clientY, P, moved: false };
+    if (this.testing) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, testDev: ds?.dataset.dev }; return; }
+    if (this.tool === "stairs") { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, stairTap: this.stairPick?.step > 0 }; return; }
     if (this.tool === "room") { this.drag = { ...start, kind: "draw" }; this.drawRect = [this.snapPt(P), this.snapPt(P)]; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { this.drag = { ...start, kind: "addop" }; return; }
     const aim = tgt.closest?.("[data-aim]");
@@ -746,6 +828,9 @@ export class AtelierEditor {
       // in walk-through, tapping a spot on the plan walks you there
       const eng = this.view?.engine, P = this.toPlan(e.clientX, e.clientY);
       if (eng?.view === "walk" && (d.tapRoom || d.tapEmpty) && eng.walkToPoint(P[0], P[1])) return;
+      if (d.testDev) { this.view.toggle(d.testDev); setTimeout(() => this.draw(), 60); return; }
+      if (this.testing) return;
+      if (d.stairTap) return this.pickStair(this.snapPt(d.P));
       if (d.tapRoom) return this.select({ t: "room", id: d.tapRoom.id });
       if (d.tapEmpty) return this.select(null);
       return;
@@ -799,6 +884,11 @@ export class AtelierEditor {
     if (this.tool === "devices") return this.deviceLibrary();
     if (this.tool === "import") return this.importPanel();
     if (this.tool === "check") return this.checkPanel();
+    if (this.testing) {
+      a.innerHTML = `<h2><ha-icon icon="mdi:gesture-tap-button"></ha-icon>${t("Trying it out")}</h2><p class="tip">${t("Tap lights, TVs, ACs, fans, curtains and doors on the plan or in 3D to switch them. Devices without a working entity switch only here. Nothing in your home plan changes.")}</p><div class="row"><button class="primary" data-stoptest>${t("Back to editing")}</button></div>`;
+      a.querySelector("[data-stoptest]").onclick = () => this.setTesting(false); return;
+    }
+    if (this.tool === "stairs") return this.stairPanel(a);
     if (this.tool === "room") { a.innerHTML = `<h2><ha-icon icon="mdi:vector-square-plus"></ha-icon>${t("Rooms")}</h2><p class="tip">${t("Tap and drag on the plan to draw a room.")}</p>`; return; }
     if (["door", "window", "slider", "arch"].includes(this.tool)) { a.innerHTML = `<h2>${t(TOOLS.find((x) => x[0] === this.tool)[2])}</h2><p class="tip">${t("Tap a wall to add it.")}</p>`; return; }
     if (!obj) return this.homePanel(mode === "settings");
@@ -824,6 +914,16 @@ export class AtelierEditor {
       h += slider("width", "Width", 0.4, 5, 0.05, obj.width) + slider("height", "Height", 0.4, 2.8, 0.05, obj.height);
       if (obj.type === "window") h += slider("sill", "Sill", 0, 1.8, 0.05, obj.sill);
       if (obj.type === "door") h += `<div class="row"><button data-flip><ha-icon icon="mdi:swap-vertical"></ha-icon>${t("Flip")}</button><button data-tog="double" class="${obj.double ? "on" : ""}"><ha-icon icon="mdi:door-open"></ha-icon>Double</button><button data-tog="main" class="${obj.main ? "on" : ""}"><ha-icon icon="mdi:home-import-outline"></ha-icon>Main</button></div>`;
+      h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
+    } else if (s.t === "item" && obj.kind === "stairs") {
+      const S = STAIR_STYLES[obj.style || "wood"] || STAIR_STYLES.wood, up = this.plan.floors[obj.link];
+      h += head("mdi:stairs-up", t(S[0]));
+      h += `<div class="pv" title="${esc(t("Drag to turn"))}"></div>`;
+      h += `<p class="tip">${up ? `${t("Goes up to")} ${esc(up.name || "")}` : t("Not joined to a level above yet")}</p>`;
+      h += `<div class="field"><h3>${t("Style")}</h3><div class="chips">${Object.entries(STAIR_STYLES).map(([k, x]) => `<button data-stairstyle="${k}" class="${(obj.style || "wood") === k ? "on" : ""}">${t(x[0])}</button>`).join("")}</div></div>`;
+      h += slider("w", S[2] ? "Size across" : "Width", S[2] ? 1.2 : 0.7, S[2] ? 2.6 : 3, 0.05, obj.w || S[1]);
+      h += `<div class="row"><button data-restair><ha-icon icon="mdi:stairs-up"></ha-icon>${t(up ? "Change where they arrive" : "Join to the level above")}</button></div>`;
+      h += `<div class="field"><h3>${t("Rotate")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
       h += `<div class="row"><button class="danger" data-del><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>`;
     } else if (s.t === "item") {
       const L = LIBRARY[obj.kind], d = dims(obj);
@@ -878,7 +978,7 @@ export class AtelierEditor {
           for (const p of obj.pts) { const n = k === "rw" ? round(b.x0 + (p[0] - b.x0) * f, 3) : round(b.y0 + (p[1] - b.y0) * f, 3); for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][k === "rw" ? 0 : 1] = n; p[k === "rw" ? 0 : 1] = n; }
         } else if (k === "rw" || k === "rd") { const b = bounds(obj.pts); for (const p of obj.pts) { if (k === "rw" && Math.abs(p[0] - b.x1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][0] = round(b.x0 + v, 3); p[0] = round(b.x0 + v, 3); } if (k === "rd" && Math.abs(p[1] - b.y1) < 1e-3) { for (const [r, j] of this.linked(p)) if (r !== obj) r.pts[j][1] = round(b.y0 + v, 3); p[1] = round(b.y0 + v, 3); } } }
         else if ((k === "wl" || k === "wt") && obj.x != null) { const rm = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)); if (rm) { const b = bounds(rm.pts); if (k === "wl") obj.x = round(b.x0 + v, 3); else obj.y = round(b.y0 + v, 3); } }
-        else obj[k] = k === "heads" || k === "bars" ? Math.round(v) : v;
+        else { obj[k] = k === "heads" || k === "bars" ? Math.round(v) : v; if (obj.kind === "stairs" && k === "w" && STAIR_STYLES[obj.style]?.[2]) obj.d = v; }
       }, !LIVE_KEYS.has(k));
       // light output, warmth and room brightness change instantly: no rebuild, no new light bake
       if (LIVE_KEYS.has(k)) { if (k === "kelvin") i.style.accentColor = kelvinToHex(v); this.view.engine.updateDevices(true); this.view.engine.request(false); }
@@ -898,6 +998,12 @@ export class AtelierEditor {
     });
     a.querySelector("[data-flip]")?.addEventListener("click", () => set(() => (obj.swing = (obj.swing || 1) * -1)));
     a.querySelectorAll("[data-tog]").forEach((b) => (b.onclick = () => { set(() => (obj[b.dataset.tog] = !obj[b.dataset.tog])); this.inspector(); }));
+    // stairs: a new style keeps where they start and arrive; or pick again where they arrive
+    a.querySelectorAll("[data-stairstyle]").forEach((b) => (b.onclick = () => {
+      const [from, to] = this.stairEnds(obj), st = b.dataset.stairstyle, spec = stairFrom(from, to, st, obj.link != null && this.plan.floors[obj.link] ? riseTo(this.plan, this.fi) : obj.h || this.floor.height || 2.8);
+      set(() => Object.assign(obj, { style: st, x: spec.x, y: spec.y, w: spec.w, d: spec.d, rot: spec.rot, h: spec.h })); this.inspector();
+    }));
+    a.querySelector("[data-restair]")?.addEventListener("click", () => { const from = this.stairEnds(obj)[0]; this.startStairs(obj.style || "wood", obj.id); this.pickStair(from); });
     a.querySelectorAll("[data-rotby]").forEach((b) => (b.onclick = () => { set(() => (obj.rot = (((obj.rot || 0) + +b.dataset.rotby) % 360 + 360) % 360)); this.inspector(); }));
     a.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => { set(() => (obj.color = b.dataset.color)); this.inspector(); }));
     a.querySelectorAll("[data-rule]").forEach((b) => (b.onclick = () => { set(() => (obj.rule = b.dataset.rule), false); this.view.engine.updateDevices(true); this.inspector(); }));
@@ -967,11 +1073,15 @@ export class AtelierEditor {
   aimAtWall(obj) { const nw = nearestWall(this.floor, [obj.x, obj.y], 4); if (nw) { obj.tx = round(nw.q[0], 3); obj.ty = round(nw.q[1], 3); obj.tz = obj.tz ?? 1.4; } }
   libSvg(kind) { const L = LIBRARY[kind], k = 50 / Math.max(L[3], L[4] * 1.4), w = L[3] * k, d = L[4] * k; return `<svg viewBox="-30 -22 60 44"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`; }
   library() {
-    const a = this.aside, items = Object.entries(LIBRARY).filter(([, L]) => L[1] === this.cat);
+    const a = this.aside, items = Object.entries(LIBRARY).filter(([k, L]) => L[1] === this.cat && k !== "stairs");
     a.innerHTML = `<h2><ha-icon icon="mdi:sofa-outline"></ha-icon>${t("Furniture")}</h2><div class="tabs">${CATEGORIES.map((c) => `<button data-cat="${c}" class="${this.cat === c ? "on" : ""}">${t(c)}</button>`).join("")}</div>
       <p class="tip">${t("Drag a piece onto the plan.")}</p><div class="lib">${items.map(([k, L]) => `<div class="tile" data-kind="${k}">${this.libSvg(k)}<span>${t(L[0])}</span><small class="tip">${L[3]} × ${L[4]} m</small></div>`).join("")}</div>`;
     a.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { this.cat = b.dataset.cat; this.library(); }));
-    a.querySelectorAll(".tile").forEach((el) => this.dragNew(el, el.dataset.kind, false, LIBRARY[el.dataset.kind][0]));
+    a.querySelectorAll(".tile[data-kind]").forEach((el) => this.dragNew(el, el.dataset.kind, false, LIBRARY[el.dataset.kind][0]));
+    if (this.cat === "Building") {
+      const lib = a.querySelector(".lib"); lib.insertAdjacentHTML("afterbegin", Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile" data-stair="${k}"><svg viewBox="-1.3 -2.1 2.6 4.2">${stairSvg({ style: k, w: S[2] ? 1.8 : 1.1, d: 3.6, h: 2.8 }, 0.05, "currentColor", "none")}</svg><span>${t(S[0])}</span><small class="tip">${t("Joins two levels")}</small></div>`).join(""));
+      lib.querySelectorAll("[data-stair]").forEach((el) => (el.onclick = () => this.startStairs(el.dataset.stair)));
+    }
   }
   deviceLibrary() {
     const a = this.aside;
