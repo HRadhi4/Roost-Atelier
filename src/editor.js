@@ -984,11 +984,12 @@ export class AtelierEditor {
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
       <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves in the background once the light is ready")}</span></div></div>
-      <div class="field"><h3>${t("360° views")}</h3><p class="tip">${t("A realistic all-round picture of every room, for the room cards on your dashboard. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-pano ${this.view.engine.baked ? "" : "disabled"}><ha-icon icon="mdi:panorama-sphere-outline"></ha-icon>${t("Make 360° views")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
+      <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("The dashboard card shows your home as finished pictures: the whole floor, and every room in 360° with its devices on it. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ha-icon icon="mdi:image-multiple-outline"></ha-icon>${t("Make dashboard pictures")}</button><button data-preview><ha-icon icon="mdi:eye-outline"></ha-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
     this.drawPanos(a.querySelector("[data-panos]"));
-    a.querySelector("[data-pano]")?.addEventListener("click", () => this.photographer.panos());
+    a.querySelector("[data-publish]")?.addEventListener("click", () => this.photographer.publish());
+    a.querySelector("[data-preview]")?.addEventListener("click", () => this.showPano(null, null));
     const set = (fn, rebuild = true) => { this.snapshot(); fn(); this.changed(rebuild); };
     a.querySelector("[data-fname]").addEventListener("change", (e) => set(() => { f.name = e.target.value || f.name; this.drawFloors(); }, false));
     a.querySelector("[data-delfloor]")?.addEventListener("click", () => this.removeFloor());
@@ -1039,14 +1040,18 @@ export class AtelierEditor {
       el.appendChild(b);
     }
   }
+  // the dashboard card as it will look, in a window: the whole floor, or straight into one room
   async showPano(url, roomId) {
-    const { PanoViewer, PANO_CSS } = await import("./pano.js");
+    const { StillViewer, STILL_CSS, photoFetcher } = await import("./still.js");
     const d = document.createElement("div"); d.className = "dialog";
-    d.innerHTML = `<style>${PANO_CSS}</style><div style="width:min(96vw,1100px);height:min(80vh,640px);border-radius:22px;overflow:hidden;position:relative" data-host></div><button data-x style="position:absolute;top:16px;right:16px;background:var(--panel)"><ha-icon icon="mdi:close"></ha-icon></button>`;
+    d.innerHTML = `<style>${STILL_CSS}</style><div style="width:min(96vw,1100px);height:min(80vh,640px);border-radius:22px;overflow:hidden;position:relative" data-host></div><button data-x style="position:absolute;top:16px;right:16px;background:var(--panel)"><ha-icon icon="mdi:close"></ha-icon></button>`;
+    d.onclick = (e) => { if (e.target === d) close(); };
     this.root.querySelector(".ed").appendChild(d);
-    const v = new PanoViewer(d.querySelector("[data-host]"), { image: url, plan: this.plan, floorIndex: this.fi, roomId, onMoreInfo: (e) => this.panelEl.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: e }, bubbles: true, composed: true })) });
+    const v = new StillViewer(d.querySelector("[data-host]"), { plan: this.plan, floorIndex: this.fi, room: roomId, photo: photoFetcher(() => this._hass, this.plan.id, this.fi), onMoreInfo: (e) => this.panelEl.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: e }, bubbles: true, composed: true })) });
     v.hass = this._hass;
-    d.querySelector("[data-x]").onclick = () => { v.dispose(); d.remove(); };
+    const close = () => { v.dispose(); d.remove(); };
+    d.querySelector("[data-x]").onclick = close;
+    void url;
   }
   checkPanel() {
     const a = this.aside, issues = check(this.plan, this.floor);

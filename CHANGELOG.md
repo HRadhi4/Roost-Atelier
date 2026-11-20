@@ -2,6 +2,12 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.13.0 — 2026-11-20
+- **The dashboard card is now made of pictures, not a 3D program.** Design the home in the Atelier, press *Make dashboard pictures* in the home settings, and the card shows the finished photo of the whole floor and a 360° picture of every room. Tap a room to step in, drag to look around, follow the arrows on the doors to the next room, or use the room buttons along the bottom. Every device is a button on the picture with its controls, and lights that are on glow in their own colour and brightness.
+- **Much lighter.** The picture card loads about 77 KB and no 3D engine, so it opens fast on phones and wall tablets. New cards use it by default; the live 3D, top and walk views are still there as choices.
+- **Preview** in the home settings shows the card as it will look on the dashboard.
+- Every photo now carries the camera it was taken with, so device buttons land exactly on the device.
+
 ## 0.12.0 — 2026-11-19
 - **360° views of every room.** In the home settings, *Make 360° views* goes through each room and makes a realistic all-round picture from the middle of the room, with the real light. It runs on this computer in the background (a few minutes per room) and keeps them in Home Assistant.
 - **A room card in 360°.** Set the card's view to *One room in 360°* and pick the room: drag to look around, pinch or scroll to zoom, and every light, AC, curtain and TV of that room sits where it really is. Tap one for its controls.

@@ -38,6 +38,17 @@ export class RoomPhotographer {
     await new Promise((r) => setTimeout(r, 50));
     this.studio.run(panosFor(ed.floor, t));
   }
+  // everything the dashboard card shows: the photo of the whole floor and of each room, then every room in 360°
+  async publish() {
+    const ed = this.ed, e = ed.view.engine;
+    if (!e.baked || !ed.plan?.id) { ed.toast?.(t("Waiting for the light to be ready")); return; }
+    this.studio.cancel(); clearTimeout(this._t);
+    await new Promise((r) => setTimeout(r, 50));
+    const token = this.studio.token + 1;
+    await this.studio.run(shotsFor(ed.floor, t));
+    if (this.studio.token !== token) return;
+    await this.studio.run(panosFor(ed.floor, t));
+  }
   // the home changed or is being lit again: photos need remaking
   reset() { this.studio.cancel(); }
   cancel() { this.studio.cancel(); }

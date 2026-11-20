@@ -7,6 +7,7 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { photoScene } from "./photo.js";
 import { denoise, aiAvailable } from "./ai/denoise.js";
 import { ROOM_TYPES, panoSpot } from "./model.js";
+import { withCamera } from "./still.js";
 export { panoSpot };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -56,9 +57,12 @@ export class Studio {
         const mid = e.baked ? Math.min(0.35, exposure * (0.45 * (e.bakeMgr.Eavg || 0)) / Math.PI) * 0.75 : 0;
         e.view = prevView; e._wallsOverride = null; e.applyWalls(); e.fitSun();
         // camera
-        let cam;
-        if (shot.view === "pano") { const p = panoSpot(shot.room); cam = new EquirectCamera(); cam.position.set(p[0], p[1], p[2]); cam.updateMatrixWorld(); }
-        else { const pose = e.pose(shot.view, shot.room, W / H); cam = new THREE.PerspectiveCamera(pose.fov, W / H, 0.05, 400); cam.position.copy(pose.pos); cam.lookAt(pose.target); cam.updateMatrixWorld(); }
+        let cam, camInfo;
+        if (shot.view === "pano") { const p = panoSpot(shot.room); cam = new EquirectCamera(); cam.position.set(p[0], p[1], p[2]); cam.updateMatrixWorld(); camInfo = { pos: p }; }
+        else {
+          const pose = e.pose(shot.view, shot.room, W / H); cam = new THREE.PerspectiveCamera(pose.fov, W / H, 0.05, 400); cam.position.copy(pose.pos); cam.lookAt(pose.target); cam.updateMatrixWorld();
+          camInfo = { pos: pose.pos.toArray(), target: pose.target.toArray(), fov: pose.fov, aspect: W / H };
+        }
         renderer.toneMapping = toneMapping; renderer.toneMappingExposure = exposure;
         const day = e.isDay; sky.topColor.set(day ? "#cfe0ff" : "#1a2050"); sky.bottomColor.set(day ? "#f2ebe0" : "#0b0d17"); sky.update();
         scene.environment = e.skyTexture || sky;
@@ -87,7 +91,9 @@ export class Studio {
             clean.dispose();
           } catch (err) { console.warn("Roost Atelier AI clean-up:", err); }
         }
-        const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+        // the picture carries the camera it was taken with, so the dashboard card can put device buttons on it
+        let blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+        if (blob) blob = await withCamera(blob, camInfo).catch(() => blob);
         if (token !== this.token) return;
         if (blob) await this.save(shot.key, blob).catch(() => {});
         this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, saved: shot.key });

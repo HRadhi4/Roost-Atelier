@@ -39,8 +39,18 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_function("window.ready === true", timeout=60000)
 
+    # ---- the picture card (the default): no 3D engine, and a plain note while the pictures aren't made
+    page.evaluate("""() => { const c = document.createElement('roost-atelier-card'); c.id = 'pic'; c.setConfig({ plan: 'home1', height: 420 });
+      document.getElementById('slot').appendChild(c); c.hass = window.hass; }""")
+    page.wait_for_function("() => document.getElementById('pic')?.shadowRoot?.querySelector('.st .msg')", timeout=30000)
+    pic = page.evaluate("""() => { const r = document.getElementById('pic').shadowRoot; return { msg: r.querySelector('.st .msg').textContent, bar: !!r.querySelector('.st .bar button'),
+      engine: performance.getEntriesByType('resource').some((e) => /chunks\/(view|engine)-/.test(e.name)) }; }""")
+    check("the picture card is the default and never loads the 3D engine", not pic["engine"] and pic["bar"], str(pic))
+    check("the picture card says plainly how to make its pictures", "Make dashboard pictures" in pic["msg"], pic["msg"])
+    page.evaluate("() => document.getElementById('pic').remove()")
+
     # ---- the dashboard card
-    page.evaluate("""() => { const c = document.createElement('roost-atelier-card'); c.id = 'card'; c.setConfig({ plan: 'home1', height: 420 });
+    page.evaluate("""() => { const c = document.createElement('roost-atelier-card'); c.id = 'card'; c.setConfig({ plan: 'home1', height: 420, view: '3d' });
       document.getElementById('slot').appendChild(c); c.hass = window.hass; }""")
     page.wait_for_function("() => document.getElementById('card')?._view?.engine?.floor", timeout=60000)
     page.wait_for_timeout(1500)
@@ -137,7 +147,7 @@ with sync_playwright() as p:
         'light.lounge': { entity_id: 'light.lounge', state: 'on', attributes: { friendly_name: 'Lounge spots', brightness: 128, supported_color_modes: ['brightness'] } },
         'light.lounge_2': { entity_id: 'light.lounge_2', state: 'off', attributes: { friendly_name: 'Lounge lamp', supported_color_modes: ['onoff'] } },
         'climate.lounge': { entity_id: 'climate.lounge', state: 'cool', attributes: { friendly_name: 'Lounge AC', temperature: 23, current_temperature: 25, hvac_modes: ['off', 'cool', 'dry', 'fan_only'] } } } };
-      const c = document.createElement('roost-atelier-card'); c.id = 'card2'; c.setConfig({ plan: 'home1', height: 600 }); c.style.cssText = 'display:block;width:800px'; document.getElementById('slot').appendChild(c); c.hass = window.hass; }""")
+      const c = document.createElement('roost-atelier-card'); c.id = 'card2'; c.setConfig({ plan: 'home1', height: 600, view: '3d' }); c.style.cssText = 'display:block;width:800px'; document.getElementById('slot').appendChild(c); c.hass = window.hass; }""")
     page.wait_for_function("() => document.getElementById('card2')?._view?.engine?.floor", timeout=60000)
     page.wait_for_timeout(1500)
     res = page.evaluate("""async () => { const v = document.getElementById('card2')._view, d = v.plan.floors[0].devices.find((x) => x.entity === 'light.lounge');
@@ -175,10 +185,44 @@ with sync_playwright() as p:
       v.cam.rotation.set(0, -Math.PI / 2, 0, 'YXZ'); v.cam.updateMatrixWorld(); const right = px();
       v.look(0, 0); await new Promise((res) => setTimeout(res, 100));
       const hs = host.querySelector('.hs'); const hx = hs && !hs.classList.contains('hide') ? parseFloat(hs.style.left) : -1;
-      const c2 = document.createElement('canvas'); c2.width = 256; c2.height = 128; const im = new Image(); im.src = url; await im.decode(); const x2 = c2.getContext('2d'); x2.drawImage(im, 0, 0); const mid = [...x2.getImageData(128, 64, 1, 1).data].slice(0, 3), q = [...x2.getImageData(192, 64, 1, 1).data].slice(0, 3); const bg = !!v.scene.background; v.dispose(); host.remove(); return { ahead, right, hx, mid, q, bg, samples: pt.samples }; }""")
+      const c2 = document.createElement('canvas'); c2.width = 256; c2.height = 128; const im = new Image(); im.src = url; await im.decode(); const x2 = c2.getContext('2d'); x2.drawImage(im, 0, 0); const mid = [...x2.getImageData(128, 64, 1, 1).data].slice(0, 3), q = [...x2.getImageData(192, 64, 1, 1).data].slice(0, 3); const bg = !!v.scene.background; v.dispose(); host.remove(); return { ahead, right, hx, mid, q, bg, samples: pt.samples, url }; }""")
     red = pano["ahead"][0] > 150 and pano["ahead"][1] < 90; green = pano["right"][1] > 150 and pano["right"][0] < 90
     check("a 360° view looks the right way round", red and green, str(pano))
     check("a device's button sits where the device is in the 360° view", abs(pano["hx"] - 200) < 20, str(pano["hx"]))
+
+    # the picture card: the same 360° picture drawn without a 3D library lines up the same way, with door arrows and glows
+    still = page.evaluate("""async (url) => { const { THREE, StillViewer, STILL_CSS, withCamera, readCamera, projectFlat, doorsFrom } = window.T;
+      const st = document.createElement('style'); st.textContent = STILL_CSS; document.head.appendChild(st);
+      const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'; document.body.appendChild(host);
+      const plan = { floors: [{ height: 3, rooms: [{ id: 'r', name: 'Test', type: 'living', pts: [[-4, -4], [4, -4], [4, 4], [-4, 4]], pano: [0, 0] }, { id: 'k', name: 'Kitchen', type: 'kitchen', pts: [[4, -4], [8, -4], [8, 4], [4, 4]] }],
+        openings: [{ id: 'o', type: 'door', x: 4, y: 0, width: 0.9, height: 2.1 }], items: [], devices: [{ id: 'd1', kind: 'tv', entity: 'media_player.tv', x: 0, y: -3.9 }, { id: 'd2', kind: 'light', entity: 'light.lamp', x: 0, y: -3, look: 'floor' }] }] };
+      const photo = async (key) => key === 'pano_r' ? { url, camera: null } : null;
+      const v = new StillViewer(host, { plan, room: 'r', photo }); v.hass = { states: { 'media_player.tv': { state: 'off', attributes: {} }, 'light.lamp': { state: 'on', attributes: { brightness: 255, color_temp_kelvin: 2700 } } } };
+      await new Promise((res) => setTimeout(res, 900));
+      const g = v.sphere.gl, px = (yaw) => { v.sphere.draw(400, 300, yaw, 0, 75); const a = new Uint8Array(4); g.readPixels(200, 150, 1, 1, g.RGBA, g.UNSIGNED_BYTE, a); return [...a.slice(0, 3)]; };
+      v.yaw = 0; v.pitch = 0; const ahead = px(0), right = px(-Math.PI / 2);
+      v.look(0, 0); await new Promise((res) => setTimeout(res, 100));
+      const tv = [...host.querySelectorAll('.hs')].find((e) => e.querySelector('button[aria-label]')); const hx = tv && !tv.classList.contains('hide') ? parseFloat(tv.style.left) : -1;
+      const glow = host.querySelector('.glow i'), glowOn = !!glow && +glow.style.opacity > 0.3;
+      v.look(-Math.PI / 2, 0); await new Promise((res) => setTimeout(res, 100));
+      const door = host.querySelector('.hs.door'), doorShown = !!door && !door.classList.contains('hide');
+      door?.querySelector('button').click(); await new Promise((res) => setTimeout(res, 200));
+      const inKitchen = v.roomId === 'k' && !!host.querySelector('.msg');
+      // a flat photo's camera rides inside the picture and puts buttons where three.js would draw the point
+      const c = document.createElement('canvas'); c.width = 8; c.height = 8; const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg'));
+      const cam = { pos: [6, 9, 7], target: [1, 0, 2], fov: 32, aspect: 1.6 };
+      const back = readCamera(await (await withCamera(blob, cam)).arrayBuffer());
+      const tc = new THREE.PerspectiveCamera(32, 1.6, 0.05, 400); tc.position.set(6, 9, 7); tc.lookAt(1, 0, 2); tc.updateMatrixWorld();
+      const p3 = new THREE.Vector3(2, 1, -1).project(tc), mine = projectFlat(back, [2, 1, -1]);
+      const flatOk = Math.abs(mine[0] - (p3.x * 0.5 + 0.5)) < 1e-3 && Math.abs(mine[1] - (-p3.y * 0.5 + 0.5)) < 1e-3;
+      v.dispose(); host.remove();
+      return { ahead, right, hx, glowOn, doorShown, inKitchen, flatOk, sameCam: JSON.stringify(back) === JSON.stringify(cam), doors: doorsFrom(plan.floors[0], plan.floors[0].rooms[0]).map((d) => d.room.id) }; }""", pano["url"])
+    red = still["ahead"][0] > 150 and still["ahead"][1] < 90; green = still["right"][1] > 150 and still["right"][0] < 90
+    check("the picture card's 360° looks the right way round", red and green, str(still))
+    check("the picture card puts a device's button where the device is", abs(still["hx"] - 200) < 20, str(still["hx"]))
+    check("a light that is on glows on the picture", still["glowOn"], str(still))
+    check("a door shows an arrow to the next room, and tapping it goes there", still["doorShown"] and still["inKitchen"] and still["doors"] == ["k"], str(still))
+    check("a photo carries its camera and buttons land where 3D would draw them", still["sameCam"] and still["flatOk"], str(still))
 
     # the local photo reader starts in the background; with no internet here it says so plainly instead of hanging
     got = page.evaluate("""async () => { const w = new Worker('/custom_components/roost_atelier/frontend/chunks/detect-worker.js', { type: 'module' });
