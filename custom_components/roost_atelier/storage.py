@@ -12,6 +12,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .ids import clean_id, clean_ids
 from .const import STORAGE_KEY, STORAGE_VERSION
 
 KEEP = 10          # earlier versions kept per home
@@ -38,10 +39,10 @@ class PlanStore:
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
-        self.plans = data.get("plans", {})
+        self.plans = {clean_id(k): clean_ids(v) for k, v in (data.get("plans") or {}).items()}
         old = await self._old.async_load() or {}
-        self.history = old.get("history", {})
-        self.deleted = old.get("deleted", [])
+        self.history = {clean_id(k): clean_ids(v) for k, v in (old.get("history") or {}).items()}
+        self.deleted = clean_ids(old.get("deleted") or [])
 
     def _save(self) -> None:
         self._store.async_delay_save(lambda: {"plans": self.plans}, 1.0)
@@ -59,6 +60,7 @@ class PlanStore:
         return self.plans.get(plan_id)
 
     def save(self, plan: dict[str, Any], base: int | None = None, force: bool = False) -> dict[str, Any]:
+        plan = clean_ids(plan)
         pid = plan.get("id") or uuid.uuid4().hex[:12]
         old = self.plans.get(pid)
         if old and not force and base is not None and old.get("updated", 0) != base:

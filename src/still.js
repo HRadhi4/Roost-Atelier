@@ -61,7 +61,9 @@ export function readCamera(buf) {
 // how the card gets a picture from Home Assistant: its address and the camera written inside it
 export function photoFetcher(hass, planId, fi) {
   return async (key) => {
-    const r = await hass().fetchWithAuth(`/api/roost_atelier/photo/${planId}_${fi}_${key}`);
+    // only plain names reach the address (a doctored home can't point it at another part of Home Assistant)
+    const safe = (v) => String(v).replace(/[^A-Za-z0-9_-]/g, "");
+    const r = await hass().fetchWithAuth(`/api/roost_atelier/photo/${safe(planId)}_${Number(fi) || 0}_${safe(key)}`);
     if (!r.ok) return null;
     const buf = await r.arrayBuffer();
     return { url: URL.createObjectURL(new Blob([buf], { type: "image/jpeg" })), camera: readCamera(buf) };

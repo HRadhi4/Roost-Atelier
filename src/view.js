@@ -5,6 +5,8 @@ import { t, isRtl } from "./i18n.js";
 import { CONTROLS_CSS, controlsHtml, bindControls } from "./controls.js";
 import { inside } from "./model.js";
 
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
 const COLORS = { light: "#F5B041", ac: "#2EC4B6", curtain: "#4E8CFF", tv: "#8B6CFF", door: "#FF7A59", lock: "#FF7A59", fan: "#2EC4B6", person: "#E86FB0", speaker: "#8B6CFF", vacuum: "#5FBF77", sensor: "#7C86B8" };
 
 export const VIEW_CSS = `
@@ -196,7 +198,7 @@ export class AtelierView {
     if (!this.sideEl) { this.sideEl = document.createElement("div"); this.sideEl.className = "side"; this.root.appendChild(this.sideEl); }
     this.sideEl.innerHTML = `<div class="top"><b>${room?.name ? room.name.replace(/[<>&"]/g, "") : t("This room")}</b><button data-x aria-label="${t("Close")}"><ha-icon icon="mdi:close"></ha-icon></button></div>
       <div class="card">${controlsHtml(this._hass, d.entity, d.name, this.colour(d))}</div>
-      ${others.length ? `<h4>${t("Also in this room")}</h4>${others.map((x) => `<div class="card pick" data-id="${x.id}">${controlsHtml(this._hass, x.entity, x.name, this.colour(x), { compact: true })}</div>`).join("")}` : ""}`;
+      ${others.length ? `<h4>${t("Also in this room")}</h4>${others.map((x) => `<div class="card pick" data-id="${esc(x.id)}">${controlsHtml(this._hass, x.entity, x.name, this.colour(x), { compact: true })}</div>`).join("")}` : ""}`;
     bindControls(this.sideEl, () => this._hass, (e) => this.onMoreInfo?.(e));
     this.sideEl.querySelector("[data-x]").onclick = () => this.closePanel();
     this.sideEl.querySelectorAll(".card.pick").forEach((c) => c.addEventListener("click", (e) => { if (e.target.closest("button")) return; this.openId = c.dataset.id; this.drawSide(); }));

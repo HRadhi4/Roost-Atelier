@@ -468,14 +468,14 @@ export class AtelierEditor {
     // rooms
     for (const r of f.rooms) {
       const type = ROOM_TYPES[r.type] || ROOM_TYPES.other, fill = swatchColor("floor", r.floor || type.floor);
-      out += `<polygon data-room="${r.id}" points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="${fill}" fill-opacity="${light ? 0.55 : 0.42}" stroke="none"/>`;
+      out += `<polygon data-room="${esc(r.id)}" points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="${fill}" fill-opacity="${light ? 0.55 : 0.42}" stroke="none"/>`;
     }
     // furniture footprints (faded in ceiling mode)
     if (this.ceiling) out += `<g opacity=".22" pointer-events="none">`;
     for (const it of f.items) {
       const d = dims(it), L = LIBRARY[it.kind], on = (s?.t === "item" && s.id === it.id) || (s?.t === "multi" && s.list.some((x) => x.t === "item" && x.id === it.id));
       const isRound = /round|plant|tree|ottoman|bar_stool|pendant|chandelier/.test(it.kind);
-      out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${it.id}">`;
+      out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" data-item="${esc(it.id)}">`;
       out += isRound ? `<ellipse rx="${d.w / 2}" ry="${d.d / 2}" fill="${light ? "#fff" : "#2A3060"}" fill-opacity=".9" stroke="${on ? "var(--acc2)" : light ? "#9AA3C9" : "#5E668F"}" stroke-width="${(on ? 2.5 : 1) * px}" ${d.mount === "ceiling" ? `stroke-dasharray="${4 * px} ${3 * px}" fill-opacity=".2"` : ""}/>`
         : `<rect x="${-d.w / 2}" y="${-d.d / 2}" width="${d.w}" height="${d.d}" rx="${Math.min(0.08, d.w / 6)}" fill="${it.kind === "rug" ? it.color || "#C9B79C" : light ? "#fff" : "#2A3060"}" fill-opacity="${it.kind === "rug" ? 0.45 : 0.92}" stroke="${on ? "var(--acc2)" : light ? "#9AA3C9" : "#5E668F"}" stroke-width="${(on ? 2.5 : 1) * px}"/>`;
       if (!isRound && it.kind !== "rug") out += `<line x1="${-d.w / 2 + 0.05}" x2="${d.w / 2 - 0.05}" y1="${d.d / 2 - 0.04}" y2="${d.d / 2 - 0.04}" stroke="${light ? "#C9CEF0" : "#4A5190"}" stroke-width="${2 * px}"/>`;
@@ -502,7 +502,7 @@ export class AtelierEditor {
       }
       if (look === "focus") {
         const tx = d.tx ?? d.x + 0.8, ty = d.ty ?? d.y;
-        out += `<line x1="${d.x}" y1="${d.y}" x2="${tx}" y2="${ty}" stroke="${col}" stroke-width="${1.5 * px}" stroke-dasharray="${4 * px} ${3 * px}" pointer-events="none"/><circle data-aim="${d.id}" cx="${tx}" cy="${ty}" r="${(on ? 9 : 6) * px}" fill="${col}" fill-opacity=".35" stroke="${col}" stroke-width="${2 * px}" style="cursor:grab"/>`;
+        out += `<line x1="${d.x}" y1="${d.y}" x2="${tx}" y2="${ty}" stroke="${col}" stroke-width="${1.5 * px}" stroke-dasharray="${4 * px} ${3 * px}" pointer-events="none"/><circle data-aim="${esc(d.id)}" cx="${tx}" cy="${ty}" r="${(on ? 9 : 6) * px}" fill="${col}" fill-opacity=".35" stroke="${col}" stroke-width="${2 * px}" style="cursor:grab"/>`;
       }
     }
     // walls
@@ -529,7 +529,7 @@ export class AtelierEditor {
     for (const op of f.openings) {
       const nw = nearestWall(f, [op.x, op.y], 0.3); if (!nw) continue;
       const a = nw.angle, deg = (a * 180) / Math.PI, on = s?.t === "op" && s.id === op.id, w = op.width, th = nw.w.thick;
-      out += `<g transform="translate(${op.x} ${op.y}) rotate(${deg})" data-op="${op.id}">`;
+      out += `<g transform="translate(${op.x} ${op.y}) rotate(${deg})" data-op="${esc(op.id)}">`;
       out += `<rect x="${-w / 2}" y="${-th / 2 - 0.05}" width="${w}" height="${th + 0.1}" fill="transparent"/>`;
       if (op.type === "window") out += `<rect x="${-w / 2}" y="${-th / 2}" width="${w}" height="${th}" fill="${light ? "#fff" : "#141831"}" stroke="#4E8CFF" stroke-width="${1.5 * px}"/><line x1="${-w / 2}" x2="${w / 2}" stroke="#4E8CFF" stroke-width="${1.5 * px}"/>`;
       else if (op.type === "slider") out += `<line x1="${-w / 2}" x2="${0.05}" y1="-0.03" y2="-0.03" stroke="#4E8CFF" stroke-width="${3 * px}"/><line x1="${-0.05}" x2="${w / 2}" y1="0.03" y2="0.03" stroke="#4E8CFF" stroke-width="${3 * px}"/>`;
@@ -570,7 +570,7 @@ export class AtelierEditor {
     const seen = new Set();
     for (const d of f.devices) {
       seen.add(d.id);
-      let el = this.devsEl.querySelector(`[data-dev="${d.id}"]`);
+      let el = this.devsEl.querySelector(`[data-dev="${esc(d.id)}"]`);
       if (!el) { el = document.createElement("div"); el.className = "dv"; el.dataset.dev = d.id; el.innerHTML = `<ha-icon></ha-icon>`; this.devsEl.appendChild(el); }
       const kind = d.kind || deviceKind(d.entity), [sx, sy] = this.toScreen(d.x, d.y);
       el.style.left = `${sx}px`; el.style.top = `${sy}px`; el.style.transform = `translate(-50%,-50%) scale(${Math.max(0.6, Math.min(1, z / 45))})`; el.style.setProperty("--c", DEV_COL[kind] || "#8B6CFF");
@@ -1069,8 +1069,8 @@ export class AtelierEditor {
     this.root.querySelector(".menu")?.remove();
     const m = document.createElement("div"); m.className = "menu";
     const plans = this.plans || [];
-    m.innerHTML = `${plans.length ? `<h3>${t("Homes")}</h3><div class="list">${plans.map((p) => `<button data-open="${p.id}" class="${p.id === this.plan?.id ? "on" : ""}"><ha-icon icon="mdi:home-outline"></ha-icon><span>${esc(p.name)}<small>${p.rooms ?? ""} ${t("Rooms").toLowerCase()}</small></span></button>`).join("")}</div>` : ""}
-      <h3>${t("New home")} · ${t("Start from")}</h3><div class="list"><button data-new="blank"><ha-icon icon="mdi:vector-square"></ha-icon><span>${t("Blank")}</span></button>${SAMPLES.map((s) => `<button data-new="${s.id}"><ha-icon icon="mdi:floor-plan"></ha-icon><span>${esc(s.name)}<small>${s.size}</small></span></button>`).join("")}<button data-new="import"><ha-icon icon="mdi:file-image-plus-outline"></ha-icon><span>${t("From CAD or PDF")}<small>DXF · PDF · JPG · PNG</small></span></button></div>
+    m.innerHTML = `${plans.length ? `<h3>${t("Homes")}</h3><div class="list">${plans.map((p) => `<button data-open="${esc(p.id)}" class="${p.id === this.plan?.id ? "on" : ""}"><ha-icon icon="mdi:home-outline"></ha-icon><span>${esc(p.name)}<small>${p.rooms ?? ""} ${t("Rooms").toLowerCase()}</small></span></button>`).join("")}</div>` : ""}
+      <h3>${t("New home")} · ${t("Start from")}</h3><div class="list"><button data-new="blank"><ha-icon icon="mdi:vector-square"></ha-icon><span>${t("Blank")}</span></button>${SAMPLES.map((s) => `<button data-new="${esc(s.id)}"><ha-icon icon="mdi:floor-plan"></ha-icon><span>${esc(s.name)}<small>${s.size}</small></span></button>`).join("")}<button data-new="import"><ha-icon icon="mdi:file-image-plus-outline"></ha-icon><span>${t("From CAD or PDF")}<small>DXF · PDF · JPG · PNG</small></span></button></div>
       <h3>${t("Backups")}</h3><div class="list"><button data-x="export"><ha-icon icon="mdi:file-download-outline"></ha-icon><span>${t("Save to a file")}<small>${t("A copy of this home on this device")}</small></span></button><button data-x="import"><ha-icon icon="mdi:file-upload-outline"></ha-icon><span>${t("Load from a file")}</span></button>${this.plan?.id ? `<button data-x="versions"><ha-icon icon="mdi:history"></ha-icon><span>${t("Earlier versions")}</span></button>` : ""}<button data-x="deleted"><ha-icon icon="mdi:delete-restore"></ha-icon><span>${t("Deleted homes")}</span></button></div>
       ${this.plan?.id ? `<div class="row"><button class="danger" data-delhome><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")} “${esc(this.plan.name)}”</button></div>` : ""}`;
     this.root.querySelector(".ed").appendChild(m);

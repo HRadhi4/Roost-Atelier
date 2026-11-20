@@ -60,7 +60,7 @@ class FileView(HomeAssistantView):
         path = folder(hass) / name
         if not await hass.async_add_executor_job(path.is_file):
             return web.Response(status=404)
-        return web.FileResponse(path)
+        return web.FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
 
 
 BAKE_KEY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -133,7 +133,7 @@ class PhotoView(HomeAssistantView):
         path = folder(hass) / "photos" / f"{key}.jpg"
         if not await hass.async_add_executor_job(path.is_file):
             return web.Response(status=404)
-        return web.FileResponse(path, headers={"Cache-Control": "private, no-cache"})
+        return web.FileResponse(path, headers={"Cache-Control": "private, no-cache", "X-Content-Type-Options": "nosniff"})
 
     async def post(self, request: web.Request, key: str) -> web.Response:
         hass = request.app[KEY_HASS]
