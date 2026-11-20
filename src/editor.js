@@ -195,7 +195,8 @@ export class AtelierEditor {
     // light is baked here (this computer), then photos of the whole floor and every room are made in the background
     this.photographer = new RoomPhotographer(this);
     this.emitPhotos = () => { if (!this.sel && this.tool === "select") this.homePanel(); };
-    this.view.engine.on("bake", ({ state }) => { if (state === "ready") this.photographer.schedule(); else if (state === "baking" || state === "queued") this.photographer.reset(); });
+    // photos are only made when asked (Make dashboard pictures): making them by themselves slowed the editor down
+    this.view.engine.on("bake", ({ state }) => { if (state === "baking" || state === "queued") this.photographer.reset(); });
     this.view.engine.on("hold", (hit) => { if (hit.device) this.select({ t: "dev", id: hit.device }); });
     let list = [];
     try { list = await ws(this._hass, { type: "roost_atelier/plans" }); } catch (e) { console.warn(e); }
@@ -519,8 +520,9 @@ export class AtelierEditor {
       if (pos < len) seg(pos, len);
     }
     if (wallThin) out += `<path d="${wallThin}" stroke="var(--wall)" stroke-opacity=".6" stroke-width="0.08" fill="none"/>`;
-    // wall lengths, written along each wall on its outer side (inside length for walls between rooms)
-    if (this.sizes !== false && !this.ceiling) for (const w of ws_) {
+    // wall lengths, written along each wall on its outer side (inside length for walls between rooms);
+    // hidden while a room is picked, which shows its own sizes
+    if (this.sizes !== false && !this.ceiling && s?.t !== "room") for (const w of ws_) {
       const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], len = Math.hypot(dx, dy); if (len * z < 70 || w.parapet) continue;
       let nx = -dy / len, ny = dx / len;
       const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
@@ -557,7 +559,7 @@ export class AtelierEditor {
         r.pts.forEach((p, i) => {
           const q = r.pts[(i + 1) % r.pts.length], mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, len = Math.hypot(q[0] - p[0], q[1] - p[1]);
           const nx = -(q[1] - p[1]) / len, ny = (q[0] - p[0]) / len, sgn = inside([mx + nx * 0.1, my + ny * 0.1], r.pts) ? -1 : 1;
-          out += `<text x="${mx + nx * sgn * 22 * px}" y="${my + ny * sgn * 22 * px}" font-size="${11 * px}" font-weight="600" text-anchor="middle" dominant-baseline="middle" fill="var(--acc2)" pointer-events="none">${round(len, 2)} m</text>`;
+          out += `<text x="${mx + nx * sgn * 26 * px}" y="${my + ny * sgn * 26 * px}" font-size="${11 * px}" font-weight="600" text-anchor="middle" dominant-baseline="middle" fill="var(--acc2)" pointer-events="none">${round(len, 2)} m</text>`;
           out += `<rect data-e="${i}" x="${mx - 9 * px}" y="${my - 9 * px}" width="${18 * px}" height="${18 * px}" rx="${5 * px}" fill="#fff" stroke="var(--acc1)" stroke-width="${2 * px}" transform="rotate(${(Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI} ${mx} ${my})"/>`;
         });
         r.pts.forEach((p, i) => (out += `<circle data-v="${i}" cx="${p[0]}" cy="${p[1]}" r="${10 * px}" fill="var(--acc1)" stroke="#fff" stroke-width="${2.5 * px}"/>`));
