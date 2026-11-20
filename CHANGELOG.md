@@ -2,6 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.19.1 — 2026-11-21
+- **Dashboard pictures are never black.** On computers whose graphics chip gives up on the realistic tracing (some Intel laptops), each picture is drawn the normal 3D way instead, with the home's stored light. A computer where the AI clean-up failed once skips it from then on.
+
 ## 0.19.0 — 2026-11-20
 - **Tape measure**: measure between any two points on the plan (it snaps to walls and corners; Shift for a straight line) and keep it on the plan as a dimension line.
 - **Ceiling height per room**: a lower ceiling for any room; walls, lights and ceiling pieces follow it.

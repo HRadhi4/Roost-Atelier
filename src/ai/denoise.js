@@ -6,7 +6,12 @@ import * as THREE from "three";
 let unetP = null, unetSmall = false;
 export const AI_BASE = { url: new URL("../ai/", import.meta.url).href };
 
+// a computer whose graphics chip lost the AI clean-up once is not asked again (losing it can take the whole picture
+// down with it); the plain traced picture is used there instead
+const BAD = "roost-atelier-ai-failed";
+export function aiFailed() { try { localStorage.setItem(BAD, String(Date.now())); } catch {} }
 export async function aiAvailable() {
+  try { const t = +localStorage.getItem(BAD); if (t && Date.now() - t < 30 * 864e5) return false; } catch {}
   try { return !!(navigator.gpu && (await navigator.gpu.requestAdapter())); } catch { return false; }
 }
 async function unet(small) {

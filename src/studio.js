@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { WebGLPathTracer, GradientEquirectTexture, EquirectCamera, DenoiseMaterial } from "three-gpu-pathtracer";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { photoScene } from "./photo.js";
-import { denoise, aiAvailable } from "./ai/denoise.js";
+import { denoise, aiAvailable, aiFailed } from "./ai/denoise.js";
 import { ROOM_TYPES, panoSpot } from "./model.js";
 import { withCamera } from "./still.js";
 export { panoSpot };
@@ -56,6 +56,22 @@ export class Studio {
         quad.material.map = pt._pathTracer.target.texture; quad.material.blending = THREE.NoBlending; quad.material.needsUpdate = true;
         renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); quad.render(renderer);
       };
+      // the home drawn the normal way (not traced) from the photo's camera, on a fresh drawing surface
+      const rasterShot = (shot, cam, W, H, exposure, toneMapping) => {
+        let r2;
+        try {
+          const c = document.createElement("canvas"); r2 = new THREE.WebGLRenderer({ canvas: c, antialias: true, preserveDrawingBuffer: true });
+          r2.setPixelRatio(1); r2.setSize(W, H, false); r2.outputColorSpace = THREE.SRGBColorSpace; r2.toneMapping = toneMapping; r2.toneMappingExposure = exposure;
+          r2.shadowMap.enabled = e.renderer.shadowMap.enabled; r2.shadowMap.type = e.renderer.shadowMap.type; r2.localClippingEnabled = true;
+          const prevView = e.view, bg = e.scene.background;
+          e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); if (shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
+          e.scene.updateMatrixWorld(true); r2.render(e.scene, cam);
+          const flat = document.createElement("canvas"); flat.width = W; flat.height = H; flat.getContext("2d").drawImage(c, 0, 0);
+          e.view = prevView; e._wallsOverride = null; e.scene.background = bg; e.applyWalls(); e.fitSun(); e.request(true);
+          return flat;
+        } catch (err) { console.warn("Roost Atelier photo studio (plain picture):", err); return null; }
+        finally { r2?.dispose(); r2?.forceContextLoss?.(); }
+      };
       for (let i = 0; i < shots.length; i++) {
         const shot = shots[i];
         if (token !== this.token) return;
@@ -101,12 +117,16 @@ export class Studio {
             quad.material.map = clean; quad.material.needsUpdate = true;
             renderer.toneMappingExposure = 1; renderer.setRenderTarget(null); quad.render(renderer); renderer.toneMappingExposure = exposure;
             clean.dispose();
-          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); traced(); }
+          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); aiFailed(); traced(); }
         } else traced();
         // never keep a black photo: show the traced picture instead, and if that is black too, keep the old photo
-        if (dark(canvas)) { traced(); if (dark(canvas)) { console.warn("Roost Atelier photo studio: the photo came out black on this graphics chip"); this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, black: true }); this.black = (this.black || 0) + 1; continue; } }
+        // still black (the graphics chip gave up on tracing at this size): the 3D view's own picture, with its stored light
+        let out = canvas;
+        if (dark(canvas)) traced();
+        if ((this.forceRaster || dark(canvas)) && shot.view !== "pano") { const c2 = rasterShot(shot, cam, W, H, exposure, toneMapping); if (c2 && !dark(c2)) out = c2; }
+        if (out === canvas && dark(canvas)) { if (dark(canvas)) { console.warn("Roost Atelier photo studio: the photo came out black on this graphics chip"); this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, black: true }); this.black = (this.black || 0) + 1; continue; } }
         // the picture carries the camera it was taken with, so the dashboard card can put device buttons on it
-        let blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+        let blob = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.9));
         if (blob) blob = await withCamera(blob, camInfo).catch(() => blob);
         if (token !== this.token) return;
         if (blob) await this.save(shot.key, blob).catch(() => {});
