@@ -21,7 +21,7 @@ export const VIEW_CSS = `
 .av .hs button:active{transform:scale(.9)}
 .av .hs.on button{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#fff));border-color:transparent;box-shadow:0 0 18px color-mix(in srgb,var(--c) 70%,transparent)}
 .av .hs ha-icon{--mdc-icon-size:18px}
-.av .hs span{font:600 10px/1.2 Inter,var(--paper-font-body1_-_font-family,sans-serif);color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
+.av .hs span{pointer-events:none;font:600 10px/1.2 Inter,var(--paper-font-body1_-_font-family,sans-serif);color:#fff;background:rgba(11,13,23,.55);padding:2px 6px;border-radius:8px;white-space:nowrap}
 .av .hs span:empty{display:none}
 .av .bar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:8px;justify-content:center;pointer-events:none}
 .av .bar .grp{display:flex;gap:4px;padding:4px;border-radius:16px;background:rgba(20,24,49,.62);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);pointer-events:auto}

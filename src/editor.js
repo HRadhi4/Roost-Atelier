@@ -66,6 +66,7 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .dv{position:absolute;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;background:var(--c);box-shadow:0 0 12px color-mix(in srgb,var(--c) 60%,transparent);pointer-events:auto;cursor:grab;border:2px solid transparent}
 .plan .dv.sel{border-color:#fff;box-shadow:0 0 0 3px var(--acc1)}
 .plan .dv ha-icon{--mdc-icon-size:16px}
+.plan .dv.off{background:#3A3F63;box-shadow:none;color:#9AA3D9}
 .plan .hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:12px;pointer-events:none;white-space:nowrap}
 .plan .ceil{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);font:600 12px Inter,sans-serif;cursor:pointer;z-index:2}
 .plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
@@ -188,6 +189,8 @@ export class AtelierEditor {
     this.ed.classList.toggle("light", h.themes?.darkMode === false);
     if (this.view) this.view.hass = h;
     if (this._tourCard) this._tourCard.hass = h;
+    // trying it out: the plan's device icons follow the real devices going on and off
+    if (this.testing && !this._testRaf) this._testRaf = requestAnimationFrame(() => { this._testRaf = 0; this.draw(); });
     if (first) this.start();
     // people seen by a presence radar move on the plan too (a few times a second at most)
     else if (this.floor?.devices.some((d) => d.kind === "radar") && !this.drag && performance.now() - (this._rdT || 0) > 600) { this._rdT = performance.now(); this.draw(); }
@@ -479,12 +482,13 @@ export class AtelierEditor {
       else this.useFloor(sp.from + 1);
       this.tool = "stairs"; this.drawNav(); this.draw(); this.inspector(); return;
     }
-    const below = this.plan.floors[sp.from], rise = riseTo(this.plan, sp.from), spec = stairFrom(sp.start, P, sp.style, rise);
+    const below = this.plan.floors[sp.from], rise = riseTo(this.plan, sp.from), spec = stairFrom(sp.start, P, sp.style, rise, below.rooms);
     this.snapshot();
     const old = sp.edit && below.items.find((i) => i.id === sp.edit);
     const it = Object.assign(old || { id: uid("i"), kind: "stairs" }, { x: spec.x, y: spec.y, w: old && !STAIR_STYLES[sp.style][2] && !STAIR_STYLES[old.style]?.[2] ? old.w : spec.w, d: spec.d, h: spec.h, rot: spec.rot, style: sp.style, link: sp.from + 1 });
     if (!old) below.items.push(it);
     if (spec.short) this.toast(`${t("Made longer so the steps are comfortable")} (${round(minRun(rise), 1)} m)`);
+    else if (spec.steep) this.toast(t("These stairs are steep: there is not room for a gentler flight here"));
     this.stairPick = null; this.tool = "select"; this.useFloor(sp.from); this.sel = { t: "item", id: it.id };
     this.changed(true); this.drawNav(); this.draw(); this.inspector();
   }
@@ -644,18 +648,24 @@ export class AtelierEditor {
     if (sp?.step === 2 && this.plan.floors[sp.from]) {
       out += `<g opacity=".45" pointer-events="none">${this.plan.floors[sp.from].rooms.map((r) => `<polygon points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="${1.2 * px}" stroke-dasharray="${6 * px} ${4 * px}"/>`).join("")}</g>`;
       out += `<circle cx="${sp.start[0]}" cy="${sp.start[1]}" r="${7 * px}" fill="var(--acc1)" stroke="#fff" stroke-width="${2 * px}" pointer-events="none"/>`;
-      if (this.stairHover) { const it = stairFrom(sp.start, this.stairHover, sp.style, riseTo(this.plan, sp.from)); out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" opacity=".85" pointer-events="none">${stairSvg(it, 1.4 * px, "var(--acc2)", "rgba(109,75,255,.15)")}</g>`; }
+      if (this.stairHover) { const it = stairFrom(sp.start, this.stairHover, sp.style, riseTo(this.plan, sp.from), this.plan.floors[sp.from].rooms); out += `<g transform="translate(${it.x} ${it.y}) rotate(${-(it.rot || 0)})" opacity=".85" pointer-events="none">${stairSvg(it, 1.4 * px, "var(--acc2)", "rgba(109,75,255,.15)")}</g>`; }
     }
     if (sp?.step === 1 && this.stairHover) out += `<circle cx="${this.stairHover[0]}" cy="${this.stairHover[1]}" r="${7 * px}" fill="var(--acc1)" fill-opacity=".6" pointer-events="none"/>`;
     if (this.guide) out += `<path d="${this.guide}" stroke="#F5B041" stroke-width="${1 * px}" stroke-dasharray="${4 * px} ${3 * px}" fill="none" pointer-events="none"/>`;
     this.g.innerHTML = out;
     // devices as icons on top
     const seen = new Set();
+    // devices on the same spot (two TVs on one wall) are spread a little so each can be picked and pressed
+    const at = new Map(), spot = new Map();
+    for (const d of f.devices) { const [sx, sy] = this.toScreen(d.x, d.y), k = `${Math.round(sx / 22)}:${Math.round(sy / 22)}`; (at.get(k) || at.set(k, []).get(k)).push(d); spot.set(d.id, [sx, sy]); }
+    for (const list of at.values()) if (list.length > 1) list.forEach((d, i) => { const [sx, sy] = spot.get(d.id), a = -Math.PI / 2 + (i / list.length) * Math.PI * 2; spot.set(d.id, [sx + 18 * Math.cos(a), sy + 18 * Math.sin(a)]); });
+    const hotNow = new Map((this.view?.engine.hot || []).map((h) => [h.id, h.state]));
     for (const d of f.devices) {
       seen.add(d.id);
       let el = this.devsEl.querySelector(`[data-dev="${esc(d.id)}"]`);
       if (!el) { el = document.createElement("div"); el.className = "dv"; el.dataset.dev = d.id; el.innerHTML = `<ha-icon></ha-icon>`; this.devsEl.appendChild(el); }
-      const kind = d.kind || deviceKind(d.entity), [sx, sy] = this.toScreen(d.x, d.y);
+      const kind = d.kind || deviceKind(d.entity), [sx, sy] = spot.get(d.id), st = hotNow.get(d.id);
+      el.classList.toggle("off", !!this.testing && !!st && !(st.on || st.open === true || (kind === "curtain" && st.open > 0.05)));
       el.style.left = `${sx}px`; el.style.top = `${sy}px`; el.style.transform = `translate(-50%,-50%) scale(${Math.max(0.6, Math.min(1, z / 45))})`; el.style.setProperty("--c", DEV_COL[kind] || "#8B6CFF");
       el.classList.toggle("sel", (s?.t === "dev" && s.id === d.id) || (s?.t === "multi" && s.list.some((x) => x.t === "dev" && x.id === d.id)));
       el.classList.toggle("lamp", kind === "light" && ["downlight", "focus", "track", "linear", "spots", "panel"].includes(d.look));

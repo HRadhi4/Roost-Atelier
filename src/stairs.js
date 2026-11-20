@@ -32,7 +32,9 @@ export function riseTo(plan, fi) {
 export const minRun = (rise) => Math.max(1.6, Math.ceil(rise / 0.19) * 0.22);
 
 // the stairs between a start (bottom) and an arrival point (top, on the level above)
-export function stairFrom(start, end, style, rise) {
+// rooms (optional): the rooms of the lower level; a flight that must be made longer grows the way that keeps it
+// inside them, and if neither way fits it stays as drawn (a little steeper)
+export function stairFrom(start, end, style, rise, rooms) {
   const S = STAIR_STYLES[style] || STAIR_STYLES.wood, w = S[1];
   if (S[2]) {
     // round: it stands where the person tapped first; the arrival only turns it so the top step faces that way
@@ -41,10 +43,15 @@ export function stairFrom(start, end, style, rise) {
   }
   let dx = end[0] - start[0], dy = end[1] - start[1], len = Math.hypot(dx, dy);
   if (len < 0.05) { dx = 0; dy = -1; len = 1; }
-  const need = minRun(rise), run = Math.max(need, Math.min(9, len)), ux = dx / len, uy = dy / len;
-  return { x: r3(start[0] + (ux * run) / 2), y: r3(start[1] + (uy * run) / 2), w, d: r3(run), h: rise, style, rot: Math.round((Math.atan2(-ux, -uy) * 180) / Math.PI), short: len < need - 0.05 };
+  const need = minRun(rise), ux = dx / len, uy = dy / len, rot = Math.round((Math.atan2(-ux, -uy) * 180) / Math.PI);
+  const make = (a, run, short) => ({ x: r3(a[0] + (ux * run) / 2), y: r3(a[1] + (uy * run) / 2), w, d: r3(run), h: rise, style, rot, short });
+  if (len >= need - 0.05) return make(start, Math.min(9, len), false);
+  const fits = (it) => !rooms?.length || [-0.5, 0.5].every((k) => [-1, 1].every((sx) => { const p = [it.x + ux * k * it.d * 0.98 + uy * sx * w * 0.45, it.y + uy * k * it.d * 0.98 - ux * sx * w * 0.45]; return rooms.some((r) => pointIn(p, r.pts)); }));
+  for (const a of [start, [end[0] - ux * need, end[1] - uy * need], [start[0] - (ux * (need - len)) / 2, start[1] - (uy * (need - len)) / 2]]) { const it = make(a, need, true); if (fits(it)) return it; }
+  return { ...make(start, len, false), steep: true };
 }
 const r3 = (v) => Math.round(v * 1000) / 1000;
+function pointIn([x, y], pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; }
 
 // a point of the stairs (local x, z) on the plan
 function toPlan(it, x, z) {
@@ -240,13 +247,14 @@ export function clipTo(hole, room) {
   const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const sgn = Math.sign(area(room)), convex = room.every((p, i) => sgn * cross(p, room[(i + 1) % room.length], room[(i + 2) % room.length]) >= -1e-9);
   if (!convex) return hole.every((p) => inPoly(p, room)) ? hole : null;
-  let out = hole;
+  // kept 2 cm inside the room: a floor can't be cut by an opening that touches its own edge
+  let out = hole; const EPS = 0.02;
   for (let i = 0; i < room.length && out.length; i++) {
-    const a = room[i], b = room[(i + 1) % room.length], inn = (p) => sgn * cross(a, b, p) > 1e-9, input = out; out = [];
+    const a = room[i], b = room[(i + 1) % room.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, dist = (p) => (sgn * cross(a, b, p)) / L - EPS, input = out; out = [];
     for (let k = 0; k < input.length; k++) {
-      const p = input[k], q = input[(k + 1) % input.length], pi = inn(p), qi = inn(q);
-      if (pi) out.push(p);
-      if (pi !== qi) { const t = cross(a, b, p) / (cross(a, b, p) - cross(a, b, q)); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+      const p = input[k], q = input[(k + 1) % input.length], dp = dist(p), dq = dist(q);
+      if (dp > 0) out.push(p);
+      if ((dp > 0) !== (dq > 0)) { const t = dp / (dp - dq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
     }
   }
   return out.length >= 3 && Math.abs(area(out)) > 0.02 ? out : null;

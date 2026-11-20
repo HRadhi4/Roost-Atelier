@@ -242,7 +242,19 @@ export class AtelierEngine {
     // the stairs coming up from below, seen through their opening, and the railing round it
     for (const it of arriving) {
       const rise = riseTo(plan, floorIndex - 1), g = buildItem({ ...it, h: rise }); g.position.set(it.x, -rise, it.y); g.rotation.y = ((it.rot || 0) * Math.PI) / 180;
-      g.userData.item = undefined; g.traverse((o) => { if (o.isMesh) o.userData.stairs = it.id; }); this.items.add(g); this.items.add(holeRails(it));
+      // only the top of the flight shows (through the opening), so nothing hangs under the house seen from outside
+      const keep = [new THREE.Plane(new THREE.Vector3(0, 1, 0), 1.4)];
+      g.userData.item = undefined; g.traverse((o) => { if (o.isMesh) { o.userData.stairs = it.id; o.userData.noBake = true; o.material = o.material.clone(); o.material.clippingPlanes = keep; } }); this.items.add(g); this.items.add(holeRails(it));
+    }
+    // the floor between the levels: 30 cm thick, with the stair openings through it, so their edges look solid
+    if (arriving.length) {
+      const holes = arriving.map(stairHole), slabM = solid("#E4DED4", { rough: 0.9 });
+      for (const r of floor.rooms) {
+        const shape = new THREE.Shape(r.pts.map(([x, y]) => new THREE.Vector2(x, -y)));
+        for (const h of holes.map((h) => clipTo(h, r.pts)).filter(Boolean)) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, -y))));
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.3, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+        const m = new THREE.Mesh(geo, slabM); m.position.y = -0.302; m.receiveShadow = true; m.castShadow = true; m.userData.noBake = true; this.root.add(m);
+      }
     }
     this.addGround(floor, arriving.length > 0);
     for (const [k, g] of this._shapes || []) if (!this._shapesNext?.has(k)) g.dispose();
@@ -925,6 +937,19 @@ export class AtelierEngine {
       const toP = hs.pos.clone().sub(this.camera.position);
       const vis = v.z < 1 && toP.dot(camDir) > 0 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && (this.view !== "walk" || this.roomOf(hs.pos) === this.walkRoomId || toP.length() < 4);
       out.push({ ...hs, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h, visible: vis });
+    }
+    // buttons that land on top of each other (lights in a row seen from the side, two TVs on one wall) are
+    // spread round their middle so every one of them can be pressed
+    const shown = out.filter((o) => o.visible), done = new Set(), GAP = 40;
+    for (const a of shown) {
+      if (done.has(a)) continue;
+      const group = [a]; done.add(a);
+      for (let k = 0; k < group.length; k++) for (const b of shown) if (!done.has(b) && Math.hypot(b.x - group[k].x, b.y - group[k].y) < GAP) { group.push(b); done.add(b); }
+      if (group.length < 2) continue;
+      const cx = group.reduce((t, o) => t + o.x, 0) / group.length, cy = group.reduce((t, o) => t + o.y, 0) / group.length;
+      const r = Math.max(GAP * 0.62, (GAP * group.length) / (2 * Math.PI));
+      group.sort((p, q) => Math.atan2(p.y - cy, p.x - cx) - Math.atan2(q.y - cy, q.x - cx) || String(p.id).localeCompare(String(q.id)));
+      group.forEach((o, i) => { const t = -Math.PI / 2 + (i / group.length) * Math.PI * 2; o.x = cx + r * Math.cos(t); o.y = cy + r * Math.sin(t); });
     }
     this.emit("hotspots", out);
   }
