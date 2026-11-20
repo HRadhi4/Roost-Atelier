@@ -38,6 +38,14 @@ function fineShape(pts, flip, holes = []) {
   return g;
 }
 
+
+// a surface the lamps never reach (the plinth under the house, the slab between levels): lit by the sun and sky
+// only, so lamp light never shows through a wall on it
+function noLamps(m) {
+  m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace("#include <lights_fragment_begin>", THREE.ShaderChunk.lights_fragment_begin.replaceAll("( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )", "0").replaceAll("( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )", "0")); };
+  m.customProgramCacheKey = () => "roost-nolamps"; return m;
+}
+
 const CUT = 1.15;
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
@@ -248,7 +256,7 @@ export class AtelierEngine {
     }
     // the floor between the levels: 30 cm thick, with the stair openings through it, so their edges look solid
     if (arriving.length) {
-      const holes = arriving.map(stairHole), slabM = solid("#E4DED4", { rough: 0.9 });
+      const holes = arriving.map(stairHole), slabM = noLamps(solid("#E4DED4", { rough: 0.9 }).clone());
       for (const r of floor.rooms) {
         const shape = new THREE.Shape(r.pts.map(([x, y]) => new THREE.Vector2(x, -y)));
         for (const h of holes.map((h) => clipTo(h, r.pts)).filter(Boolean)) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, -y))));
@@ -432,7 +440,7 @@ export class AtelierEngine {
     const geo = new THREE.PlaneGeometry(w, d); geo.rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(geo, new THREE.ShadowMaterial({ opacity: 0.18 })); m.position.set((b.x0 + b.x1) / 2, -0.005, (b.y0 + b.y1) / 2); m.receiveShadow = true; m.userData.noBake = true;
     this.root.add(m);
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(b.x1 - b.x0 + 0.4, 0.12, b.y1 - b.y0 + 0.4), solid("#D6D0C6", { rough: 0.9 }));
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(b.x1 - b.x0 + 0.4, 0.12, b.y1 - b.y0 + 0.4), noLamps(solid("#D6D0C6", { rough: 0.9 }).clone()));
     slab.position.set((b.x0 + b.x1) / 2, -0.07, (b.y0 + b.y1) / 2); slab.receiveShadow = true; slab.userData.noBake = true; if (!open) this.root.add(slab);
     this.bounds = b;
   }
@@ -714,6 +722,9 @@ export class AtelierEngine {
     const target = 5.2 / Lref;
     // the strongest a lamp's light can get on a surface (lux): a bright pool near the lamp, softer further away
     mgr.U.bakeLampCap.value = 170 * mood;
+    // the dark is never pitch black: a soft, slightly cool fill (moonlight and the glow of other rooms) that only
+    // matters when there is little daylight, so corners and the outside of the house stay readable at night
+    const fill = (3.6 * mood * NIGHT) / Lref; mgr.U.bakeFill.value.set(fill * 0.86, fill * 0.92, fill);
     // adapts gently (about a second) when daylight changes or you walk into another room, at once after a big jump
     const now = performance.now(), el = Math.min(1, (now - (this._expoT || now)) / 1000); this._expoT = now;
     const ratio = this.expo ? Math.max(target / this.expo, this.expo / target) : 99;

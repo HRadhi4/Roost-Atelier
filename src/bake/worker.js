@@ -28,7 +28,7 @@ function blocked(px, py, pz, dx, dy, dz, far) {
 // emission of a lamp towards a direction (dy = vertical part of the direction from the lamp), per lumen
 // how much light an emitter sends toward a direction (cosA: angle between its aim and that direction)
 function emission(E, cosA) {
-  if (E.cone) { const c = Math.cos(E.cone); if (cosA < c) return 0; const k = Math.min(1, (cosA - c) / Math.max(0.03, (1 - c) * 0.35)); return k / (2 * Math.PI * (1 - c)); }
+  if (E.cone) { const c = Math.cos(E.cone); if (cosA < c) return 0; const k = Math.min(1, (cosA - c) / Math.max(0.05, (1 - c) * 0.7)), t = k * k * (3 - 2 * k); return t / (2 * Math.PI * (1 - c)); }
   const down = E.down ?? 1, lam = Math.max(0, cosA) / Math.PI, omni = 1 / (4 * Math.PI);
   return down * lam + (1 - down) * omni;
 }

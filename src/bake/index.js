@@ -25,7 +25,7 @@ export function sunDir(az, el, northDeg = 0) {
 }
 
 // ---------------------------------------------------------------- shared shader pieces
-const U = { bakeTex: { value: null }, bakeW: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) }, bakeLayers: { value: 0 }, bakeRows: { value: 1 }, bakeWidth: { value: TEXW }, bakeRoomGain: { value: new Array(33).fill(1) }, bakeKind: { value: new Array(MAXL).fill(0) }, bakeLampCap: { value: 1e9 } };
+const U = { bakeTex: { value: null }, bakeW: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) }, bakeLayers: { value: 0 }, bakeRows: { value: 1 }, bakeWidth: { value: TEXW }, bakeRoomGain: { value: new Array(33).fill(1) }, bakeKind: { value: new Array(MAXL).fill(0) }, bakeLampCap: { value: 1e9 }, bakeFill: { value: new THREE.Vector3() } };
 let PATCHED_BEGIN = null;
 function patchedBegin() {
   if (PATCHED_BEGIN) return PATCHED_BEGIN;
@@ -48,7 +48,7 @@ function bakedMaterial(m, own) {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", `#include <common>
 attribute float bakeId; attribute float bakeRoom;
-uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33]; uniform float bakeKind[${MAXL}]; uniform float bakeLampCap;
+uniform highp sampler2D bakeTex; uniform vec3 bakeW[${MAXL}]; uniform int bakeLayers; uniform int bakeRows; uniform int bakeWidth; uniform float bakeRoomGain[33]; uniform float bakeKind[${MAXL}]; uniform float bakeLampCap; uniform vec3 bakeFill;
 varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_vertex>
 { int bid = int(bakeId + 0.5), bx = bid % bakeWidth, by = bid / bakeWidth; vec3 e = vec3(0.0), lamp = vec3(0.0), accent = vec3(0.0);
   for (int l = 0; l < ${MAXL}; l++) { if (l >= bakeLayers) break; if (bakeW[l].x + bakeW[l].y + bakeW[l].z <= 0.0) continue; vec4 t = texelFetch(bakeTex, ivec2(bx, by + l * bakeRows), 0); if (t.a > 0.0) { vec3 v = t.rgb * exp2(t.a * 255.0 - 136.0) * bakeW[l]; if (bakeKind[l] > 1.5) accent += v; else if (bakeKind[l] > 0.5) lamp += v; else e += v; } }
@@ -56,7 +56,7 @@ varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_verte
   float lumL = dot(lamp, vec3(0.2126, 0.7152, 0.0722)); lamp *= bakeLampCap / (bakeLampCap + lumL);
   // focus lights stay focus lights: a much higher ceiling, so the painting really stands out
   float lumA = dot(accent, vec3(0.2126, 0.7152, 0.0722)), capA = bakeLampCap * 5.0; accent *= capA / (capA + lumA);
-  vBaked = (e + lamp + accent) * bakeRoomGain[int(bakeRoom + 0.5)]; }`);
+  vBaked = (e + lamp + accent) * bakeRoomGain[int(bakeRoom + 0.5)] + bakeFill; }`);
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vBaked;")
       .replace("#include <lights_fragment_begin>", patchedBegin())
       .replace("#include <lights_fragment_maps>", "#include <lights_fragment_maps>\niblIrradiance = vBaked;");
@@ -113,7 +113,7 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
   if (signal?.aborted) throw new Error("cancelled");
   done = 0.7; onProgress?.(0.7);
   const nb = neighbours(prep);
-  { const near = neighbours(prep, 0.12, 0.02), Ds = smooth(D, near, L), soft = lights.length + windows.length + 1;
+  { const near = neighbours(prep, 0.16, 0.035), Ds = smooth(D, near, L), soft = lights.length + windows.length + 1;
     for (let k = 0; k < n; k++) for (let l = 0; l < soft; l++) { const i = (k * L + l) * 3; D[i] = Ds[i]; D[i + 1] = Ds[i + 1]; D[i + 2] = Ds[i + 2]; } }
   let E = D, G = null;
   for (let p = 0; p < PASSES; p++) {
@@ -138,10 +138,11 @@ export async function runBake(prep, { sunDirs, onProgress, signal }) {
 // Points are grouped into small cells (by place and by which way the surface faces); each point then takes a
 // distance-weighted mix of the nearby cells. This costs the same for any size of home.
 function neighbours(prep, cell = 0.22, sig = 0.08) {
-  const { n, pos, nrm } = prep, map = new Map(), cellOf = new Int32Array(n), cx = [], cy = [], cz = [], cc = [], keys = [];
+  // light is only shared within one room: a floor or a wall face never borrows light from the room behind the wall
+  const { n, pos, nrm, room } = prep, map = new Map(), cellOf = new Int32Array(n), cx = [], cy = [], cz = [], cc = [], keys = [];
   const bin = (k) => { const x = nrm[k * 3], y = nrm[k * 3 + 1], z = nrm[k * 3 + 2]; return y > 0.7 ? 8 : y < -0.7 ? 9 : ((Math.round(Math.atan2(z, x) / (Math.PI / 4)) % 8) + 8) % 8; };
   for (let k = 0; k < n; k++) {
-    const gx = Math.floor(pos[k * 3] / cell), gy = Math.floor(pos[k * 3 + 1] / cell), gz = Math.floor(pos[k * 3 + 2] / cell), b = bin(k), key = `${gx},${gy},${gz},${b}`;
+    const gx = Math.floor(pos[k * 3] / cell), gy = Math.floor(pos[k * 3 + 1] / cell), gz = Math.floor(pos[k * 3 + 2] / cell), b = bin(k) * 64 + ((room?.[k] ?? -1) + 1), key = `${gx},${gy},${gz},${b}`;
     let c = map.get(key); if (c === undefined) { c = cc.length; map.set(key, c); cx.push(0); cy.push(0); cz.push(0); cc.push(0); keys.push([gx, gy, gz, b]); }
     cellOf[k] = c; cx[c] += pos[k * 3]; cy[c] += pos[k * 3 + 1]; cz[c] += pos[k * 3 + 2]; cc[c]++;
   }
