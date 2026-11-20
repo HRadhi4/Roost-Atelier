@@ -56,7 +56,10 @@ export async function denoise({ renderer, target, scene, camera, exposure, mid, 
   const { albedo, normal } = auxBuffers(renderer, scene, camera, w, h);
   const net = await unet(small);
   const out = await new Promise((res, rej) => net.tileExecute({ color: { data: color, width: w, height: h }, albedo: { data: albedo, width: w, height: h }, normal: { data: normal, width: w, height: h }, done: res, error: rej }));
+  // some graphics chips hand back an empty (black) or broken picture: then the photo is used as traced
+  let top = 0, bad = false; for (let i = 0; i < out.data.length; i += 4) { const v = out.data[i] + out.data[i + 1] + out.data[i + 2]; if (!Number.isFinite(v)) { bad = true; break; } if (v > top) top = v; }
+  if (bad || top < 1e-4) throw new Error("the AI clean-up returned an empty picture");
   const tex = new THREE.DataTexture(out.data, w, h, THREE.RGBAFormat, THREE.FloatType);
-  tex.colorSpace = THREE.LinearSRGBColorSpace; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+  tex.colorSpace = THREE.LinearSRGBColorSpace; tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.needsUpdate = true;
   return tex;
 }

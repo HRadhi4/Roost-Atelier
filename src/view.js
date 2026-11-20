@@ -154,7 +154,8 @@ export class AtelierView {
   dev(id) { return this.plan?.floors.flatMap((f) => f.devices).find((d) => d.id === id); }
   toggle(id) {
     const d = this.dev(id); if (!d) return;
-    if (!d.entity) { this.onDemo?.(d); return; }
+    // no working entity yet: it still switches on and off here, so the home can be tried out
+    if (!d.entity || (this._hass && !this._hass.states[d.entity])) { if (!this.engine.pretend(id)) this.onDemo?.(d); return; }
     if (this.tapMode === "controls") return this.openId === id && this.popEl ? this.closePanel() : this.open(id);
     const dom = d.entity.split(".")[0];
     if (dom === "lock" || dom === "alarm_control_panel" || dom === "sensor" || dom === "binary_sensor" || dom === "person" || dom === "device_tracker") return this.more(id);

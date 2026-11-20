@@ -68,7 +68,7 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
 .ceilmode .plan .dv:not(.lamp){opacity:.18;pointer-events:none}
 .plan .dv.lamp{width:20px;height:20px}.plan .dv.lamp ha-icon{--mdc-icon-size:12px}
-.plan .zoom button.on{color:var(--acc2)}
+.plan .zoom button.on{background:var(--acc1);color:#FFFFFF}
 .plan .zoom{position:absolute;bottom:12px;inset-inline-start:12px;display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--border)}
 .three{position:relative;border-inline-start:1px solid var(--border);min-width:0}
 aside{grid-row:2;border-inline-start:1px solid var(--border);background:var(--panel);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px;z-index:2}
@@ -182,6 +182,7 @@ export class AtelierEditor {
     const first = !this._hass; this._hass = h;
     this.ed.classList.toggle("light", h.themes?.darkMode === false);
     if (this.view) this.view.hass = h;
+    if (this._tourCard) this._tourCard.hass = h;
     if (first) this.start();
     // people seen by a presence radar move on the plan too (a few times a second at most)
     else if (this.floor?.devices.some((d) => d.kind === "radar") && !this.drag && performance.now() - (this._rdT || 0) > 600) { this._rdT = performance.now(); this.draw(); }
@@ -521,9 +522,11 @@ export class AtelierEditor {
     }
     if (wallThin) out += `<path d="${wallThin}" stroke="var(--wall)" stroke-opacity=".6" stroke-width="0.08" fill="none"/>`;
     // wall lengths, written along each wall on its outer side (inside length for walls between rooms);
-    // hidden while a room is picked, which shows its own sizes
-    if (this.sizes !== false && !this.ceiling && s?.t !== "room") for (const w of ws_) {
-      const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], len = Math.hypot(dx, dy); if (len * z < 70 || w.parapet) continue;
+    // a picked room shows its own sizes instead along its walls
+    const picked = s?.t === "room" ? this.find(s) : null;
+    const onPicked = (m) => picked && picked.pts.some((p, i) => { const q = picked.pts[(i + 1) % picked.pts.length], ex = q[0] - p[0], ey = q[1] - p[1], L = ex * ex + ey * ey || 1, k = Math.max(0, Math.min(1, ((m[0] - p[0]) * ex + (m[1] - p[1]) * ey) / L)); return Math.hypot(p[0] + k * ex - m[0], p[1] + k * ey - m[1]) < 0.2; });
+    if (this.sizes !== false && !this.ceiling) for (const w of ws_) {
+      const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], len = Math.hypot(dx, dy); if (len * z < 70 || w.parapet || onPicked([(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2])) continue;
       let nx = -dy / len, ny = dx / len;
       const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
       if (f.rooms.some((r) => inside([mx + nx * 0.3, my + ny * 0.3], r.pts)) && !f.rooms.some((r) => inside([mx - nx * 0.3, my - ny * 0.3], r.pts))) { nx = -nx; ny = -ny; }
@@ -654,7 +657,7 @@ export class AtelierEditor {
     if (!d.moved) { d.moved = true; if (!["pan", "draw", "addop"].includes(d.kind)) { this.snapshot(); this._dragging = true; } }
     const dx = P[0] - d.P[0], dy = P[1] - d.P[1];
     this.guide = "";
-    if (d.kind === "pan") { this._userView = true; this.px = d.px0 + e.clientX - d.x; this.py = d.py0 + e.clientY - d.y; this.draw(); return; }
+    if (d.kind === "pan") { this._userView = true; this.px = d.px0 + e.clientX - d.x; this.py = d.py0 + e.clientY - d.y; this.g.setAttribute("transform", `translate(${this.px} ${this.py}) scale(${this.z})`); if (!this._panRaf) this._panRaf = requestAnimationFrame(() => { this._panRaf = 0; this.draw(); }); return; }
     if (d.kind === "draw") { this.drawRect[1] = this.snapPt(P); this.draw(); return; }
     if (d.kind === "group") { const ox = snap(dx), oy = snap(dy); for (const [o, x, y] of d.objs) { o.x = round(x + ox, 3); o.y = round(y + oy, 3); } return this.changed(); }
     if (d.kind === "room") {
@@ -1032,7 +1035,7 @@ export class AtelierEditor {
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
       <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ha-icon icon="mdi:home-import-outline"></ha-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
-      <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves in the background once the light is ready")}</span></div></div>
+      <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made when you press Make dashboard pictures")}</span></div></div>
       <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ha-icon icon="mdi:image-multiple-outline"></ha-icon>${t("Make dashboard pictures")}</button><button data-preview><ha-icon icon="mdi:eye-outline"></ha-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
@@ -1101,18 +1104,41 @@ export class AtelierEditor {
       el.appendChild(b);
     }
   }
-  // the dashboard card as it will look, in a window: the whole floor, or straight into one room
+  // the dashboard card as it will look, in a window: Roost Cards' own Roost Home Tour card when Roost Cards is
+  // installed (the whole floor, or straight into one room), otherwise the Atelier's own picture viewer
   async showPano(url, roomId) {
-    const { StillViewer, STILL_CSS, photoFetcher } = await import("./still.js");
-    const d = document.createElement("div"); d.className = "dialog";
-    d.innerHTML = `<style>${STILL_CSS}</style><div style="width:min(96vw,1100px);height:min(80vh,640px);border-radius:22px;overflow:hidden;position:relative" data-host></div><button data-x style="position:absolute;top:16px;right:16px;background:var(--panel)"><ha-icon icon="mdi:close"></ha-icon></button>`;
-    d.onclick = (e) => { if (e.target === d) close(); };
-    this.root.querySelector(".ed").appendChild(d);
-    const v = new StillViewer(d.querySelector("[data-host]"), { plan: this.plan, floorIndex: this.fi, room: roomId, photo: photoFetcher(() => this._hass, this.plan.id, this.fi), onMoreInfo: (e) => this.panelEl.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: e }, bubbles: true, composed: true })) });
-    v.hass = this._hass;
-    const close = () => { v.dispose(); d.remove(); };
-    d.querySelector("[data-x]").onclick = close;
     void url;
+    const d = document.createElement("div"); d.className = "dialog";
+    d.innerHTML = `<div style="width:min(96vw,1100px);display:flex;flex-direction:column;gap:10px"><div class="row" style="justify-content:space-between;align-items:center"><b>${t("How the Roost Home Tour card will look")}</b><button data-x style="background:var(--panel)"><ha-icon icon="mdi:close"></ha-icon></button></div><div style="height:min(76vh,620px);border-radius:22px;overflow:hidden;position:relative;background:#0B0D17" data-host></div><span class="tip" data-note></span></div>`;
+    this.root.querySelector(".ed").appendChild(d);
+    const host = d.querySelector("[data-host]");
+    let close = () => d.remove();
+    d.onclick = (e) => { if (e.target === d) close(); };
+    d.querySelector("[data-x]").onclick = () => close();
+    if (await this.roostCards()) {
+      const card = document.createElement("roost-tour");
+      card.setConfig({ plan: this.plan.id, floor: this.fi, room: roomId || "", height: Math.max(320, host.clientHeight || 560) });
+      card.style.cssText = "display:block;height:100%"; host.appendChild(card); card.hass = this._hass;
+      this._tourCard = card; close = () => { this._tourCard = null; d.remove(); };
+      return;
+    }
+    d.querySelector("[data-note]").textContent = t("Install Roost Cards to see the Roost Home Tour card itself. This is a simple preview of the pictures.");
+    const { StillViewer, STILL_CSS, photoFetcher } = await import("./still.js");
+    host.insertAdjacentHTML("beforebegin", `<style>${STILL_CSS}</style>`);
+    const v = new StillViewer(host, { plan: this.plan, floorIndex: this.fi, room: roomId, photo: photoFetcher(() => this._hass, this.plan.id, this.fi), onMoreInfo: (e) => this.panelEl.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: e }, bubbles: true, composed: true })) });
+    v.hass = this._hass;
+    close = () => { v.dispose(); d.remove(); };
+  }
+  // Roost Cards on this page: already loaded by a dashboard, or loaded from Home Assistant's dashboard resources
+  async roostCards() {
+    if (customElements.get("roost-tour")) return true;
+    try {
+      const res = await this._hass.callWS({ type: "lovelace/resources" });
+      const r = res.find((x) => /roost-cards?\.js/i.test(x.url)); if (!r) return false;
+      await import(/* @vite-ignore */ new URL(r.url, location.origin).href);
+      await Promise.race([customElements.whenDefined("roost-tour"), new Promise((ok) => setTimeout(ok, 4000))]);
+    } catch (e) { return false; }
+    return !!customElements.get("roost-tour");
   }
   checkPanel() {
     const a = this.aside, issues = check(this.plan, this.floor);

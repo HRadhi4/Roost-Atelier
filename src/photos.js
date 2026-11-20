@@ -28,6 +28,9 @@ export class RoomPhotographer {
     } else if (p.state === "done") {
       b.classList.remove("hide"); b.classList.add("ok"); b.querySelector("span").textContent = t("All photos ready"); b.querySelector("b").style.width = "100%";
       this.ed.emitPhotos?.(); this._hide = setTimeout(() => b.classList.add("hide"), 6000);
+    } else if (p.state === "black" || p.state === "failed") {
+      b.classList.remove("hide", "ok"); b.querySelector("span").textContent = t("Some photos came out black on this computer. Try again, or make them on another computer."); b.querySelector("b").style.width = "0%";
+      this.ed.emitPhotos?.(); this._hide = setTimeout(() => b.classList.add("hide"), 12000);
     } else b.classList.add("hide");
   }
   // the 360° views of every room, on request (they take longer than the photos)
@@ -45,9 +48,11 @@ export class RoomPhotographer {
     this.studio.cancel(); clearTimeout(this._t);
     await new Promise((r) => setTimeout(r, 50));
     const token = this.studio.token + 1;
-    await this.studio.run(shotsFor(ed.floor, t));
+    const flat = await this.studio.run(shotsFor(ed.floor, t));
     if (this.studio.token !== token) return;
-    await this.studio.run(panosFor(ed.floor, t));
+    const round = await this.studio.run(panosFor(ed.floor, t));
+    // all made: show the Roost Home Tour card as it will look on the dashboard
+    if (flat && round) ed.showPano(null, null);
   }
   // the home changed or is being lit again: photos need remaking
   reset() { this.studio.cancel(); }

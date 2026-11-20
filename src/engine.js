@@ -17,7 +17,7 @@ import { N8AOPass } from "n8ao";
 import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES } from "./model.js";
 import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "./materials.js";
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
-import { deviceKind, lightLook, stateOf, kelvinToHex } from "./devices.js";
+import { deviceKind, lightLook, stateOf, kelvinToHex, pretendNext } from "./devices.js";
 import { BakeManager } from "./bake/index.js";
 import { emittersFor, lampModel, aimModel, anchorOf } from "./lights.js";
 import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
@@ -548,6 +548,14 @@ export class AtelierEngine {
     const pts = new THREE.Points(geo, mat); pts.visible = false; pts.frustumCulled = false; g.add(pts);
     return { pts, seeds, t: 0 };
   }
+  // switch a device that has no working entity, just here on the screen (for trying the home out)
+  pretend(id) {
+    const rec = this.devices.get(id); if (!rec) return false;
+    this.pretends ||= new Map();
+    const now = stateOf(rec, this.states, this.opts.editing, this.pretends.get(id));
+    this.pretends.set(id, pretendNext(rec.kind, now)); this.updateDevices(false); this.updateHot?.(); this.request(false);
+    return true;
+  }
   setStates(states) {
     this.states = states || {}; this.updateDevices(false);
     // a light changed while the photo was being made: start the photo again with the new light
@@ -557,7 +565,7 @@ export class AtelierEngine {
     let lightsChanged = false;
     const lightsOn = [];
     for (const rec of this.devices.values()) {
-      const s = stateOf(rec, this.states, this.opts.editing);
+      const s = stateOf(rec, this.states, this.opts.editing, this.pretends?.get(rec.dv.id));
       const key = JSON.stringify(s);
       if (!first && key === rec.key) { if (rec.kind === "light" && s.on) lightsOn.push([rec, s]); continue; }
       rec.key = key;
@@ -801,6 +809,9 @@ export class AtelierEngine {
     this.controls.maxPolarAngle = view === "top" ? 0.15 : Math.PI * 0.47;
     this.controls.minPolarAngle = 0;
     this.controls.enableRotate = view !== "top";
+    // seen from above, one finger or the left button moves the plan around (there is nothing to turn)
+    this.controls.mouseButtons.LEFT = view === "top" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.touches.ONE = view === "top" ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
     this.tweenTo(pos, target, fov, instant ? 0 : 0.9);
     this.applyWalls();
     if (this.devices.size) this.updateHot();
@@ -889,7 +900,7 @@ export class AtelierEngine {
     for (const rec of this.devices.values()) {
       const dv = rec.dv;
       const y = rec.kind === "light" ? (rec.mount === "ceiling" ? Math.min(CUT + 0.6, this.H - 0.3) : 1.6) : rec.kind === "ac" ? (this.view === "walk" ? this.H - 0.62 : Math.min(CUT + 0.5, this.H - 0.45)) : rec.kind === "curtain" ? 1.6 : rec.kind === "tv" ? 1.4 : rec.kind === "door" || rec.kind === "lock" ? 1.2 : rec.kind === "person" ? 1.9 : 1.0;
-      this.hot.push({ id: dv.id, kind: rec.kind, entity: dv.entity, name: dv.name, pos: new THREE.Vector3(dv.x, this.view === "walk" && rec.kind === "light" ? this.H - 0.3 : y, dv.y), state: stateOf(rec, this.states, this.opts.editing) });
+      this.hot.push({ id: dv.id, kind: rec.kind, entity: dv.entity, name: dv.name, pos: new THREE.Vector3(dv.x, this.view === "walk" && rec.kind === "light" ? this.H - 0.3 : y, dv.y), state: stateOf(rec, this.states, this.opts.editing, this.pretends?.get(dv.id)) });
     }
     this.projectHotspots();
   }

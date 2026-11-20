@@ -3,7 +3,7 @@
 // spot: lights in an even grid on the ceiling (or linked to lights already drawn there), the AC high on the longest
 // wall without a window, curtains on the windows, the TV opposite the sofa, the fan in the middle, locks and door
 // sensors on the doors. Things already placed are never moved, and a device taken out is not put back.
-import { uid, round, bounds, inside, centroid, nearestWall } from "./model.js";
+import { uid, round, bounds, inside, centroid, nearestWall, area } from "./model.js";
 
 const LIGHTY = /(light|lamp|lights|spot|led|chandelier|pendant|ضوء|إضاءة|اضاءة|انارة|إنارة|لمبة|نجفة|سبوت)/i;
 const TVY = /(tv|television|تلفاز|تلفزيون|شاشة)/i;
@@ -54,7 +54,7 @@ function devicesOf(hass) {
     const dev = reg?.device_id && D[reg.device_id], areaId = reg?.area_id || dev?.area_id; if (!areaId || !A[areaId]) continue;
     const key = `${reg?.device_id || id}:${kind === "door" || kind === "lock" ? "door" : kind}`;
     if (reg?.device_id && seen.has(key)) continue; seen.add(key);
-    out.push({ entity: id, kind, area: areaId, areaName: A[areaId].name, name: S[id].attributes?.friendly_name || id });
+    out.push({ entity: id, kind, area: areaId, areaName: A[areaId].name, name: S[id].attributes?.friendly_name || id, dc: S[id].attributes?.device_class || reg?.device_class || null });
   }
   return out;
 }
@@ -82,6 +82,8 @@ function edges(room) {
   }
   return out;
 }
+// how far a point is from a room edge
+const segDist = (p, e) => { const dx = e.b[0] - e.a[0], dy = e.b[1] - e.a[1], t = Math.max(0, Math.min(1, ((p[0] - e.a[0]) * dx + (p[1] - e.a[1]) * dy) / (e.len * e.len))); return Math.hypot(e.a[0] + dx * t - p[0], e.a[1] + dy * t - p[1]); };
 const onEdge = (p, e) => { const dx = e.b[0] - e.a[0], dy = e.b[1] - e.a[1], t = ((p[0] - e.a[0]) * dx + (p[1] - e.a[1]) * dy) / (e.len * e.len); if (t < 0 || t > 1) return false; return Math.hypot(e.a[0] + dx * t - p[0], e.a[1] + dy * t - p[1]) < 0.25; };
 // a spot against a wall, facing into the room, the way the editor places an AC
 function onWall(floor, e, gap, along = 0.5) {
@@ -121,19 +123,32 @@ export function autoPlace(hass, floor, { chosen = {}, skip = new Set() } = {}) {
     if (extra.length) grid(room, extra.length).forEach((p, i) => add.push({ id: uid("d"), kind: "light", look: "downlight", entity: extra[i].entity, name: extra[i].name, x: round(p[0], 3), y: round(p[1], 3), room: rid }));
     // walls: those with a window are for curtains, the longest plain one for the AC, the one facing the sofa for the TV
     const windows = ops(["window", "slider"]), doors = ops(["door", "arch"]);
-    const plain = es.filter((e) => !windows.some((o) => onEdge([o.x, o.y], e))).sort((x, y) => y.len - x.len);
+    // a wall already holding an AC or a TV (drawn, or placed before) is not used again
+    const holds = (e) => [...floor.devices.filter((x) => ["ac", "tv"].includes(x.kind)), ...(floor.items || []).filter((i) => i.kind === "tv")].some((x) => inRoom([x.x, x.y]) && segDist([x.x, x.y], e) < 0.45);
+    const plain = es.filter((e) => !windows.some((o) => onEdge([o.x, o.y], e))).sort((x, y) => (holds(x) - holds(y)) || y.len - x.len);
+    // one TV per room, and one AC for every 25 m² or so: the same TV or AC often shows up several times in
+    // Home Assistant (through two integrations, or an IR remote); the extra ones are left for the person to add
+    const tvAt = (floor.items || []).find((i) => i.kind === "tv" && inRoom([i.x, i.y]));
+    let tvs = devHere("tv").filter((x) => x.entity).length, acs = devHere("ac").filter((x) => x.entity).length;
+    const maxAc = Math.max(1, Math.round(Math.abs(area(room.pts)) / 25));
+    const rank = (d) => (d.dc === "tv" ? 0 : 1) + (/\d+[._]\d+[._]\d+/.test(d.entity + d.name) ? 2 : 0) + (/_\d+$/.test(d.entity) ? 1 : 0);
+    list.sort((x, y) => (x.kind === y.kind && (x.kind === "tv" || x.kind === "ac") ? rank(x) - rank(y) : 0));
     for (const d of list) {
       if (d.kind === "light") continue;
       if (d.kind === "ac") {
+        if (acs >= maxAc && !devHere("ac").some((x) => !x.entity && !used.has(x.id))) continue; acs++;
         const linkTo = devHere("ac").find((x) => !x.entity && !used.has(x.id)); if (linkTo) { used.add(linkTo.id); link.push({ id: linkTo.id, entity: d.entity }); continue; }
-        const e = plain.find((x) => !used.has(x)) || es[0]; used.add(e); add.push({ id: uid("d"), kind: "ac", entity: d.entity, name: d.name, ...onWall(floor, e, 0.13), room: rid });
+        const e = plain.find((x) => !used.has(x) && !holds(x)) || plain.find((x) => !used.has(x)) || es.slice().sort((x, y) => y.len - x.len)[0]; used.add(e); add.push({ id: uid("d"), kind: "ac", entity: d.entity, name: d.name, ...onWall(floor, e, 0.13), room: rid });
       } else if (d.kind === "curtain") {
         const linkTo = devHere("curtain").find((x) => !x.entity && !used.has(x.id)); if (linkTo) { used.add(linkTo.id); link.push({ id: linkTo.id, entity: d.entity }); continue; }
         const w = windows.find((o) => !used.has(o.id) && !floor.devices.some((x) => x.kind === "curtain" && Math.hypot(x.x - o.x, x.y - o.y) < 0.5));
         if (w) { used.add(w.id); add.push({ id: uid("d"), kind: "curtain", entity: d.entity, name: d.name, x: w.x, y: w.y, room: rid }); }
         else { const e = es.slice().sort((x, y) => y.len - x.len)[0]; add.push({ id: uid("d"), kind: "curtain", entity: d.entity, name: d.name, x: round(e.m[0], 3), y: round(e.m[1], 3), room: rid, needsWindow: true }); }
       } else if (d.kind === "tv") {
-        const linkTo = devHere("tv").find((x) => !x.entity); if (linkTo) { link.push({ id: linkTo.id, entity: d.entity }); continue; }
+        const linkTo = devHere("tv").find((x) => !x.entity && !used.has(x.id)); if (linkTo) { used.add(linkTo.id); tvs++; link.push({ id: linkTo.id, entity: d.entity }); continue; }
+        if (tvs >= 1) continue; tvs++;
+        // a TV already drawn on the plan: the device goes on it
+        if (tvAt) { add.push({ id: uid("d"), kind: "tv", entity: d.entity, name: d.name, x: tvAt.x, y: tvAt.y, rot: tvAt.rot || 0, room: rid }); const te = es.slice().sort((x, y) => segDist([tvAt.x, tvAt.y], x) - segDist([tvAt.x, tvAt.y], y))[0]; if (te) used.add(te); continue; }
         // the wall farthest from the sofa (that is where people look); without a sofa, a long plain wall
         const e = sofa ? es.slice().sort((x, y) => Math.hypot(y.m[0] - sofa.x, y.m[1] - sofa.y) - Math.hypot(x.m[0] - sofa.x, x.m[1] - sofa.y))[0] : plain.find((x) => !used.has(x)) || es[0];
         used.add(e); add.push({ id: uid("d"), kind: "tv", entity: d.entity, name: d.name, ...onWall(floor, e, 0.05), room: rid, wantsScreen: true });

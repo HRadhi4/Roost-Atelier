@@ -11,6 +11,13 @@ import { withCamera } from "./still.js";
 export { panoSpot };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// is a finished picture all black? (looked at small)
+function dark(canvas) {
+  const c = document.createElement("canvas"); c.width = 48; c.height = 30; const x = c.getContext("2d", { willReadFrequently: true });
+  x.drawImage(canvas, 0, 0, 48, 30); const d = x.getImageData(0, 0, 48, 30).data; let top = 0;
+  for (let i = 0; i < d.length; i += 4) top = Math.max(top, d[i], d[i + 1], d[i + 2]);
+  return top < 8;
+}
 
 export class Studio {
   // save(key, blob) stores a photo; onProgress({ done, total, f, name, state }) drives the bar
@@ -23,7 +30,7 @@ export class Studio {
   async run(shots) {
     const e = this.e, token = ++this.token;
     if (!shots.length || !e.baked) return;
-    this.running = true;
+    this.running = true; this.black = 0;
     await e.ensureSky();
     const ai = await aiAvailable().catch(() => false);
     const q = e.quality, pano = shots[0].view === "pano";
@@ -89,8 +96,10 @@ export class Studio {
             quad.material.map = clean; quad.material.needsUpdate = true;
             renderer.toneMappingExposure = 1; renderer.setRenderTarget(null); quad.render(renderer); renderer.toneMappingExposure = exposure;
             clean.dispose();
-          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); }
+          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); pt.renderSample(); }
         }
+        // never keep a black photo: show the traced picture instead, and if that is black too, keep the old photo
+        if (dark(canvas)) { pt.renderSample(); if (dark(canvas)) { console.warn("Roost Atelier photo studio: the photo came out black on this graphics chip"); this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, black: true }); this.black = (this.black || 0) + 1; continue; } }
         // the picture carries the camera it was taken with, so the dashboard card can put device buttons on it
         let blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
         if (blob) blob = await withCamera(blob, camInfo).catch(() => blob);
@@ -98,7 +107,8 @@ export class Studio {
         if (blob) await this.save(shot.key, blob).catch(() => {});
         this.onProgress({ state: "working", done: i + 1, total: shots.length, f: (i + 1) / shots.length, name: shot.name, saved: shot.key });
       }
-      this.onProgress({ state: "done", done: shots.length, total: shots.length, f: 1 });
+      this.onProgress({ state: this.black ? "black" : "done", done: shots.length, total: shots.length, f: 1, black: this.black });
+      return !this.black;
     } catch (err) {
       console.warn("Roost Atelier photo studio:", err);
       this.onProgress({ state: "failed" });

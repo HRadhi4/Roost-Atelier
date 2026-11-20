@@ -40,3 +40,20 @@ assert.ok(!autoPlace(hass, floor, { skip: new Set(["fan.bed_fan"]) }).add.some((
 // the person can choose a room for an area without a match
 assert.ok(autoPlace(hass, floor, { chosen: { garage: "mb" } }).add.some((d) => d.entity === "light.garage"));
 console.log("autoplace: all passed");
+
+// the same TV and AC through several integrations: one TV (on the TV drawn), one AC, not on the TV's wall or a window
+{
+  const { autoPlace: ap } = await import("../src/autoplace.js");
+  const fl = { rooms: [{ id: "lv", name: "Living", pts: [[0, 0], [3.4, 0], [3.4, 3], [0, 3]] }], openings: [{ id: "w", type: "window", x: 1.7, y: 3, width: 1.4 }, { id: "a", type: "arch", x: 0, y: 1.5, width: 1.2 }],
+    items: [{ id: "t", kind: "tv", x: 1.7, y: 0.15, rot: 0 }, { id: "s", kind: "sofa", x: 1.7, y: 2.4, rot: 180 }], devices: [], walls: [] };
+  const st = (id, n, extra = {}) => [id, { entity_id: id, state: "on", attributes: { friendly_name: n, ...extra } }];
+  const hass = { states: Object.fromEntries([st("climate.ir_remote_ac", "IR remote AC"), st("climate.living_ac", "Living AC"), st("media_player.android_tv_10_0_0_5", "Android TV 10.0.0.5"), st("media_player.living_tv", "Living TV", { device_class: "tv" }), st("media_player.living_tv_2", "Living TV"), st("media_player.jvc_tv", "JVC TV")]),
+    areas: { liv: { name: "Living" } }, devices: {}, entities: {} };
+  for (const id of Object.keys(hass.states)) hass.entities[id] = { area_id: "liv" };
+  const r = ap(hass, fl);
+  const tvs = r.add.filter((d) => d.kind === "tv"), acs = r.add.filter((d) => d.kind === "ac");
+  if (tvs.length !== 1 || tvs[0].entity !== "media_player.living_tv" || tvs[0].x !== 1.7 || tvs[0].y !== 0.15) throw new Error("one TV, on the drawn TV: " + JSON.stringify(tvs));
+  if (acs.length !== 1) throw new Error("one AC: " + JSON.stringify(acs));
+  if (acs[0].y < 0.5 || acs[0].y > 2.5) throw new Error("the AC is not on the TV wall or the window wall: " + JSON.stringify(acs));
+  console.log("autoplace duplicates: passed");
+}

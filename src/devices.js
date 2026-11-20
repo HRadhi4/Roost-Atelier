@@ -58,8 +58,9 @@ export function kelvinToHex(k) {
 const OFF = ["off", "standby", "unavailable", "unknown", "idle", "paused"];
 
 // The state a device should show. Without a linked entity it shows a calm demo state so the home looks alive.
-export function stateOf(rec, states, editing) {
-  const dv = rec.dv, st = dv.entity ? states?.[dv.entity] : null, a = st?.attributes || {};
+// pretend: a made-up Home Assistant state, used when the device has no working entity and is switched while testing.
+export function stateOf(rec, states, editing, pretend) {
+  const dv = rec.dv, st = (dv.entity ? states?.[dv.entity] : null) || pretend || null, a = st?.attributes || {};
   const kind = rec.kind;
   if (kind === "light") {
     const look = rec.look || "flush", lm = (dv.lumens || LUMENS[look] || 1200) * (dv.power || 1), warm = kelvinToHex(dv.kelvin || KELVIN[look] || 2700);
@@ -99,6 +100,19 @@ export function stateOf(rec, states, editing) {
   if (kind === "vacuum") { if (!st) return { on: false, label: "" }; return { on: st.state === "cleaning", label: st.state === "cleaning" ? "On" : "Off" }; }
   if (!st) return { label: "" };
   return { label: `${st.state}${a.unit_of_measurement ? " " + a.unit_of_measurement : ""}`, on: st.state === "on" };
+}
+
+// Switching a device while testing in the Atelier when it has no working entity: the next made-up state.
+export function pretendNext(kind, now) {
+  if (kind === "light") return now.on ? { state: "off", attributes: {} } : { state: "on", attributes: { brightness: 255 } };
+  if (kind === "curtain") return now.open > 0.5 ? { state: "closed", attributes: { current_position: 0 } } : { state: "open", attributes: { current_position: 100 } };
+  if (kind === "lock") return now.locked ? { state: "unlocked", attributes: {} } : { state: "locked", attributes: {} };
+  if (kind === "door") return now.open ? { state: "closed", attributes: {} } : { state: "open", attributes: {} };
+  if (kind === "ac") return now.on ? { state: "off", attributes: {} } : { state: "cool", attributes: { temperature: 22, current_temperature: 25 } };
+  if (kind === "fan") return now.on ? { state: "off", attributes: {} } : { state: "on", attributes: { percentage: 70 } };
+  if (kind === "vacuum") return now.on ? { state: "docked", attributes: {} } : { state: "cleaning", attributes: {} };
+  if (kind === "tv" || kind === "speaker") return now.on ? { state: "off", attributes: {} } : { state: "playing", attributes: {} };
+  return now.on ? { state: "off", attributes: {} } : { state: "on", attributes: {} };
 }
 
 // What a tap does.
