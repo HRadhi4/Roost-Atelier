@@ -77,6 +77,22 @@ KINDS = [
     "chandelier",
     "candle_chandelier",
     "ceiling_light",
+    "surface_spot",
+    "anti_glare_spot",
+    "aluminium_profile_light",
+    "linear_pendant",
+    "neon_light",
+    "filament_bulb_pendant",
+    "glass_globe_pendant",
+    "wall_light",
+    "bedside_reading_light",
+    "table_lamp",
+    "desk_lamp",
+    "wall_washer",
+    "step_light",
+    "garden_bollard",
+    "ground_uplight",
+    "floodlight",
     "air_conditioner",
     "curtain",
     "tv",
@@ -97,6 +113,14 @@ Ceiling lights, count every fitting you can see:
 - pendant_lamp: one shade hanging on a cord; basket_pendant when the shade is woven rattan, seagrass or wicker.
 - chandelier: a crystal or ring chandelier; candle_chandelier when black or brass arms hold candle-shaped bulbs.
 - ceiling_light: a dome or round fitting stuck to the ceiling. ceiling_fan: a fan with blades hanging from the ceiling.
+- surface_spot: a small cylinder spot fixed under the ceiling. anti_glare_spot: a recessed spot with the light set deep inside a dark cone.
+- aluminium_profile_light: a thin continuous line of light set flush into the ceiling. linear_pendant: a long bar of light hanging on wires.
+- neon_light: a glowing flexible neon tube. filament_bulb_pendant: a bare decorative bulb on a cord. glass_globe_pendant: a glass ball pendant.
+Wall, table and outdoor lights:
+- wall_light: a light fixed on a wall (up, down or both). bedside_reading_light: a small wall light on an arm next to a bed.
+- table_lamp: a lamp with a shade standing on a table. desk_lamp: an adjustable desk lamp. wall_washer: a low bar lighting up a wall.
+- step_light: a small light low in a wall by stairs or a path. garden_bollard: a short post light in a garden. ground_uplight: a light set
+  into the ground shining up. floodlight: a strong outdoor light on a wall.
 Things a smart home controls: air_conditioner (a wall split unit), curtain (fabric curtains or a blind; one entry per window), tv, ceiling_fan.
 Kitchen: base_cabinets (the lower run with a worktop), wall_cabinets (upper cabinets on the wall), tall_cabinet (floor to ceiling),
 oven_tower (a tall cabinet with built-in ovens or microwave), hob_and_oven (gas or electric hob with an oven under it), sink_cabinet,

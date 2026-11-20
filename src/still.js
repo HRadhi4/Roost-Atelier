@@ -96,7 +96,7 @@ export function projectPano(eye, yaw, pitch, fov, aspect, p) {
 // where each device is, for its button: real height in the room
 export function devicePoint(dv, floor, H) {
   const kind = dv.kind || "light", look = dv.look || "flush";
-  if (kind === "light") return [dv.x, look === "floor" ? 1.45 : look === "pendant" ? H - 0.85 : look === "chandelier" ? H - 0.9 : H - 0.04, dv.y];
+  if (kind === "light") return [dv.x, look === "floor" ? 1.45 : look === "wall" ? dv.z ?? (dv.style === "reading" ? 1.1 : 1.8) : look === "step" ? dv.z ?? 0.3 : look === "flood" ? dv.z ?? Math.min(2.6, H - 0.2) : look === "table" ? (dv.z ?? 0.55) + 0.4 : look === "bollard" ? 0.75 : look === "uplight" ? 0.05 : look === "linear" && dv.style === "washer" ? 0.1 : look === "linear" && dv.style === "pendant" ? H - (dv.drop ?? 0.7) : look === "pendant" ? H - 0.85 : look === "chandelier" ? H - 0.9 : H - 0.04, dv.y];
   if (kind === "ac") return [dv.x, H - 0.45, dv.y];
   if (kind === "fan") return [dv.x, H - 0.4, dv.y];
   if (kind === "curtain" || kind === "door" || kind === "lock") {

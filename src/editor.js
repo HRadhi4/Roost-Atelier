@@ -5,7 +5,9 @@ import { ROOM_TYPES, uid, clone, snap, round, rect, area, centroid, bounds, insi
 import { SAMPLES } from "./samples.js";
 import { LIBRARY, CATEGORIES, dims } from "./furniture.js";
 import { FLOORS, WALLS, FABRICS, swatchColor, swatchCanvas } from "./materials.js";
-import { KINDS, LIGHT_LOOKS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex, radarTargets } from "./devices.js";
+import { KINDS, LIGHT_LOOKS, LIGHT_SUBS, LIGHT_GROUPS, deviceKind, LUMENS, KELVIN, RULES, kelvinToHex, radarTargets } from "./devices.js";
+import { WALL_LOOKS } from "./lights.js";
+import { autoPlace } from "./autoplace.js";
 import { matchPhoto } from "./calibrate.js";
 import { RoomPhotographer } from "./photos.js";
 import { settle } from "./collide.js";
@@ -240,6 +242,8 @@ export class AtelierEditor {
     if (this.sel?.t === "item") this.preview?.set(this.find(this.sel));
     if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan, this.fi); }; if (this._dragging && now - (this._lastRb || 0) < 450) this._rb = setTimeout(go, 450); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
     this.markUnsaved(); this.setStatus(t("Saving")); clearTimeout(this._sv); this._sv = setTimeout(() => this.save(), 1200);
+    // once rooms are drawn and named, Home Assistant's devices go into the rooms with the same names, by themselves
+    clearTimeout(this._ap); this._ap = setTimeout(() => { if (!this.drag) this.placeFromHA(true); }, 2500);
     this.root.querySelector('[data-a="undo"]').toggleAttribute("disabled", !this.undoStack.length);
     this.root.querySelector('[data-a="redo"]').toggleAttribute("disabled", !this.redoStack.length);
   }
@@ -760,7 +764,14 @@ export class AtelierEditor {
       const sub = kind.startsWith("light:") ? kind.slice(6) : null; if (sub) kind = "light";
       const d = { id: uid("d"), kind, entity: "", x: round(snap(P[0]), 3), y: round(snap(P[1]), 3), name: t(KINDS[kind].name) };
       if (kind === "light") d.look = "flush";
-      if (sub) { d.look = { cove: "linear", slot: "linear", twin: "downlight", roundpanel: "panel" }[sub] || sub; if (sub === "cove" || sub === "slot") d.style = sub; if (sub === "slot") d.len = 2.4; if (sub === "twin") d.heads = 2; if (sub === "roundpanel") d.shape = "round"; d.name = t({ downlight: "Recessed spot", twin: "Twin spot", panel: "Square LED panel", roundpanel: "Round LED panel", slot: "Magnetic slot light", track: "Track light", linear: "Linear light", cove: "Hidden cove", focus: "Focus light" }[sub]); if (sub === "focus") this.aimAtWall(d); }
+      if (sub) {
+        // every kind of fitting a lighting shop sells: [look, options, name]
+        const SUB = LIGHT_SUBS[sub] || [sub, {}, LIGHT_LOOKS[sub] || "Light"];
+        d.look = SUB[0]; Object.assign(d, clone(SUB[1])); d.name = t(SUB[2]);
+        if (sub === "focus") this.aimAtWall(d);
+      }
+      if (kind === "light" && WALL_LOOKS.has(d.look)) { const nw = nearestWall(this.floor, P, 3); if (nw) { const nx = (P[0] - nw.q[0]) / (nw.d || 1), ny = (P[1] - nw.q[1]) / (nw.d || 1); d.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); d.x = round(nw.q[0] + nx * (nw.w.thick / 2 + 0.005), 3); d.y = round(nw.q[1] + ny * (nw.w.thick / 2 + 0.005), 3); } }
+      if (kind === "light" && d.look === "linear" && d.style === "washer") { const nw = nearestWall(this.floor, P, 3); if (nw) { const nx = (P[0] - nw.q[0]) / (nw.d || 1), ny = (P[1] - nw.q[1]) / (nw.d || 1); d.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); d.x = round(nw.q[0] + nx * (nw.w.thick / 2 + 0.12), 3); d.y = round(nw.q[1] + ny * (nw.w.thick / 2 + 0.12), 3); } }
       if (kind === "ac" || kind === "radar") { const nw = nearestWall(this.floor, P, 3); if (nw) { const nx = (P[0] - nw.q[0]) / (nw.d || 1), ny = (P[1] - nw.q[1]) / (nw.d || 1); d.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); d.x = round(nw.q[0] + nx * (nw.w.thick / 2 + (kind === "ac" ? 0.13 : 0.02)), 3); d.y = round(nw.q[1] + ny * (nw.w.thick / 2 + (kind === "ac" ? 0.13 : 0.02)), 3); } }
       if (kind === "curtain" || kind === "door") { const o = this.floor.openings.filter((o) => (kind === "door" ? o.type === "door" : o.type === "window" || o.type === "slider")).sort((a, b) => Math.hypot(a.x - P[0], a.y - P[1]) - Math.hypot(b.x - P[0], b.y - P[1]))[0]; if (o) { d.x = o.x; d.y = o.y; } }
       this.floor.devices.push(d); this.sel = { t: "dev", id: d.id };
@@ -894,6 +905,7 @@ export class AtelierEditor {
     });
     a.querySelectorAll("[data-aimby]").forEach((b) => (b.onclick = () => { set(() => (obj.aim = ((((obj.aim ?? (obj.rot || 0) - 90) + +b.dataset.aimby) % 360) + 360) % 360)); this.inspector(); }));
     a.querySelectorAll("[data-style]").forEach((b) => (b.onclick = () => { set(() => { obj.style = b.dataset.style; if (obj.style === "slot" && !obj.len) obj.len = 2.4; }); this.inspector(); }));
+    a.querySelectorAll("[data-opt]").forEach((b) => (b.onclick = () => { set(() => { obj[b.dataset.opt] = b.dataset.val; if (b.dataset.opt === "style" && b.dataset.val === "slot" && !obj.len) obj.len = 2.4; }); this.inspector(); }));
     a.querySelectorAll("[data-heads]").forEach((b) => (b.onclick = () => { set(() => (obj.heads = +b.dataset.heads)); this.inspector(); }));
     a.querySelectorAll("[data-shape]").forEach((b) => (b.onclick = () => { set(() => (obj.shape = b.dataset.shape)); this.inspector(); }));
     a.querySelector("[data-grid]")?.addEventListener("click", () => {
@@ -918,6 +930,8 @@ export class AtelierEditor {
   }
   // the settings each kind of lamp needs, nothing more
   lampFields(obj, slider) {
+    // a row of choices for one setting (style by default); the first is what an unset value means
+    const styles = (list, dflt, key = "style") => `<div class="seg wrap">${list.map(([v, n]) => `<button data-opt="${key}" data-val="${v}" class="${(obj[key] || dflt) === v ? "on" : ""}">${t(n)}</button>`).join("")}</div>`;
     const look = obj.look || "flush", room = this.floor.rooms.find((r) => inside([obj.x, obj.y], r.pts)), b = room && bounds(room.pts);
     const rot = `<div class="field"><h3>${t("Turn")}</h3><div class="row"><button data-rotby="-90"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-rotby="-15">−15°</button><b>${obj.rot || 0}°</b><button data-rotby="15">+15°</button><button data-rotby="90"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
     let h = "";
@@ -926,12 +940,19 @@ export class AtelierEditor {
       h += `<div class="field"><h3>${t("Point the heads")}</h3><div class="row"><button data-aimby="-45"><ha-icon icon="mdi:rotate-left"></ha-icon></button><button data-aimby="180"><ha-icon icon="mdi:swap-horizontal"></ha-icon></button><button data-aimby="45"><ha-icon icon="mdi:rotate-right"></ha-icon></button></div></div>`;
     }
     if (look === "linear") {
-      h += `<div class="seg"><button data-style="strip" class="${!obj.style || obj.style === "strip" ? "on" : ""}">${t("Strip")}</button><button data-style="slot" class="${obj.style === "slot" ? "on" : ""}">${t("Magnetic slot")}</button><button data-style="cove" class="${obj.style === "cove" ? "on" : ""}">${t("Hidden cove")}</button></div>`;
+      h += styles([["strip", "Strip"], ["slot", "Magnetic slot"], ["cove", "Hidden cove"], ["profile", "Aluminium profile"], ["neon", "Neon flex"], ["pendant", "Hanging bar"], ["washer", "Wall washer"]], "strip");
+      if (obj.style === "pendant") h += slider("drop", "Hangs down", 0.2, 1.6, 0.05, obj.drop ?? 0.7);
       h += slider("len", "Length", 0.3, 10, 0.05, obj.len || 1.2) + (obj.style === "slot" ? slider("bars", "Lit bars", 0, 12, 1, obj.bars ?? 3, "") : "") + rot;
     }
+    if (look === "downlight") h += styles([["recessed", "Recessed"], ["deep", "Anti-glare"], ["square", "Square frame"], ["surface", "Surface can"]], "recessed");
+    if (look === "wall") h += styles([["updown", "Up and down"], ["up", "Up"], ["down", "Down"], ["reading", "Reading arm"]], "updown") + slider("z", "Height", 0.3, 2.6, 0.05, obj.z ?? (obj.style === "reading" ? 1.1 : 1.8)) + rot;
+    if (look === "table") h += styles([["table", "Table lamp"], ["desk", "Desk lamp"]], "table") + slider("z", "Table height", 0, 1.2, 0.05, obj.z ?? (obj.style === "desk" ? 0.75 : 0.55)) + rot;
+    if (look === "step" || look === "flood") h += slider("z", "Height", 0.1, 4, 0.05, obj.z ?? (look === "step" ? 0.3 : 2.6)) + rot;
+    if (look === "uplight") h += slider("tilt", "Lean", 0, 40, 1, obj.tilt ?? 10, "°") + rot;
+    if (["wall", "table", "bollard", "step", "flood", "downlight", "track", "linear"].includes(look)) h += styles([["white", "White"], ["black", "Black"], ["gold", "Brass"]], "white", "finish");
     if (look === "downlight") h += `<div class="seg"><button data-heads="1" class="${obj.heads !== 2 ? "on" : ""}">${t("Single")}</button><button data-heads="2" class="${obj.heads === 2 ? "on" : ""}">${t("Twin")}</button></div>` + (obj.heads === 2 ? rot : "");
     if (look === "panel") h += `<div class="seg"><button data-shape="square" class="${obj.shape !== "round" ? "on" : ""}">${t("Square")}</button><button data-shape="round" class="${obj.shape === "round" ? "on" : ""}">${t("Round")}</button></div>` + slider("size", "Size", 0.15, 1.2, 0.05, obj.size || 0.3) + (obj.shape !== "round" ? rot : "");
-    if (look === "pendant") h += `<div class="seg"><button data-style="dome" class="${obj.style !== "basket" ? "on" : ""}">${t("Metal dome")}</button><button data-style="basket" class="${obj.style === "basket" ? "on" : ""}">${t("Woven basket")}</button></div>`;
+    if (look === "pendant") h += styles([["dome", "Metal dome"], ["basket", "Woven basket"], ["bulb", "Filament bulb"], ["glass", "Glass globe"]], "dome");
     if (look === "chandelier") h += `<div class="seg"><button data-style="crystal" class="${obj.style !== "candle" ? "on" : ""}">${t("Crystal ring")}</button><button data-style="candle" class="${obj.style === "candle" ? "on" : ""}">${t("Candle arms")}</button></div>`;
     if (look === "focus") h += `<p class="tip">${t("Drag the small target on the plan onto the painting or wall it should light.")}</p>` + slider("tz", "Aim height", 0.2, 2.6, 0.05, obj.tz ?? 1.4);
     if (b) h += slider("wl", "From the left wall", 0, round(b.x1 - b.x0, 2), 0.01, round(obj.x - b.x0, 2)) + slider("wt", "From the top wall", 0, round(b.y1 - b.y0, 2), 0.01, round(obj.y - b.y0, 2));
@@ -949,8 +970,8 @@ export class AtelierEditor {
   }
   deviceLibrary() {
     const a = this.aside;
-    const CEIL = [["light:downlight", "mdi:circle-small", "Recessed spot"], ["light:twin", "mdi:circle-multiple-outline", "Twin spot"], ["light:panel", "mdi:square-rounded-outline", "Square LED panel"], ["light:roundpanel", "mdi:circle-outline", "Round LED panel"], ["light:slot", "mdi:dots-horizontal-circle-outline", "Magnetic slot light"], ["light:track", "mdi:dots-horizontal", "Track light"], ["light:linear", "mdi:minus-thick", "Linear light"], ["light:cove", "mdi:border-top-variant", "Hidden cove"], ["light:focus", "mdi:spotlight-beam", "Focus light"]];
-    a.innerHTML = `<h2><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p><h3 class="sub">${t("Ceiling lights")}</h3><div class="lib">${CEIL.map(([k, ic, n]) => `<div class="tile" data-kind="${k}" data-name="${n}"><ha-icon icon="${ic}" style="--mdc-icon-size:28px;color:#F5B041"></ha-icon><span>${t(n)}</span></div>`).join("")}</div><h3 class="sub">${t("Devices")}</h3><div class="lib">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}"><ha-icon icon="${K.icon}" style="--mdc-icon-size:28px;color:${DEV_COL[k]}"></ha-icon><span>${t(K.name)}</span></div>`).join("")}</div>`;
+    const tiles = (list) => `<div class="lib">${list.map((k) => `<div class="tile" data-kind="light:${k}" data-name="${LIGHT_SUBS[k][2]}"><ha-icon icon="${LIGHT_SUBS[k][3]}" style="--mdc-icon-size:28px;color:#F5B041"></ha-icon><span>${t(LIGHT_SUBS[k][2])}</span></div>`).join("")}</div>`;
+    a.innerHTML = `<h2><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p>${LIGHT_GROUPS.map(([title, list]) => `<h3 class="sub">${t(title)}</h3>${tiles(list)}`).join("")}<h3 class="sub">${t("Devices")}</h3><div class="lib">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}"><ha-icon icon="${K.icon}" style="--mdc-icon-size:28px;color:${DEV_COL[k]}"></ha-icon><span>${t(K.name)}</span></div>`).join("")}</div>`;
     a.querySelectorAll(".tile").forEach((el) => this.dragNew(el, el.dataset.kind, true, el.dataset.name || KINDS[el.dataset.kind].name));
   }
   dragNew(el, kind, isDevice, label) {
@@ -968,6 +989,31 @@ export class AtelierEditor {
       window.addEventListener("pointermove", mv); window.addEventListener("pointerup", done); window.addEventListener("pointercancel", done);
     });
   }
+  // put Home Assistant's devices in their rooms (by area). auto: quietly, only when something new fits
+  placeFromHA(auto = false) {
+    const h = this._hass; if (!h?.areas || !this.floor?.rooms.length) return null;
+    const st = (this.plan.settings ||= {}), here = new Set(this.plan.floors.flatMap((f) => f.devices.map((d) => d.entity)).filter(Boolean));
+    // devices placed before and taken out by the person since: never put back
+    // (also remembered outside the undo history, so undoing a placement doesn't bring it straight back)
+    this._haSeen ||= new Set();
+    const skip = new Set([...(st.haPlaced || []), ...(auto ? this._haSeen : [])].filter((e) => !here.has(e)));
+    const r = autoPlace(h, this.floor, { chosen: (st.areaRooms ||= {})[this.fi] || {}, skip });
+    if (!r.add.length && !r.link.length) { if (!auto) this.toast(t("Everything from Home Assistant is already in its room")); return r; }
+    this.snapshot();
+    for (const l of r.link) { const d = this.floor.devices.find((x) => x.id === l.id); if (d) d.entity = l.entity; }
+    for (const d of r.add) {
+      const { room, needsWindow, wantsScreen, ...dv } = d; void room; void needsWindow;
+      if (dv.kind === "light" || dv.kind === "ac") { dv.name = dv.name || t(KINDS[dv.kind].name); }
+      if (wantsScreen && !this.floor.items.some((i) => /^tv/.test(i.kind) && Math.hypot(i.x - dv.x, i.y - dv.y) < 1.5)) this.floor.items.push({ id: uid("i"), kind: "tv", x: dv.x, y: dv.y, rot: dv.rot || 0 });
+      this.floor.devices.push(dv);
+    }
+    st.haPlaced = [...new Set([...(st.haPlaced || []), ...r.add.map((d) => d.entity), ...r.link.map((l) => l.entity)])];
+    for (const e of st.haPlaced) this._haSeen.add(e);
+    this.changed();
+    const rooms = new Set(r.add.map((d) => d.room)).size || 1;
+    this.toast(`${t("Placed from Home Assistant")}: ${r.add.length + r.link.length} · ${rooms} ${t(rooms === 1 ? "room" : "rooms")}`);
+    return r;
+  }
   homePanel(settings) {
     const a = this.aside, p = this.plan, f = this.floor, st = p.settings;
     const total = f.rooms.filter((r) => !ROOM_TYPES[r.type]?.outdoor).reduce((s, r) => s + Math.abs(area(r.pts)), 0);
@@ -983,10 +1029,13 @@ export class AtelierEditor {
       <div class="row between"><span>${t("Real sun")}</span><button data-sun class="${st.sun !== false ? "on" : ""}"><ha-icon icon="mdi:white-balance-sunny"></ha-icon></button></div>
       <div class="field"><h3>${t("Quality")}</h3><div class="seg">${["auto", "low", "medium", "high"].map((q) => `<button data-q="${q}" class="${(st.quality || "auto") === q ? "on" : ""}">${t(q[0].toUpperCase() + q.slice(1))}</button>`).join("")}</div></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ha-icon icon="mdi:delete-outline"></ha-icon>${t("Delete")}</button></div>` : ""}</div>
+      <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ha-icon icon="mdi:home-import-outline"></ha-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
       <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made by themselves in the background once the light is ready")}</span></div></div>
       <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ha-icon icon="mdi:image-multiple-outline"></ha-icon>${t("Make dashboard pictures")}</button><button data-preview><ha-icon icon="mdi:eye-outline"></ha-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
+    this.drawAreas(a.querySelector("[data-ha-areas]"));
+    a.querySelector("[data-ha-place]")?.addEventListener("click", () => { this.placeFromHA(false); this.drawAreas(a.querySelector("[data-ha-areas]")); });
     this.drawPanos(a.querySelector("[data-panos]"));
     a.querySelector("[data-publish]")?.addEventListener("click", () => this.photographer.publish());
     a.querySelector("[data-preview]")?.addEventListener("click", () => this.showPano(null, null));
@@ -1006,6 +1055,16 @@ export class AtelierEditor {
     a.querySelector("[data-north]").addEventListener("change", () => this.changed(false));
     a.querySelector("[data-sun]").onclick = () => { set(() => (st.sun = st.sun === false)); this.homePanel(); this.view.hass = this._hass; this.view._sun = undefined; this.view.hass = this._hass; };
     a.querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { set(() => (st.quality = b.dataset.q), false); this.homePanel(); }));
+  }
+  // areas with devices but no room of the same name: pick a room for each (or leave it out)
+  drawAreas(el) {
+    const h = this._hass; if (!el || !h?.areas) return;
+    const st = (this.plan.settings ||= {}), mine = ((st.areaRooms ||= {})[this.fi] ||= {});
+    const r = autoPlace(h, this.floor, { chosen: mine }), list = [...r.unmatched, ...Object.entries(mine).filter(([id]) => h.areas[id]).map(([id]) => ({ id, name: h.areas[id].name, chosen: true }))];
+    if (!list.length) { el.innerHTML = ""; return; }
+    const rooms = this.floor.rooms;
+    el.innerHTML = `<p class="tip">${t("These areas have devices but no room with the same name. Choose a room:")}</p>` + list.map((u) => `<div class="row between"><span>${esc(u.name)}${u.count ? ` <small class="tip">${u.count}</small>` : ""}</span><select data-area="${esc(u.id)}"><option value="">${t("Leave out")}</option>${rooms.map((x) => `<option value="${esc(x.id)}" ${mine[u.id] === x.id ? "selected" : ""}>${esc(x.name || t(ROOM_TYPES[x.type]?.name || "Room"))}</option>`).join("")}</select></div>`).join("");
+    el.querySelectorAll("[data-area]").forEach((sel) => (sel.onchange = () => { mine[sel.dataset.area] = sel.value; this.changed(false); this.placeFromHA(false); this.drawAreas(el); }));
   }
   async drawShots(el) {
     if (!this.plan?.id || !el) return;

@@ -15,9 +15,10 @@ export const QUERIES = {
   round_led_panel: "a round flat ceiling light", magnetic_slot_light: "a long thin linear ceiling light", pendant_lamp: "a hanging pendant lamp",
   basket_pendant: "a woven wicker pendant lamp", chandelier: "a chandelier", air_conditioner: "a wall air conditioner", curtain: "curtains",
   tv: "a television", ceiling_fan: "a ceiling fan", window: "a window", door: "a door",
+  surface_spot: "a small cylinder spotlight mounted on the ceiling", linear_pendant: "a long linear light hanging from the ceiling", neon_light: "a glowing neon light", filament_bulb_pendant: "a bare light bulb hanging on a cord", glass_globe_pendant: "a glass globe pendant lamp", wall_light: "a wall sconce light", table_lamp: "a table lamp with a shade", desk_lamp: "a desk lamp", garden_bollard: "a garden bollard light", floodlight: "an outdoor floodlight",
 };
-const CEILING = new Set(["recessed_spot", "square_led_panel", "round_led_panel", "magnetic_slot_light", "pendant_lamp", "basket_pendant", "chandelier", "ceiling_fan"]);
-const ON_WALL = new Set(["curtain", "window", "air_conditioner", "wall_cabinets", "cooker_hood", "led_mirror", "round_mirror", "towel_rail", "extractor_fan"]);
+const CEILING = new Set(["surface_spot", "linear_pendant", "filament_bulb_pendant", "glass_globe_pendant", "recessed_spot", "square_led_panel", "round_led_panel", "magnetic_slot_light", "pendant_lamp", "basket_pendant", "chandelier", "ceiling_fan"]);
+const ON_WALL = new Set(["wall_light", "floodlight", "curtain", "window", "air_conditioner", "wall_cabinets", "cooker_hood", "led_mirror", "round_mirror", "towel_rail", "extractor_fan"]);
 // some answers need a surer look before they count (small or easily mistaken things)
 const MIN = { recessed_spot: 0.12, towel_rail: 0.16, extractor_fan: 0.16, shower: 0.14, door: 0.16, window: 0.13, rug: 0.12, plant: 0.14 };
 const BASE_MIN = 0.1;

@@ -29,11 +29,11 @@ export function radarTargets(dv, states) {
   }
   return out;
 }
-export const LIGHT_LOOKS = { pendant: "Pendant", chandelier: "Chandelier", spots: "Spotlights", flush: "Ceiling light", floor: "Floor lamp", downlight: "Recessed spot", panel: "LED panel", track: "Track light", linear: "Linear light", focus: "Focus light" };
-const BASE = { pendant: 30, chandelier: 45, spots: 22, flush: 30, floor: 14, downlight: 14, panel: 26, track: 12, linear: 16, focus: 10 };
+export const LIGHT_LOOKS = { pendant: "Pendant", chandelier: "Chandelier", spots: "Spotlights", flush: "Ceiling light", floor: "Floor lamp", downlight: "Recessed spot", panel: "LED panel", track: "Track light", linear: "Linear light", focus: "Focus light", wall: "Wall light", table: "Table lamp", bollard: "Garden bollard", uplight: "Ground uplight", step: "Step light", flood: "Floodlight" };
+const BASE = { pendant: 30, chandelier: 45, spots: 22, flush: 30, floor: 14, downlight: 14, panel: 26, track: 12, linear: 16, focus: 10, wall: 12, table: 10, bollard: 10, uplight: 10, step: 6, flood: 18 };
 // typical real output of each kind of fitting, in lumens, and its warmth in kelvin
-export const LUMENS = { pendant: 900, chandelier: 2400, spots: 1200, flush: 1800, floor: 700, downlight: 600, panel: 1600, track: 500, linear: 900, focus: 450 };
-export const KELVIN = { pendant: 2700, chandelier: 2700, spots: 3000, flush: 3000, floor: 2700, downlight: 3000, panel: 4000, track: 3000, linear: 3000, focus: 3000 };
+export const LUMENS = { pendant: 900, chandelier: 2400, spots: 1200, flush: 1800, floor: 700, downlight: 600, panel: 1600, track: 500, linear: 900, focus: 450, wall: 500, table: 450, bollard: 300, uplight: 400, step: 120, flood: 2000 };
+export const KELVIN = { pendant: 2700, chandelier: 2700, spots: 3000, flush: 3000, floor: 2700, downlight: 3000, panel: 4000, track: 3000, linear: 3000, focus: 3000, wall: 2700, table: 2700, bollard: 3000, uplight: 3000, step: 3000, flood: 4000 };
 // lamps that aren't smart: when they are on
 export const RULES = { demo: "Always on", on: "Always on", off: "Always off", night: "On after sunset", schedule: "On between set times" };
 function ruleOn(dv, ctx) {
@@ -113,3 +113,44 @@ export function tapAction(hass, entity) {
   if (d === "scene" || d === "script") return call(d, "turn_on");
   return false;
 }
+
+// Every fitting in the device library, grouped like a lighting shop: [look, options, name, icon]
+export const LIGHT_SUBS = {
+  downlight: ["downlight", {}, "Recessed spot", "mdi:circle-small"],
+  twin: ["downlight", { heads: 2 }, "Twin spot", "mdi:circle-multiple-outline"],
+  deepspot: ["downlight", { style: "deep" }, "Anti-glare spot", "mdi:circle-double"],
+  squarespot: ["downlight", { style: "square" }, "Square spot (AR111)", "mdi:square-small"],
+  surfacespot: ["downlight", { style: "surface" }, "Surface spot", "mdi:cylinder"],
+  panel: ["panel", {}, "Square LED panel", "mdi:square-rounded-outline"],
+  roundpanel: ["panel", { shape: "round" }, "Round LED panel", "mdi:circle-outline"],
+  flush: ["flush", {}, "Ceiling light", "mdi:ceiling-light"],
+  slot: ["linear", { style: "slot", len: 2.4 }, "Magnetic slot light", "mdi:dots-horizontal-circle-outline"],
+  track: ["track", {}, "Track light", "mdi:dots-horizontal"],
+  linear: ["linear", {}, "Linear light", "mdi:minus-thick"],
+  profile: ["linear", { style: "profile", len: 2 }, "Aluminium profile", "mdi:view-sequential-outline"],
+  linpendant: ["linear", { style: "pendant", len: 1.2 }, "Linear pendant", "mdi:ceiling-light-multiple-outline"],
+  cove: ["linear", { style: "cove" }, "Hidden cove", "mdi:border-top-variant"],
+  neon: ["linear", { style: "neon", len: 1.5 }, "Neon flex", "mdi:led-strip-variant"],
+  focus: ["focus", {}, "Focus light", "mdi:spotlight-beam"],
+  pendant: ["pendant", {}, "Pendant", "mdi:ceiling-light-outline"],
+  bulbpendant: ["pendant", { style: "bulb" }, "Filament bulb pendant", "mdi:lightbulb-outline"],
+  globe: ["pendant", { style: "glass" }, "Glass globe pendant", "mdi:circle-opacity"],
+  chandelier: ["chandelier", {}, "Chandelier", "mdi:chandelier"],
+  wall: ["wall", {}, "Wall light", "mdi:wall-sconce-flat-outline"],
+  reading: ["wall", { style: "reading" }, "Bedside reading light", "mdi:desk-lamp"],
+  table: ["table", {}, "Table lamp", "mdi:lamp-outline"],
+  desk: ["table", { style: "desk" }, "Desk lamp", "mdi:desk-lamp-on"],
+  floor: ["floor", {}, "Floor lamp", "mdi:floor-lamp-outline"],
+  washer: ["linear", { style: "washer", len: 1.2 }, "Wall washer", "mdi:wall-sconce-flat-variant"],
+  step: ["step", {}, "Step light", "mdi:stairs"],
+  bollard: ["bollard", {}, "Garden bollard", "mdi:coach-lamp"],
+  uplight: ["uplight", {}, "Ground uplight", "mdi:spotlight"],
+  flood: ["flood", {}, "Floodlight", "mdi:light-flood-down"],
+};
+export const LIGHT_GROUPS = [
+  ["Ceiling lights", ["downlight", "twin", "deepspot", "squarespot", "surfacespot", "panel", "roundpanel", "flush", "focus"]],
+  ["Lines and tracks", ["slot", "track", "linear", "profile", "linpendant", "cove", "neon"]],
+  ["Hanging lights", ["pendant", "bulbpendant", "globe", "chandelier"]],
+  ["Wall, table and floor", ["wall", "reading", "table", "desk", "floor", "washer"]],
+  ["Outdoor", ["step", "bollard", "uplight", "flood"]],
+];

@@ -19,7 +19,7 @@ import { floorMaterial, wallMaterial, solid, wood, glass, metal, fabric } from "
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
 import { deviceKind, lightLook, stateOf, kelvinToHex } from "./devices.js";
 import { BakeManager } from "./bake/index.js";
-import { emittersFor, lampModel, aimModel } from "./lights.js";
+import { emittersFor, lampModel, aimModel, anchorOf } from "./lights.js";
 import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -439,15 +439,16 @@ export class AtelierEngine {
       let l;
       if (em) {
         // recessed spots, track lights, linear and cove lights, focus lights: exact emitters
-        const model = lampModel(dv, look); g.add(model); g.position.set(dv.x, H, dv.y); rec.mount = "ceiling";
+        const model = lampModel(dv, look), an = anchorOf(dv, look, H); g.add(model); g.position.set(dv.x, an.y, dv.y); rec.mount = an.mount;
         const lip = model.getObjectByName("lip");
         if (lip) { model.remove(lip); lip.material = solid("#F7F5F1", { rough: 0.95 }); lip.position.set(dv.x, H - 0.125, dv.y); lip.rotation.y = ((dv.rot || 0) * Math.PI) / 180; this.ceilings.add(lip); }
-        if (look === "track" || look === "linear" || look === "panel" || look === "downlight") g.rotation.y = ((dv.rot || 0) * Math.PI) / 180;
+        if (an.turn) g.rotation.y = ((dv.rot || 0) * Math.PI) / 180;
         aimModel(g, dv, look, em);
         rec.emitters = em; rec.lmScale = em.reduce((a, e) => a + (e.w ?? 1), 0);
-        const c = em.reduce((a, e) => a.map((v, i) => v + e.p[i] / em.length), [0, 0, 0]), dir = new THREE.Vector3(...em.reduce((a, e) => a.map((v, i) => v + e.dir[i]), [0, 0, 0])).normalize();
+        const c = em.reduce((a, e) => a.map((v, i) => v + e.p[i] / em.length), [0, 0, 0]), dsum = new THREE.Vector3(...em.reduce((a, e) => a.map((v, i) => v + e.dir[i]), [0, 0, 0])), dir = dsum.clone().normalize();
         rec.lightPos = new THREE.Vector3(...c);
-        if (em[0].cone) { l = new THREE.SpotLight("#ffd29a", 0, 0, Math.min(1.3, em[0].cone * 1.25), 0.6, 2); l.target.position.copy(rec.lightPos).add(dir); this.scene.add(l.target); rec.cone = em[0].cone; }
+        // a lamp shining two ways at once (up and down wall lights) is one soft point light in the live view
+        if (em[0].cone && dsum.length() > 0.3 * em.length) { l = new THREE.SpotLight("#ffd29a", 0, 0, Math.min(1.3, em[0].cone * 1.25), 0.6, 2); l.target.position.copy(rec.lightPos).add(dir); this.scene.add(l.target); rec.cone = em[0].cone; }
         else l = new THREE.PointLight("#ffd29a", 0, 9, 2);
       } else {
         const mk = DEVICE_LOOKS[look] || DEVICE_LOOKS.flush;

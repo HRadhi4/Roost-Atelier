@@ -92,6 +92,19 @@ function pendant(o) {
     bulb.material = bulb.material.clone(); bulb.name = "glow"; g.add(bulb);
     return g;
   }
+  if (o.style === "bulb") {
+    // a bare filament bulb on its cord: the glass itself glows warm
+    const cap = mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.04, 12), metal("#B08D57"), 0, -h - 0.02, 0); g.add(cap);
+    const bulb = mesh(new THREE.SphereGeometry(0.065, 20, 16), solid("#FFE7B8", { emissive: "#FFC07A", emissiveIntensity: 0, rough: 0.1 }), 0, -h - 0.1, 0);
+    bulb.scale.y = 1.25; bulb.material = bulb.material.clone(); bulb.name = "glow"; g.add(bulb);
+    return g;
+  }
+  if (o.style === "glass") {
+    // a clear or opal glass globe with the bulb glowing inside
+    const globe = mesh(new THREE.SphereGeometry(0.15, 32, 20), solid("#F4F1EA", { rough: 0.15, emissive: "#FFD9A0", emissiveIntensity: 0, opacity: 0.85 }), 0, -h - 0.15, 0);
+    globe.material = globe.material.clone(); globe.name = "glow"; g.add(globe);
+    return g;
+  }
   const shade = mesh(new THREE.SphereGeometry(0.22, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), solid("#1D1E22", { rough: 0.35, metal: 0.6, side: THREE.DoubleSide }), 0, -h, 0);
   g.add(shade);
   const bulb = mesh(new THREE.SphereGeometry(0.06, 16, 12), solid("#FFF3DC", { emissive: "#FFD9A0", emissiveIntensity: 0 }), 0, -h - 0.02, 0);

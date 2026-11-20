@@ -34,6 +34,23 @@ export const CATALOG = {
   pendant_lamp: { l: { look: "pendant" } }, basket_pendant: { l: { look: "pendant", style: "basket" } },
   chandelier: { l: { look: "chandelier" } }, candle_chandelier: { l: { look: "chandelier", style: "candle" } },
   ceiling_light: { l: { look: "flush" } },
+  // more fittings a lighting shop sells: on the ceiling, hanging, on walls and tables, and outdoors
+  surface_spot: { l: { look: "downlight", style: "surface" } },
+  anti_glare_spot: { l: { look: "downlight", style: "deep" } },
+  aluminium_profile_light: { l: { look: "linear", style: "profile", len: 2 } },
+  linear_pendant: { l: { look: "linear", style: "pendant", len: 1.2 } },
+  neon_light: { l: { look: "linear", style: "neon", len: 1.5 } },
+  filament_bulb_pendant: { l: { look: "pendant", style: "bulb" } },
+  glass_globe_pendant: { l: { look: "pendant", style: "glass" } },
+  wall_light: { l: { look: "wall" } },
+  bedside_reading_light: { l: { look: "wall", style: "reading" } },
+  table_lamp: { l: { look: "table" } },
+  desk_lamp: { l: { look: "table", style: "desk" } },
+  wall_washer: { l: { look: "linear", style: "washer", len: 1.2 } },
+  step_light: { l: { look: "step" } },
+  garden_bollard: { l: { look: "bollard" } },
+  ground_uplight: { l: { look: "uplight" } },
+  floodlight: { l: { look: "flood" } },
   // things the cards control
   air_conditioner: { d: "ac" }, curtain: { d: "curtain" }, tv: { d: "tv" }, ceiling_fan: { d: "fan" },
   // openings
@@ -102,6 +119,11 @@ export function place(found, { room, facing, floor, H = 2.8, entityFor }) {
         if (x.size && dv.look === "panel" && x.size > 0.1 && x.size < 1.5) dv.size = round(x.size, 2);
         // a run of slot lights goes along the room, not across the photo
         if (dv.look === "linear" && dv.style === "slot") { dv.rot = rot === 0 || rot === 180 ? 90 : 0; const b = bounds(room.pts); dv.len = round(Math.min(dv.len || 99, (rot === 0 || rot === 180 ? b.y1 - b.y0 : b.x1 - b.x0) - 0.6), 2); }
+        // wall lights, step lights and floodlights sit on the nearest wall, facing into the room
+        if (["wall", "step", "flood"].includes(dv.look) || dv.style === "washer") {
+          const nw = nearestWall(floor, [px, py], 5);
+          if (nw) { const nx = (px - nw.q[0]) / (nw.d || 1), ny = (py - nw.q[1]) / (nw.d || 1), gap = (nw.w.thick || 0.12) / 2 + (dv.style === "washer" ? 0.12 : 0.005); dv.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); dv.x = round(nw.q[0] + nx * gap, 3); dv.y = round(nw.q[1] + ny * gap, 3); }
+        }
         dv.entity = shared;
         out.devices.push(dv);
       } else if (c.d) {
@@ -154,6 +176,18 @@ function hugWall(it, floor) {
   const nw = nearestWall(floor, [it.x, it.y], Math.max(w, d) / 2 + (L[6] === "wall" ? 2 : 0.6)); if (!nw || nw.d < 1e-3 || nw.w.parapet) return;
   const nx = (it.x - nw.q[0]) / nw.d, ny = (it.y - nw.q[1]) / nw.d, gap = d / 2 + (nw.w.thick || 0.12) / 2 + (L[6] === "wall" ? 0 : 0.01);
   it.rot = Math.round((Math.atan2(nx, ny) * 180) / Math.PI); it.x = round(nw.q[0] + nx * gap, 3); it.y = round(nw.q[1] + ny * gap, 3);
+}
+
+// how many of each thing found are already in the room (drawn by hand, from another photo, or from Home Assistant):
+// only the rest is added. Windows and doors are matched by place instead, in place().
+export function alreadyThere(found, room, floor) {
+  const inR = (o) => inside([o.x, o.y], room.pts);
+  return found.map((x) => {
+    const c = CATALOG[x.kind]; if (!c || c.o) return 0;
+    if (c.f) return (floor.items || []).filter((i) => i.kind === c.f && inR(i)).length;
+    if (c.l) return (floor.devices || []).filter((d) => d.kind === "light" && inR(d) && (d.look || "flush") === c.l.look && (d.style || "") === (c.l.style || "")).length;
+    return (floor.devices || []).filter((d) => d.kind === c.d && inR(d)).length;
+  });
 }
 
 // the room's own devices in Home Assistant: entities in the area with the room's name, of the right kind
