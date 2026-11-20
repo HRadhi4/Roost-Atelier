@@ -2,6 +2,19 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.17.0 — 2026-11-20
+- **Dashboard pictures are no longer black.** On some graphics chips the AI clean-up lost its connection; it now reconnects, and if it still can't, the picture is kept as traced. A black picture is never saved.
+- **Time of day**: Now, morning, noon, golden hour or night, in the home settings.
+- **A garden round the house**: lawn, a paved terrace, olive trees and cypresses, lit by their own sun so they look right at any hour.
+- **Real scanned textures** for oak, walnut, herringbone, porcelain, marble, deck, grass and terrace paving (Poly Haven, free to use), downloaded once by Home Assistant and kept there; walls get a real plaster grain.
+- **Softer night**: dark corners and the outside stay readable; no light bleeding into the next room or onto the plinth; softer spotlight edges; window sills no longer flicker into jagged black shadows.
+- **Selecting**: Ctrl+A picks every device (Ctrl+Shift+A everything); drag on an empty spot to pick with a box (right-drag or Space + drag moves the plan); *All like this*, *All in this room* and *Everything else*.
+- **Groups**: pick several devices and *Group these devices*; in Try it, switching one switches them all.
+- **Editing never switches devices**; tapping one picks it. Switching is for Try it.
+- Every device can be pressed, also when several sit close together.
+- Stair openings are really cut through the floor above, with a solid floor edge, and the flight stays inside the room.
+- Buttons always hold their text, and every text box has the Atelier's look.
+
 ## 0.16.0 — 2026-11-20
 - **Stairs that join two levels.** Pick *Stairs*, choose a style, tap where they start, then tap where they arrive on the level above. The stairs are built between the two, the floor above gets an opening with a railing, and the ceiling below opens too. Six styles: wooden, wrought iron with scrolls, glass, round (spiral), rounded first steps, and palace stairs with a red runner and a curled handrail. A selected staircase can change style or where it arrives.
 - **Try it.** A new button in the top bar: tap lights, TVs, ACs, fans, curtains and doors to switch them, without opening anything for editing.
