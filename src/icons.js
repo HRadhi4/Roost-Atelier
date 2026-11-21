@@ -176,6 +176,8 @@ const UI = {
   "lock-open-variant-outline": R(5, 11, 14, 10, 2) + P("M8 11V7a4 4 0 0 1 7.5-2M12 15v2"),
   "arrow-expand-vertical": P("M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"),
   "image-plus-outline": R(3, 5, 14, 14, 1.5) + P("M3 16l4-4 3 3 2.5-2.5L17 17") + O(13, 9, 1.4) + P("M20 3v6M17 6h6"),
+  "image-filter-center-focus-weak": R(3, 5, 18, 14, 1.5) + P("M3 15l5-5 4 4 3-3 6 6") + P("M7 2v3M2 7h3M17 2v3M22 7h-3"),
+  "cursor-move": P("M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"),
   account: O(12, 7, 3.5) + P("M5 21v-1a7 7 0 0 1 14 0v1"),
   "air-conditioner": DEVS.ac,
   "alert-circle-outline": O(12, 12, 9) + P("M12 7v6M12 16.5v.5"),

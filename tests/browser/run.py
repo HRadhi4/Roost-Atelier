@@ -84,6 +84,18 @@ with sync_playwright() as p:
     check("a line across a room makes two areas", res["n"] == 1 and res["tool"] == "select" and res["sel"] == "room" and res["keep"], str(res))
     page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.undo(); ed.roomMode = 'rect'; }")
     check("undo takes the line away", page.evaluate("() => document.getElementById('panel').editor.floor.rooms.length === window._n"))
+    # a drawing to trace over: it lies under the plan, its size is set from a known length, and it can be removed
+    res = page.evaluate("""async () => { const ed = document.getElementById('panel').editor, e = ed.view.engine, H = ed._hass, keep = H.fetchWithAuth;
+      let blob = null; H.fetchWithAuth = async (u, o) => { if (u.includes('/upload')) { blob = o.body.get('file'); return new Response(JSON.stringify({ file: 'ref-test-00000000000.jpg' })); } return keep(u, o); };
+      e.fileSource = async () => blob;
+      const c = document.createElement('canvas'); c.width = 400; c.height = 200; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 400, 200); x.strokeRect(20, 20, 360, 160);
+      await ed.setReference(c, 10); await new Promise((r) => setTimeout(r, 400));
+      const img = ed.svg.querySelector('image'), out = { ref: !!ed.floor.ref, img: !!img, mode: ed.refMode, tool: ed.tool };
+      ed.refSizeTap([ed.floor.ref.x, ed.floor.ref.y]); ed.refSizeTap([ed.floor.ref.x + 5, ed.floor.ref.y]);
+      const inp = ed.aside.querySelector('[data-reallen]'); inp.value = '7.5'; ed.aside.querySelector('[data-setlen]').click();
+      out.w = ed.floor.ref.w; ed.aside.querySelector('[data-rdel]').click(); out.gone = !ed.floor.ref && !ed.svg.querySelector('image');
+      H.fetchWithAuth = keep; ed.setTool('select'); return out; }""")
+    check("a drawing can be traced over, sized from a known length and removed", res["ref"] and res["img"] and res["mode"] == "size" and res["tool"] == "room" and abs(res["w"] - 15) < 0.01 and res["gone"], str(res))
     # outside the windows: a picture on a side instead of trees
     res = page.evaluate("""async () => { const ed = document.getElementById('panel').editor, e = ed.view.engine;
       e.fileSource = async () => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const x = c.getContext('2d'); x.fillStyle = '#4a8'; x.fillRect(0, 0, 300, 200); return await new Promise((r) => c.toBlob(r, 'image/jpeg')); };

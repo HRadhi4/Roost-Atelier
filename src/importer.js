@@ -16,6 +16,8 @@ export function importPanel(ed, a) {
     <div class="card"><b>${t("From CAD or PDF")}</b><span class="tip">DXF · PDF · JPG · PNG. Walls become rooms; gaps become doors and windows.</span>
       <label><button class="primary" data-pick-plan><ra-icon icon="mdi:upload"></ra-icon>Choose file</button><input type="file" data-plan accept=".dxf,.pdf,.png,.jpg,.jpeg,.webp" hidden></label>
       <div data-plan-out></div></div>
+    <div class="card"><b>${t("Trace over a drawing")}</b><span class="tip">${t("Put a plan drawing (PDF, JPG or PNG) under the plan, set its size, then draw the walls over it with Line. Remove it when you are done.")}</span>
+      <div class="row"><label><button data-pick-ref><ra-icon icon="mdi:image-filter-center-focus-weak"></ra-icon>${t("Choose drawing")}</button><input type="file" data-ref accept=".pdf,image/*" hidden></label></div></div>
     <div class="card"><b>${t("From a photo")}</b><span class="tip">${t("A photo of a room. Furniture, ceiling lights, curtains, windows, the AC and the TV are found and put in place.")}</span>
       <select data-ai><option value="">${t("This device (free, private)")}</option>${aiTasks.map((e) => `<option value="${e}">${esc(ed._hass.states[e].attributes.friendly_name || e)}${t(" (more detail)")}</option>`).join("")}</select>
       <span class="tip" data-ai-tip></span>
@@ -26,6 +28,8 @@ export function importPanel(ed, a) {
   a.querySelector("[data-ai]").onchange = tip; tip();
   a.querySelector("[data-pick-plan]").onclick = () => a.querySelector("[data-plan]").click();
   a.querySelector("[data-pick-photo]").onclick = () => a.querySelector("[data-photo]").click();
+  a.querySelector("[data-pick-ref]").onclick = () => a.querySelector("[data-ref]").click();
+  a.querySelector("[data-ref]").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; ed.toast(t("Saving")); try { await ed.setReference(await drawingImage(f), null); } catch (err) { console.warn(err); ed.toast(t("Not saved")); } };
   a.querySelector("[data-plan]").onchange = (e) => e.target.files[0] && planFile(ed, a.querySelector("[data-plan-out]"), e.target.files[0]);
   a.querySelector("[data-photo]").onchange = (e) => {
     // several photos: one after another, each into the next room that has nothing in it yet
@@ -36,6 +40,10 @@ export function importPanel(ed, a) {
   };
 }
 
+// a drawing file as a picture (the first page of a PDF)
+export async function drawingImage(file) {
+  return file.name.toLowerCase().endsWith(".pdf") ? pdfToImage(await file.arrayBuffer(), WORKER) : loadImage(file);
+}
 async function planFile(ed, out, file) {
   out.innerHTML = `<span class="tip">Reading ${esc(file.name)}…</span>`;
   try {
@@ -57,7 +65,8 @@ function show(ed, out, r, src, redo, opts) {
   out.innerHTML = `<div class="row between"><span>${t("Rooms")}</span><b>${r.rooms.length}</b></div><div class="row between"><span>${t("Doors")} / ${t("Window")}</span><b>${r.openings.length}</b></div>${r.items?.length ? `<div class="row between"><span>${t("Furniture")}</span><b>${r.items.length}</b></div>` : ""}
     ${src ? `<label class="sl"><span>Drawing width</span><b data-o>${width} m</b><input type="range" data-scale min="${round(width * 0.4, 1)}" max="${round(width * 2.5, 1)}" step="0.1" value="${width}"></label><span class="tip">Move until the rooms have their real size (a door is about 0.9 m).</span>` : ""}
     <div class="field"><span class="tip">Widest doorway between rooms</span><div class="seg"><button data-gap="1" class="${opts.gap < 1.4 ? "on" : ""}">Normal doors</button><button data-gap="1.9" class="${opts.gap >= 1.4 ? "on" : ""}">Wide double doors</button></div></div>
-    <div class="row"><button class="primary" data-use><ra-icon icon="mdi:check"></ra-icon>Use this plan</button></div>`;
+    <div class="row"><button class="primary" data-use><ra-icon icon="mdi:check"></ra-icon>Use this plan</button>${src ? `<button data-asref><ra-icon icon="mdi:image-filter-center-focus-weak"></ra-icon>${t("Trace over it instead")}</button>` : ""}</div>`;
+  out.querySelector("[data-asref]")?.addEventListener("click", () => ed.setReference(src, width || 15));
   out.querySelector("[data-scale]")?.addEventListener("input", (e) => (out.querySelector("[data-o]").textContent = `${e.target.value} m`));
   out.querySelector("[data-scale]")?.addEventListener("change", (e) => again({ metresPerPx: +e.target.value / src.width }));
   out.querySelectorAll("[data-gap]").forEach((b) => (b.onclick = () => again({ gap: +b.dataset.gap })));

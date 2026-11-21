@@ -492,7 +492,7 @@ export class AtelierEditor {
     nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 || n === 11 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ra-icon icon="${i}"></ra-icon></button>`).join("");
     nav.querySelectorAll("button").forEach((b) => (b.onclick = () => this.setTool(b.dataset.t)));
   }
-  setTool(k) { if (k !== "room") this.line = null; this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
+  setTool(k) { if (k !== "room") { this.line = null; this.refMode = ""; this.refCal = []; } this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
 
   // trying the home out: tapping a device switches it (for real, or just here when it has no working entity);
   // nothing opens for editing and nothing in the home is changed
@@ -571,10 +571,14 @@ export class AtelierEditor {
     for (let x = Math.floor(gx0 / step) * step; x < gx1; x += step) grid += `M${x} ${gy0}V${gy1}`;
     for (let y = Math.floor(gy0 / step) * step; y < gy1; y += step) grid += `M${gx0} ${y}H${gx1}`;
     out += `<path d="${grid}" stroke="var(--grid)" stroke-width="${px}" fill="none"/>`;
+    // the drawing to trace over (under everything, on this level only)
+    const ref = f.ref, refUrl = ref && this.refUrl(ref.file);
+    if (ref && refUrl) out += `<image href="${refUrl}" x="${ref.x}" y="${ref.y}" width="${ref.w}" height="${ref.w / ref.aspect}" preserveAspectRatio="none" opacity="${ref.opacity ?? 0.6}" pointer-events="none"/>`;
+    if (this.refCal?.length) out += this.refCal.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="${5 * px}" fill="#F5B041" stroke="#fff" stroke-width="${1.5 * px}" pointer-events="none"/>`).join("") + (this.refCal.length === 2 ? `<line x1="${this.refCal[0][0]}" y1="${this.refCal[0][1]}" x2="${this.refCal[1][0]}" y2="${this.refCal[1][1]}" stroke="#F5B041" stroke-width="${2.5 * px}" pointer-events="none"/>` : "");
     // rooms
     for (const r of f.rooms) {
       const type = ROOM_TYPES[r.type] || ROOM_TYPES.other, fill = swatchColor("floor", r.floor || type.floor);
-      out += `<polygon data-room="${esc(r.id)}" points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="${fill}" fill-opacity="${light ? 0.55 : 0.42}" stroke="none"/>`;
+      out += `<polygon data-room="${esc(r.id)}" points="${r.pts.map((p) => p.join(",")).join(" ")}" fill="${fill}" fill-opacity="${ref ? 0.22 : light ? 0.55 : 0.42}" stroke="none"/>`;
     }
     // furniture footprints (faded in ceiling mode)
     if (this.ceiling) out += `<g opacity=".22" pointer-events="none">`;
@@ -788,6 +792,9 @@ export class AtelierEditor {
     if (e.pointerType === "mouse" && (e.button === 1 || e.button === 2 || (this._space && e.button === 0))) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py }; return; }
     if (this.testing) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, testDev: ds?.dataset.dev }; return; }
     if (this.tool === "stairs") { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, stairTap: this.stairPick?.step > 0 }; return; }
+    // the drawing to trace over: moved by dragging, or two taps to set its size
+    if (this.refMode === "move" && f.ref) { this.drag = { ...start, kind: "refmove", r0: [f.ref.x, f.ref.y] }; return; }
+    if (this.refMode === "size" && f.ref) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, refTap: true }; return; }
     // drawing with lines: a tap adds a corner (a drag still moves the plan)
     if (this.tool === "room" && this.roomMode === "line") { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, linePt: true }; return; }
     if (this.tool === "room") { this.drag = { ...start, kind: "draw" }; this.drawRect = [this.snapPt(P), this.snapPt(P)]; return; }
@@ -843,6 +850,7 @@ export class AtelierEditor {
     this.guide = "";
     if (d.kind === "pan") { this._userView = true; this.px = d.px0 + e.clientX - d.x; this.py = d.py0 + e.clientY - d.y; this.g.setAttribute("transform", `translate(${this.px} ${this.py}) scale(${this.z})`); if (!this._panRaf) this._panRaf = requestAnimationFrame(() => { this._panRaf = 0; this.draw(); }); return; }
     if (d.kind === "draw") { this.drawRect[1] = this.snapPt(P); this.draw(); return; }
+    if (d.kind === "refmove") { f.ref.x = round(d.r0[0] + P[0] - d.P[0], 3); f.ref.y = round(d.r0[1] + P[1] - d.P[1], 3); this.draw(); return; }
     if (d.kind === "measure") { let b = this.snapPt(P); if (e.shiftKey) { const a = this.measure.a; if (Math.abs(b[0] - a[0]) > Math.abs(b[1] - a[1])) b = [b[0], a[1]]; else b = [a[0], b[1]]; } this.measure.b = b; this.draw(); this.measureOut(); return; }
     if (d.kind === "locked" || d.kind === "addnote") return;
     if (d.kind === "note") { const ox = snap(dx), oy = snap(dy), n = d.obj, o = d.o0; if (n.type === "dim") { n.a = [round(o.a[0] + ox, 3), round(o.a[1] + oy, 3)]; n.b = [round(o.b[0] + ox, 3), round(o.b[1] + oy, 3)]; } else { n.x = round(o.x + ox, 3); n.y = round(o.y + oy, 3); } this.draw(); return; }
@@ -930,6 +938,7 @@ export class AtelierEditor {
       return;
     }
     if (d.kind === "addop") { this.addOpening(this.tool, d.P); return; }
+    if (d.kind === "refmove") { if (d.moved) { const to = [this.floor.ref.x, this.floor.ref.y]; this.floor.ref.x = d.r0[0]; this.floor.ref.y = d.r0[1]; this.snapshot(); this.floor.ref.x = to[0]; this.floor.ref.y = to[1]; this.changed(false); } return; }
     if (d.kind === "measure") { const m = this.measure; if (!d.moved || Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) < 0.02) this.measure = null; this.draw(); this.inspector(); return; }
     if (d.kind === "addnote") { this.snapshot(); const n = { id: uid("n"), type: "text", x: round(snap(d.P[0]), 3), y: round(snap(d.P[1]), 3), text: t("Note"), size: 0.22 }; (this.floor.notes ||= []).push(n); this.tool = "select"; this.drawNav(); this.sel = { t: "note", id: n.id }; this.changed(false); this.inspector(); setTimeout(() => { const i = this.aside.querySelector("textarea[data-k=text]"); i?.focus(); i?.select(); }, 30); return; }
     if (d.kind === "note") { if (d.moved) this.changed(false); return; }
@@ -948,6 +957,7 @@ export class AtelierEditor {
       if (eng?.view === "walk" && (d.tapRoom || d.tapEmpty) && eng.walkToPoint(P[0], P[1])) return;
       if (d.testDev) { this.view.toggle(d.testDev); setTimeout(() => this.draw(), 60); return; }
       if (d.linePt) return this.addLinePoint(d.P, e.altKey);
+      if (d.refTap) return this.refSizeTap(d.P);
       if (this.testing) return;
       if (d.stairTap) return this.pickStair(this.snapPt(d.P));
       if (d.tapRoom) return this.select({ t: "room", id: d.tapRoom.id });
@@ -1496,6 +1506,59 @@ export class AtelierEditor {
     else if ((e.ctrlKey || e.metaKey) && /^[vV]$/.test(e.key) && !this.testing) { if (this.clip?.length) { e.preventDefault(); this.paste(); } }
     else if (e.key === " " && !e.repeat) this._space = true;
   }
+  // ------------------------------------------------------------ a drawing to trace over
+  // when a CAD drawing, PDF or picture is not read well, it can lie under the plan as a guide: set its size (two taps
+  // on a length you know), move it into place, draw the walls over it with Line, then remove it.
+  refUrl(file) {
+    const c = (this._refUrls ||= new Map());
+    if (!c.has(file)) {
+      c.set(file, null);
+      this.view.engine.fileSource?.(file).then((b) => { if (b) { c.set(file, URL.createObjectURL(b)); this.draw(); } });
+    }
+    return c.get(file);
+  }
+  async setReference(img, width) {
+    const v = await this.uploadPicture(img, 4096), f = this.floor, b = f.rooms.length ? planBounds(f) : null;
+    const w = width || (b ? Math.max(8, b.x1 - b.x0) : 15);
+    this.snapshot();
+    f.ref = { file: v.file, aspect: v.aspect, w: round(w, 3), x: b ? b.x0 : 0, y: b ? b.y0 : 0, opacity: 0.6 };
+    this._refUrls?.delete(v.file);
+    this.changed(false);
+    this.roomMode = "line"; this.setTool("room"); this.fitRef();
+    this.toast(t("Set its size first: tap two ends of a length you know"));
+    this.refMode = "size"; this.refCal = []; this.inspector();
+  }
+  fitRef() {
+    const r = this.floor.ref; if (!r) return;
+    const W = this.planEl.clientWidth, H = this.planEl.clientHeight, h = r.w / r.aspect, z = Math.min(400, Math.max(8, Math.min(W / (r.w * 1.1), H / (h * 1.1))));
+    this.z = z; this.px = (W - r.w * z) / 2 - r.x * z; this.py = (H - h * z) / 2 - r.y * z; this._userView = true; this.draw();
+  }
+  refSizeTap(P) {
+    (this.refCal ||= []).push(P); if (this.refCal.length > 2) this.refCal = [P];
+    this.draw(); this.inspector();
+  }
+  refPanel(el) {
+    const r = this.floor.ref, mode = this.refMode || "", cal = this.refCal || [];
+    const L = cal.length === 2 ? Math.hypot(cal[1][0] - cal[0][0], cal[1][1] - cal[0][1]) : 0;
+    el.innerHTML = `<h3>${t("Drawing to trace over")}</h3>
+      <div class="seg"><button data-rm="size" class="${mode === "size" ? "on" : ""}"><ra-icon icon="mdi:ruler"></ra-icon>${t("Set its size")}</button><button data-rm="move" class="${mode === "move" ? "on" : ""}"><ra-icon icon="mdi:cursor-move"></ra-icon>${t("Move it")}</button><button data-rm="" class="${!mode ? "on" : ""}"><ra-icon icon="mdi:vector-polyline"></ra-icon>${t("Draw")}</button></div>
+      ${mode === "size" ? (L ? `<div class="field"><span class="tip">${t("How long is it really? (metres)")}</span><div class="row"><input type="number" inputmode="decimal" step="0.01" min="0.1" data-reallen value="${round(L, 2)}"><button class="primary" data-setlen><ra-icon icon="mdi:check"></ra-icon>${t("Done")}</button></div></div>` : `<p class="tip">${t("Tap the two ends of a wall or a dimension on the drawing whose length you know.")}</p>`) : mode === "move" ? `<p class="tip">${t("Drag the drawing onto the walls already drawn.")}</p>` : ""}
+      <label class="sl"><span>${t("See-through")}</span><b data-out="rop">${Math.round((r.opacity ?? 0.6) * 100)}%</b><input type="range" data-rop min="0.1" max="1" step="0.05" value="${r.opacity ?? 0.6}"></label>
+      <div class="row"><button data-rfit><ra-icon icon="mdi:fit-to-screen-outline"></ra-icon>${t("Show all of it")}</button><button class="danger" data-rdel><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Remove the drawing")}</button></div>`;
+    el.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { this.refMode = b.dataset.rm; this.refCal = []; this.draw(); this.inspector(); }));
+    el.querySelector("[data-rop]").oninput = (e) => { r.opacity = +e.target.value; el.querySelector('[data-out="rop"]').textContent = `${Math.round(r.opacity * 100)}%`; this.draw(); };
+    el.querySelector("[data-rop]").onchange = () => this.changed(false);
+    el.querySelector("[data-rfit]").onclick = () => this.fitRef();
+    el.querySelector("[data-rdel]").onclick = () => { this.snapshot(); delete this.floor.ref; this.refMode = ""; this.refCal = []; this.changed(false); this.inspector(); this.toast(t("Deleted")); };
+    el.querySelector("[data-setlen]")?.addEventListener("click", () => {
+      const real = parseFloat(el.querySelector("[data-reallen]").value); if (!(real > 0) || !L) return;
+      // grow or shrink the drawing round the first tap, so that tap stays put
+      const k = real / L, a = cal[0];
+      this.snapshot(); r.x = round(a[0] - (a[0] - r.x) * k, 3); r.y = round(a[1] - (a[1] - r.y) * k, 3); r.w = round(r.w * k, 3);
+      this.refCal = []; this.refMode = this.floor.rooms.length ? "move" : ""; this.changed(false); this.fitRef(); this.inspector();
+      this.toast(this.refMode === "move" ? t("Now drag it onto the walls already drawn") : t("Now draw the walls over it with Line"));
+    });
+  }
   // ------------------------------------------------------------ drawing with lines
   // two ways to draw: a rectangle (drag), or a line of walls (tap corner by corner). Every space a line closes
   // becomes an area that can be named: a line across a room cuts it in two, a line from a wall out and back closes
@@ -1506,6 +1569,7 @@ export class AtelierEditor {
       <div class="chips">${[["rect", "mdi:vector-square", "Rectangle"], ["line", "mdi:vector-polyline", "Line"]].map(([k, i, l]) => `<button data-rmode="${k}" class="${mode === k ? "on" : ""}"><ra-icon icon="${i}"></ra-icon>${t(l)}</button>`).join("")}</div>
       <p class="tip">${t(mode === "rect" ? "Tap and drag on the plan to draw a room." : "Tap the plan corner by corner to draw walls. Every space the line closes becomes an area: a line across a room cuts it in two. It snaps to walls and straight angles; hold Alt for any angle.")}</p>
       ${mode === "line" && n ? `<div class="row"><button class="primary" data-lfin ${n < 2 ? "disabled" : ""}><ra-icon icon="mdi:check"></ra-icon>${t("Finish")}</button><button data-lback><ra-icon icon="mdi:undo"></ra-icon>${t("Remove last corner")}</button><button data-lcancel><ra-icon icon="mdi:close"></ra-icon>${t("Cancel")}</button></div>` : ""}`;
+    if (this.floor.ref) { const box = document.createElement("div"); box.className = "field"; a.appendChild(box); this.refPanel(box); }
     a.querySelectorAll("[data-rmode]").forEach((b) => (b.onclick = () => { this.roomMode = b.dataset.rmode; try { localStorage.setItem("roost-atelier-room-mode", this.roomMode); } catch {} this.line = null; this.lineHover = null; this.draw(); this.inspector(); }));
     a.querySelector("[data-lfin]")?.addEventListener("click", () => this.finishLine(false));
     a.querySelector("[data-lback]")?.addEventListener("click", () => this.undoLinePoint());
@@ -1610,7 +1674,7 @@ export class AtelierEditor {
   }
   // a photo sent to Home Assistant (made smaller first): its file name, a small preview and its shape
   async uploadPicture(file, max) {
-    const img = await createImageBitmap(file), k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas");
+    const img = file instanceof Blob ? await createImageBitmap(file) : file, k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas");
     c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
     const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88)), th = document.createElement("canvas"); th.width = 66; th.height = 42; th.getContext("2d").drawImage(img, 0, 0, 66, 42);
     const fd = new FormData(); fd.append("file", blob, "view.jpg");
