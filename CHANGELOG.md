@@ -2,6 +2,12 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.19.4 — 2026-11-21
+- **More realistic dashboard pictures.** On computers without the AI clean-up, the grain of the traced light is now smoothed away while edges, corners and textures stay sharp. Lamps light from a small glowing area instead of a single point, so their shadows are soft. Plain 3D pictures are drawn twice as big and shrunk, so their edges are smooth.
+- **Real sky only in the pictures.** The real sky is no longer shown in the editor. It still lights the rooms in photos and dashboard pictures, and shows past the garden and through the windows there. Turn it on or off in the home settings as before.
+- **Device buttons in the 3D view work on every press.** A press that starts on a button always switches the device, once, even if the view moves under your finger.
+- **Device outlines in the Home Tour sit right on each device.** Every dashboard picture now carries where each device really is, so Roost Cards can outline it exactly. Make the dashboard pictures again to get them.
+
 ## 0.19.3 — 2026-11-21
 - The plan's buttons (sizes, print, zoom) and the Ceiling button show their icons in place again, instead of piled on top of each other.
 

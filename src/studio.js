@@ -6,6 +6,7 @@ import { WebGLPathTracer, GradientEquirectTexture, EquirectCamera, DenoiseMateri
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { photoScene } from "./photo.js";
 import { denoise, aiAvailable, aiFailed } from "./ai/denoise.js";
+import { smoothPhoto } from "./ai/atrous.js";
 import { ROOM_TYPES, panoSpot } from "./model.js";
 import { withCamera } from "./still.js";
 export { panoSpot };
@@ -51,28 +52,43 @@ export class Studio {
       pt._pathTracer.material.setDefine("RANDOM_TYPE", 0);
       sky = new GradientEquirectTexture(64);
       quad = new FullScreenQuad(new THREE.MeshBasicMaterial({ map: null }));
-      // background work: enough light samples for the AI to finish a clean photo, many more without it
-      const target = this.samples || (pano ? { low: 96, medium: 160, high: 256 }[q] : ai ? { low: 40, medium: 72, high: 128 }[q] : { low: 160, medium: 320, high: 640 }[q]);
+      // background work: enough light samples for the AI to finish a clean photo; without it more samples, then the
+      // edge-keeping clean-up that runs on any graphics chip
+      const target = this.samples || (pano ? { low: 128, medium: 200, high: 320 }[q] : ai ? { low: 40, medium: 72, high: 128 }[q] : { low: 128, medium: 256, high: 512 }[q]);
       smooth = pano ? new FullScreenQuad(new DenoiseMaterial({ map: null, blending: THREE.NoBlending })) : null;
       // the traced picture as it is (no AI clean-up), drawn onto the photo
       const traced = () => {
         quad.material.map = pt._pathTracer.target.texture; quad.material.blending = THREE.NoBlending; quad.material.needsUpdate = true;
         renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); quad.render(renderer);
       };
+      // no AI here: the light is smoothed while edges, corners and textures stay sharp
+      const smoothed = (scene, cam, exposure) => {
+        if (this.noSmooth) return traced();
+        try {
+          const clean = smoothPhoto({ renderer, target: pt._pathTracer.target, scene, camera: cam, exposure });
+          quad.material.map = clean.texture; quad.material.blending = THREE.NoBlending; quad.material.needsUpdate = true;
+          renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); quad.render(renderer);
+          clean.dispose();
+        } catch (err) { console.warn("Roost Atelier photo clean-up:", err); traced(); }
+      };
       // the home drawn the normal way (not traced) from the photo's camera. It uses the 3D view's own drawing surface
       // (a browser allows only so many, and a chip in trouble may refuse a new one), sized to the photo for a moment
       const plain = (draw) => {
-        const r = e.renderer, size = r.getSize(new THREE.Vector2()), ratio = r.getPixelRatio(), prevView = e.view, bg = e.scene.background, pc = e.composer;
+        const r = e.renderer, size = r.getSize(new THREE.Vector2()), ratio = r.getPixelRatio(), prevView = e.view, bg = e.scene.background, bgi = e.scene.backgroundIntensity, pc = e.composer;
         try { e.busy = true; e.composer = null; return draw(r); }
-        finally { e.view = prevView; e._wallsOverride = null; e.scene.background = bg; e.composer = pc; r.setPixelRatio(ratio); r.setSize(size.x, size.y, false); e.applyWalls(); e.fitSun(); e.busy = false; e.request(true); }
+        finally { e.view = prevView; e._wallsOverride = null; e.scene.background = bg; e.scene.backgroundIntensity = bgi; e.composer = pc; r.setPixelRatio(ratio); r.setSize(size.x, size.y, false); e.applyWalls(); e.fitSun(); e.busy = false; e.request(true); }
       };
-      const grab = (r, w, h) => { const out = document.createElement("canvas"); out.width = w; out.height = h; out.getContext("2d").drawImage(r.domElement, 0, 0, w, h, 0, 0, w, h); return out; };
+      // the picture is drawn twice as big and shrunk smoothly, so its edges come out clean (no jagged lines)
+      const grab = (r, w, h, k = 1) => { const out = document.createElement("canvas"); out.width = w; out.height = h; const x = out.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(r.domElement, 0, 0, w * k, h * k, 0, 0, w, h); return out; };
+      const bigger = (r, w, h) => { const max = Math.min(r.capabilities.maxTextureSize || 4096, 8192); return Math.max(1, Math.min(2, Math.floor(max / Math.max(w, h)))); };
+      const realBack = (exposure) => { const real = e.photoSky(exposure); if (real) { e.scene.background = real.tex; e.scene.backgroundIntensity = real.intensity; } return real; };
       const rasterShot = (shot, cam, W, H, exposure, toneMapping) => {
         try {
           return plain((r) => {
-            e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); if (shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
-            r.setPixelRatio(1); r.setSize(W, H, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure;
-            e.scene.updateMatrixWorld(true); r.setRenderTarget(null); r.render(e.scene, cam); const out = grab(r, W, H);
+            e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); if (!realBack(exposure) && shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
+            const k = bigger(r, W, H), bi = e.scene.backgroundIntensity;
+            r.setPixelRatio(1); r.setSize(W * k, H * k, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure;
+            e.scene.updateMatrixWorld(true); r.setRenderTarget(null); r.render(e.scene, cam); const out = grab(r, W, H, k); e.scene.backgroundIntensity = bi;
             r.toneMapping = tm; r.toneMappingExposure = ex; return out;
           });
         } catch (err) { console.warn("Roost Atelier photo studio (plain picture):", err); return null; }
@@ -84,11 +100,11 @@ export class Studio {
           // faces: +x, -x, +y, -y, +z, -z (looking out from the spot)
           const dirs = [[1, 0, 0, 0, 1, 0], [-1, 0, 0, 0, 1, 0], [0, 1, 0, 0, 0, -1], [0, -1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0], [0, 0, -1, 0, 1, 0]];
           const faces = plain((r) => {
-            e.view = "walk"; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); e.scene.updateMatrixWorld(true);
-            r.setPixelRatio(1); r.setSize(S, S, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure; r.setRenderTarget(null);
+            e.view = "walk"; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); realBack(exposure); e.scene.updateMatrixWorld(true);
+            const k = bigger(r, S, S); r.setPixelRatio(1); r.setSize(S * k, S * k, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure; r.setRenderTarget(null);
             const list = dirs.map(([x, y, z, ux, uy, uz]) => {
               const pc = new THREE.PerspectiveCamera(90, 1, 0.05, 400); pc.position.copy(cam.position); pc.up.set(ux, uy, uz); pc.lookAt(cam.position.x + x, cam.position.y + y, cam.position.z + z); pc.updateMatrixWorld(true);
-              r.render(e.scene, pc); const t = grab(r, S, S); return { cam: pc, px: t.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, S, S).data };
+              r.render(e.scene, pc); const t = grab(r, S, S, k); return { cam: pc, px: t.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, S, S).data };
             });
             r.toneMapping = tm; r.toneMappingExposure = ex; return list;
           });
@@ -124,16 +140,20 @@ export class Studio {
         e.view = prevView; e._wallsOverride = null; e.applyWalls(); e.fitSun();
         // camera
         let cam, camInfo;
-        if (shot.view === "pano") { const p = panoSpot(shot.room); cam = new EquirectCamera(); cam.position.set(p[0], p[1], p[2]); cam.updateMatrixWorld(); camInfo = { pos: p }; }
+        if (shot.view === "pano") { const p = panoSpot(shot.room); cam = new EquirectCamera(); cam.position.set(p[0], p[1], p[2]); cam.updateMatrixWorld(); camInfo = { pos: p, boxes: e.deviceBoxes() }; }
         else {
           const pose = e.pose(shot.view, shot.room, W / H); cam = new THREE.PerspectiveCamera(pose.fov, W / H, 0.05, 400); cam.position.copy(pose.pos); cam.lookAt(pose.target); cam.updateMatrixWorld();
-          camInfo = { pos: pose.pos.toArray(), target: pose.target.toArray(), fov: pose.fov, aspect: W / H };
+          camInfo = { pos: pose.pos.toArray(), target: pose.target.toArray(), fov: pose.fov, aspect: W / H, boxes: e.deviceBoxes() };
         }
         renderer.toneMapping = toneMapping; renderer.toneMappingExposure = exposure;
         const day = e.isDay; sky.topColor.set(day ? "#cfe0ff" : "#1a2050"); sky.bottomColor.set(day ? "#f2ebe0" : "#0b0d17"); sky.update();
-        scene.environment = e.skyTexture || sky;
-        scene.environmentIntensity = e.baked && e.skyTexture ? (e.skyNow?.L || 1) / (e.skyMean || 1) : e.scene.environmentIntensity;
-        scene.background = shot.view !== "3d" ? null : new THREE.Color("#0B0D17");
+        // "Real sky": the sky photo lights the rooms and is seen past the garden and through the windows (photos only)
+        const real = e.photoSky(exposure);
+        scene.environment = real?.tex || e.skyTexture || sky;
+        const envMean = real ? real.mean : e.skyMean || 1;
+        scene.environmentIntensity = e.baked && (real || e.skyTexture) ? (e.skyNow?.L || 1) / envMean : e.scene.environmentIntensity;
+        if (real) { scene.background = real.tex; scene.backgroundIntensity = real.intensity; }
+        else scene.background = shot.view !== "3d" ? null : new THREE.Color("#0B0D17");
         let gaveUp = this.traceBroken || lost;
         if (!gaveUp) { pt.setScene(scene, cam); pt.reset(); }
         // trace, a little at a time so the page stays smooth; pause while you move the view
@@ -174,8 +194,8 @@ export class Studio {
             quad.material.map = clean; quad.material.needsUpdate = true;
             renderer.toneMappingExposure = 1; renderer.setRenderTarget(null); quad.render(renderer); renderer.toneMappingExposure = exposure;
             clean.dispose();
-          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); aiFailed(); traced(); }
-        } else traced();
+          } catch (err) { console.warn("Roost Atelier AI clean-up:", err); aiFailed(); smoothed(scene, cam, exposure); }
+        } else smoothed(scene, cam, exposure);
         // never keep a black photo: show the traced picture instead, and if that is black too, keep the old photo
         // still black (the graphics chip gave up on tracing at this size): the 3D view's own picture, with its stored light
         let out = canvas;

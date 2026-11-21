@@ -7,6 +7,14 @@ import { denoise, aiAvailable } from "./ai/denoise.js";
 
 // The tracer mixes up colours on objects made of several materials, so it gets its own copy of the
 // home where every surface is a separate object with one material.
+// a lamp that shines all round, as two soft half-lights (up and down): the tracer gives soft shadows only to spot lights
+function softPoint(out, color, I, p, radius) {
+  for (const up of [1, -1]) {
+    const l = new THREE.SpotLight(color, I, 0, Math.PI / 2 - 0.001, 0.02, 2); l.radius = radius;
+    l.position.set(p[0], p[1], p[2]); l.target.position.set(p[0], p[1] + up, p[2]);
+    out.add(l.target); l.target.updateMatrixWorld(); out.add(l); l.updateMatrixWorld();
+  }
+}
 export function photoScene(src, { sun = true, lampCap = 0, lamps = null } = {}) {
   const out = new THREE.Scene();
   src.updateMatrixWorld(true);
@@ -33,6 +41,8 @@ export function photoScene(src, { sun = true, lampCap = 0, lamps = null } = {}) 
       if (o.isPointLight) { const c = l.color, lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, k = 0.55; c.setRGB(c.r + (lum - c.r) * k, c.g + (lum - c.g) * k, c.b + (lum - c.b) * k); } l.matrixAutoUpdate = false; l.matrix.copy(o.matrixWorld); l.matrixWorld.copy(o.matrixWorld);
       l.position.setFromMatrixPosition(o.matrixWorld);
       if (o.target) { l.target = new THREE.Object3D(); l.target.position.setFromMatrixPosition(o.target.matrixWorld); out.add(l.target); l.target.updateMatrixWorld(); }
+      if (l.isPointLight && !l.distance) { softPoint(out, l.color, l.intensity, l.position.toArray(), 0.05); return; }
+      if (l.isSpotLight) l.radius = l.radius || 0.05;
       out.add(l);
     }
   });
@@ -40,9 +50,10 @@ export function photoScene(src, { sun = true, lampCap = 0, lamps = null } = {}) 
   if (lamps) for (const L of lamps) {
     const c = L.color.clone(), lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, k = 0.55; c.setRGB(c.r + (lum - c.r) * k, c.g + (lum - c.g) * k, c.b + (lum - c.b) * k);
     let l, I;
-    if (L.cone) { I = L.lm / (2 * Math.PI * (1 - Math.cos(L.cone))); l = new THREE.SpotLight(c, I, 0, Math.min(1.4, L.cone * 1.15), 0.5, 2); }
-    else if (L.down >= 0.7) { I = L.lm / Math.PI; l = new THREE.SpotLight(c, I, 0, 1.5, 1, 2); }
-    else { I = L.lm / (4 * Math.PI); l = new THREE.PointLight(c, I, 0, 2); }
+    // every lamp gives light from a small glowing area (a bulb, a shade), not a single point, so its shadows are soft
+    if (L.cone) { I = L.lm / (2 * Math.PI * (1 - Math.cos(L.cone))); l = new THREE.SpotLight(c, I, 0, Math.min(1.4, L.cone * 1.15), 0.5, 2); l.radius = 0.035; }
+    else if (L.down >= 0.7) { I = L.lm / Math.PI; l = new THREE.SpotLight(c, I, 0, 1.5, 1, 2); l.radius = 0.07; }
+    else { I = L.lm / (4 * Math.PI); if (lampCap > 0) I *= lampCap / (lampCap + I / 1.44); softPoint(out, c, I, L.p, 0.06); continue; }
     if (lampCap > 0) l.intensity *= lampCap / (lampCap + I / 1.44);
     l.position.set(...L.p); l.updateMatrixWorld();
     if (l.isSpotLight) { l.target.position.set(L.p[0] + L.dir[0], L.p[1] + L.dir[1], L.p[2] + L.dir[2]); out.add(l.target); l.target.updateMatrixWorld(); }
@@ -91,9 +102,12 @@ export class PhotoMode {
     e.scene.userData.baked = !!e.baked;
     this.scene = photoScene(e.scene, { lampCap: e.baked ? e.bakeMgr.U.bakeLampCap.value : 0, lamps: e.photoLamps() });
     this.cleaned?.dispose(); this.cleaned = null; this.cleaning = false;
-    this.scene.environment = e.skyTexture || this.sky;
+    // "Real sky" lights the photo too (it is never shown here: the sky itself is only seen in the saved photos)
+    const real = e.photoSky?.(e.renderer.toneMappingExposure);
+    this.scene.environment = real?.tex || e.skyTexture || this.sky;
     // baked: the sky picture is scaled to the real sky brightness (cd/m²) so photo and live view agree
-    this.scene.environmentIntensity = e.baked && e.skyTexture ? (e.skyNow?.L || 1) / (e.skyMean || 1) : e.skyTexture ? { day: 1, sunset: 1.2, night: 2 }[e.skyKind] : e.scene.environmentIntensity;
+    const mean = real ? real.mean : e.skyMean || 1;
+    this.scene.environmentIntensity = e.baked && (real || e.skyTexture) ? (e.skyNow?.L || 1) / mean : real || e.skyTexture ? { day: 1, sunset: 1.2, night: 2 }[e.skyKind] * (real ? (e.skyMean || 1) / mean : 1) : e.scene.environmentIntensity;
     this.scene.background = null;
     this.pt.setScene(this.scene, e.camera);
     this.pt.reset();

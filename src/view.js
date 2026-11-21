@@ -135,9 +135,13 @@ export class AtelierView {
         el.innerHTML = `<button aria-label=""><ra-icon></ra-icon></button><span></span>`;
         let held = false, timer;
         const btn = el.firstElementChild;
-        btn.addEventListener("pointerdown", (e) => { e.stopPropagation(); held = false; timer = setTimeout(() => { held = true; this.more(el.dataset.id); }, 500); });
-        btn.addEventListener("pointerup", (e) => { e.stopPropagation(); clearTimeout(timer); if (!held) this.toggle(el.dataset.id); });
-        btn.addEventListener("pointerleave", () => clearTimeout(timer));
+        // the press belongs to the button from the moment the finger lands (even if the button moves with the view),
+        // and only a press that started on it switches the device: every press works, and works once
+        let down = null;
+        btn.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (e.button > 0) return; down = e.pointerId; try { btn.setPointerCapture(e.pointerId); } catch {} held = false; clearTimeout(timer); timer = setTimeout(() => { held = true; this.more(el.dataset.id); }, 500); });
+        btn.addEventListener("pointerup", (e) => { e.stopPropagation(); clearTimeout(timer); if (down !== e.pointerId) return; down = null; if (!held) this.toggle(el.dataset.id); });
+        btn.addEventListener("pointercancel", () => { clearTimeout(timer); down = null; });
+        btn.addEventListener("click", (e) => e.stopPropagation());
         btn.addEventListener("contextmenu", (e) => e.preventDefault());
         this.hotEl.appendChild(el); this.hsMap.set(h.id, el);
       }

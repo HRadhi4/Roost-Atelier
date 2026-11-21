@@ -45,7 +45,7 @@ ${CONTROLS_CSS}
 export function withCamera(blob, cam) {
   return blob.arrayBuffer().then((buf) => {
     const text = new TextEncoder().encode("roost:" + JSON.stringify(cam)), len = text.length + 2;
-    if (len > 65535) return blob;
+    if (len > 65535) return cam.boxes ? withCamera(blob, { ...cam, boxes: undefined }) : blob;
     const head = new Uint8Array([0xff, 0xd8, 0xff, 0xfe, len >> 8, len & 255]);
     return new Blob([head, text, new Uint8Array(buf, 2)], { type: "image/jpeg" });
   });

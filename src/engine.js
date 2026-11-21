@@ -13,6 +13,16 @@ function skyMean(d) {
   for (let i = 0; i < d.length; i += 4 * 37) { sum += 0.2126 * f(d[i]) + 0.7152 * f(d[i + 1]) + 0.0722 * f(d[i + 2]); cnt++; }
   return sum / Math.max(1, cnt);
 }
+// the sun's own disc in a sky photo is thousands of times brighter than the sky: the photos already have their own sun
+// (placed where the real sun is now), so the disc is calmed down to the brightest sky round it. Returns plain numbers.
+function calmSun(d) {
+  const half = d instanceof Uint16Array, f = (v) => (half ? THREE.DataUtils.fromHalfFloat(v) : v), out = new Float32Array(d.length);
+  for (let i = 0; i < d.length; i++) out[i] = f(d[i]);
+  const ls = []; for (let i = 0; i < out.length; i += 4 * 23) ls.push(0.2126 * out[i] + 0.7152 * out[i + 1] + 0.0722 * out[i + 2]);
+  ls.sort((a, b) => a - b); const cap = 1.5 * (ls[Math.floor(ls.length * 0.995)] || 1);
+  for (let i = 0; i < out.length; i += 4) { const l = 0.2126 * out[i] + 0.7152 * out[i + 1] + 0.0722 * out[i + 2]; if (l > cap) { const k = cap / l; out[i] *= k; out[i + 1] *= k; out[i + 2] *= k; } }
+  return out;
+}
 export const ENV_BASE = { url: new URL("../env/", import.meta.url).href };
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -687,6 +697,24 @@ export class AtelierEngine {
     this.devG.add(g);
     this.devices.set(dv.id, rec);
   }
+  // where every device really is in the home, as a box (metres, min x/y/z then max x/y/z): the dashboard pictures carry
+  // these so the Home Tour can outline each device exactly on top of it
+  deviceBoxes() {
+    const out = {}, box = new THREE.Box3(), part = new THREE.Box3();
+    this.scene.updateMatrixWorld(true);
+    for (const [id, rec] of this.devices) {
+      box.makeEmpty();
+      const add = (o) => { if (o) { part.setFromObject(o); if (!part.isEmpty()) box.union(part); } };
+      if (rec.window) { add(rec.window.panels?.[0]?.parent?.children.find((c) => c.geometry?.type === "CylinderGeometry")); for (const pnl of rec.window.panels || []) add(pnl); }
+      else if (rec.door) add(rec.door);
+      else if (rec.screen) add(rec.screen);
+      else if (rec.obj?.children.length) add(rec.obj);
+      if (box.isEmpty()) continue;
+      const r = (v) => Math.round(v * 100) / 100;
+      out[id] = [r(box.min.x), r(box.min.y), r(box.min.z), r(box.max.x), r(box.max.y), r(box.max.z)];
+    }
+    return out;
+  }
   // radar targets (left/right and ahead, from the sensor) to spots in the home; people glide there smoothly
   placePeople(rec, people) {
     const dv = rec.dv, a = ((dv.rot || 0) * Math.PI) / 180, flip = dv.flip ? -1 : 1;
@@ -922,16 +950,25 @@ export class AtelierEngine {
 
     this.skyBackdrop(ex);
   }
-  // "Real sky" setting: a real sky photo (HDR panorama) all round the house, seen past the garden and through the windows,
-  // metered like the garden so noon is bright, the evening glows and the night is dark
+  // "Real sky" setting: a real sky photo (HDR panorama) all round the house. It is never shown in the editor (it would
+  // get in the way while you draw); it is loaded here so the photos and dashboard pictures can light the rooms with it
+  // and show it past the garden and through the windows.
   skyBackdrop(ex) {
-    const want = this.plan?.settings?.hdr !== false && this.view !== "top";
-    const el = this.skyNow?.el ?? 30, name = el > 40 ? "qwantani_noon_puresky" : el > 14 ? "qwantani_afternoon_puresky" : el > -5 ? "qwantani_sunset_puresky" : "qwantani_night_puresky";
-    const sky = want ? this.backSky(name) : null, tex = sky?.tex || null;
-    if (this.scene.background !== tex) { this.scene.background = tex; this.dirty = true; }
-    if (!tex) return;
-    const day = Math.max(0, Math.min(1, (el + 4) / 14));
-    this.scene.backgroundIntensity = (0.12 + 0.7 * day) / (ex * (sky.mean || 1));
+    const want = this.plan?.settings?.hdr !== false;
+    if (this.scene.background && this.scene.background.isTexture && this._isSkyBg) { this.scene.background = null; this._isSkyBg = false; this.dirty = true; }
+    if (want) this.backSky(this.skyName());
+  }
+  skyName() {
+    const el = this.skyNow?.el ?? 30;
+    return el > 40 ? "qwantani_noon_puresky" : el > 14 ? "qwantani_afternoon_puresky" : el > -5 ? "qwantani_sunset_puresky" : "qwantani_night_puresky";
+  }
+  // the real sky for a photo: the picture and how bright it should be at this exposure (null when "Real sky" is off)
+  photoSky(ex) {
+    if (this.plan?.settings?.hdr === false) return null;
+    const sky = this.backSky(this.skyName());
+    if (!sky?.tex) return null;
+    const el = this.skyNow?.el ?? 30, day = Math.max(0, Math.min(1, (el + 4) / 14));
+    return { tex: sky.tex, mean: sky.mean || 1, intensity: (0.12 + 0.7 * day) / (Math.max(1e-6, ex) * (sky.mean || 1)) };
   }
   // the sky photo for the backdrop: Home Assistant fetches it once from Poly Haven; until then (or offline) the built-in one
   backSky(name) {
@@ -942,7 +979,7 @@ export class AtelierEngine {
       this._back[name] = { loading: true };
       Promise.resolve().then(() => this.skySource(name)).then((buf) => {
         if (!buf) throw new Error("no sky");
-        const d = new HDRLoader().parse(buf), tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
+        const d0 = new HDRLoader().parse(buf), d = { ...d0, data: calmSun(d0.data), type: THREE.FloatType }, tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
         tex.mapping = THREE.EquirectangularReflectionMapping; tex.colorSpace = THREE.LinearSRGBColorSpace; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.flipY = true; tex.needsUpdate = true;
         this._back[name] = { tex, mean: skyMean(d.data) }; this.dirty = true; this.request?.(false);
       }).catch(() => { this._back[name] = { failed: true }; this.dirty = true; });
