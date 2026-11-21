@@ -23,6 +23,16 @@ function calmSun(d) {
   for (let i = 0; i < out.length; i += 4) { const l = 0.2126 * out[i] + 0.7152 * out[i + 1] + 0.0722 * out[i + 2]; if (l > cap) { const k = cap / l; out[i] *= k; out[i + 1] *= k; out[i + 2] *= k; } }
   return out;
 }
+// a sky photo at half size (plenty for lighting, and much lighter work for a laptop's graphics chip)
+function half(d) {
+  if (d.width <= 1024) return d;
+  const w = d.width >> 1, h = d.height >> 1, src = d.data, out = new Float32Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) {
+    const i = ((2 * y) * d.width + 2 * x) * 4 + c, j = i + d.width * 4;
+    out[(y * w + x) * 4 + c] = (src[i] + src[i + 4] + src[j] + src[j + 4]) / 4;
+  }
+  return { ...d, data: out, width: w, height: h };
+}
 export const ENV_BASE = { url: new URL("../env/", import.meta.url).href };
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -1021,7 +1031,7 @@ export class AtelierEngine {
       this._back[name] = { loading: true };
       Promise.resolve().then(() => this.skySource(name)).then((buf) => {
         if (!buf) throw new Error("no sky");
-        const d0 = new HDRLoader().parse(buf), d = { ...d0, data: calmSun(d0.data), type: THREE.FloatType }, tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
+        const d0 = new HDRLoader().parse(buf), d = half({ ...d0, data: calmSun(d0.data), type: THREE.FloatType }), tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
         tex.mapping = THREE.EquirectangularReflectionMapping; tex.colorSpace = THREE.LinearSRGBColorSpace; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.flipY = true; tex.needsUpdate = true;
         this._back[name] = { tex, mean: skyMean(d.data) }; this.dirty = true; this.request?.(false);
       }).catch(() => { this._back[name] = { failed: true }; this.dirty = true; });

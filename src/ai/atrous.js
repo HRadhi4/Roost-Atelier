@@ -102,7 +102,8 @@ export function smoothPhoto({ renderer, target, scene, camera, exposure = 1, str
   const w = target.width, h = target.height, px = new THREE.Vector2(1 / w, 1 / h);
   const { albedo, normal } = guides(renderer, scene, camera, w, h);
   const rt = () => new THREE.WebGLRenderTarget(w, h, { type: THREE.FloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
-  const a = rt(), b = rt(), out = rt();
+  // the clean picture can be enlarged smoothly (it may have been traced at half size)
+  const a = rt(), b = rt(), out = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
   const mat = (frag, u) => new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: frag, uniforms: u, depthTest: false, depthWrite: false, blending: THREE.NoBlending, toneMapped: false });
   const split = new FullScreenQuad(mat(SPLIT, { tColor: { value: target.texture }, tAlbedo: { value: albedo.texture }, px: { value: px }, exposure: { value: exposure } }));
   const stepU = { tLight: { value: null }, tNormal: { value: normal.texture }, px: { value: px }, stepw: { value: 1 }, sigC: { value: 0.02 }, sigN: { value: 64 }, sigZ: { value: 0.02 } };

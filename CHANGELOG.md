@@ -4,6 +4,7 @@ Every version of Roost Atelier, newest first. Update from HACS, then restart Hom
 
 ## 0.21.0 — 2026-11-21
 - **See-through pictures from above.** The whole-floor dashboard picture is now taken with the walls cut low, like the Atelier's own 3D, so you can see into every room.
+- **Fixed: black dashboard pictures on laptops.** On a laptop's built-in graphics chip, tracing a photo in big pieces stalled the chip, which the computer then reset (every picture went black, and the browser could block 3D for the page). Photos are now traced in small pieces, at half size with fewer light bounces on such chips, then cleaned up and enlarged smoothly, so they take minutes instead of stalling. If a chip still stalls, the next try uses smaller pieces, and after a second stall plain 3D pictures are made for a week instead of asking for 3D again.
 - **Each room close up from above.** Make dashboard pictures now also makes a close-up of each room from the same angle. Roost Cards 1.28 zooms in to it when you tap a room (choose this in the Home Tour card's settings).
 
 ## 0.20.0 — 2026-11-21
