@@ -2,7 +2,9 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
-## 0.19.4 — 2026-11-21
+## 0.20.0 — 2026-11-21
+- **Draw rooms with lines.** In Rooms, pick Line and tap the plan corner by corner to draw walls. Every space the line closes becomes an area you can name: a line across a room cuts it in two, a line from a wall out and back closes a new area, and a line back to its start is an area of its own. It snaps to walls, corners and straight angles (hold Alt for any angle). Rectangle still works as before.
+- **Pictures outside the windows.** In the home settings, under Outside the windows, choose Pictures and add a photo of the view for each side of the home (top, right, bottom and left of the plan). It is seen through the windows on that side, in 3D and in the dashboard pictures, instead of the 3D trees.
 - **More realistic dashboard pictures.** On computers without the AI clean-up, the grain of the traced light is now smoothed away while edges, corners and textures stay sharp. Lamps light from a small glowing area instead of a single point, so their shadows are soft. Plain 3D pictures are drawn twice as big and shrunk, so their edges are smooth.
 - **Real sky only in the pictures.** The real sky is no longer shown in the editor. It still lights the rooms in photos and dashboard pictures, and shows past the garden and through the windows there. Turn it on or off in the home settings as before.
 - **Device buttons in the 3D view work on every press.** A press that starts on a button always switches the device, once, even if the view moves under your finger.

@@ -15,6 +15,7 @@ import { AtelierView, VIEW_CSS } from "./view.js";
 import { check } from "./check.js";
 import { ItemPreview } from "./preview.js";
 import { hasIcon } from "./icons.js";
+import { drawLine, onWall, meet } from "./areas.js";
 import { STAIR_STYLES, SPIRAL_TURN, stairFrom, riseTo, stairSvg, stairHole, stairsArriving, minRun } from "./stairs.js";
 
 const LIVE_KEYS = new Set(["lumens", "kelvin", "gain", "power"]);
@@ -175,6 +176,7 @@ ${VIEW_CSS}
 export class AtelierEditor {
   constructor(root, panelEl, { rtl } = {}) {
     this.root = root; this.panelEl = panelEl;
+    try { this.roomMode = localStorage.getItem("roost-atelier-room-mode") || "rect"; } catch { this.roomMode = "rect"; }
     this.tool = "select"; this.sel = null; this.layout = "split"; this.z = 40; this.px = 60; this.py = 60; this.cat = "Living";
     this.undoStack = []; this.redoStack = []; this.status = "";
     root.innerHTML = `<style>${CSS}</style><div class="ed" dir="${rtl ? "rtl" : "ltr"}" data-layout="split">
@@ -490,7 +492,7 @@ export class AtelierEditor {
     nav.innerHTML = TOOLS.map(([k, i, l], n) => `${n === 7 || n === 9 || n === 11 ? '<div class="sep"></div>' : ""}<button data-t="${k}" class="${this.tool === k ? "on" : ""}" title="${t(l)}"><ra-icon icon="${i}"></ra-icon></button>`).join("");
     nav.querySelectorAll("button").forEach((b) => (b.onclick = () => this.setTool(b.dataset.t)));
   }
-  setTool(k) { this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
+  setTool(k) { if (k !== "room") this.line = null; this.tool = k; if (k !== "select") this.sel = null; if (k !== "stairs") this.stairPick = null; else this.stairPick ||= { step: 0, from: this.fi }; this.drawNav(); this.draw(); this.inspector(); }
 
   // trying the home out: tapping a device switches it (for real, or just here when it has no working entity);
   // nothing opens for editing and nothing in the home is changed
@@ -701,6 +703,7 @@ export class AtelierEditor {
       const it = this.find(s);
       if (it) { const d = dims(it), a = ((it.rot || 0) * Math.PI) / 180, hx = it.x - Math.sin(a) * (d.d / 2 + 26 * px), hy = it.y - Math.cos(a) * (d.d / 2 + 26 * px); out += `<line x1="${it.x}" y1="${it.y}" x2="${hx}" y2="${hy}" stroke="var(--acc1)" stroke-width="${1.5 * px}" pointer-events="none"/><circle data-rot="1" cx="${hx}" cy="${hy}" r="${11 * px}" fill="#fff" stroke="var(--acc1)" stroke-width="${2.5 * px}"/>`; }
     }
+    if (this.line?.length) out += this.lineSvg(px);
     if (this.drawRect) { const [a, b] = this.drawRect; out += `<rect x="${Math.min(a[0], b[0])}" y="${Math.min(a[1], b[1])}" width="${Math.abs(b[0] - a[0])}" height="${Math.abs(b[1] - a[1])}" fill="rgba(109,75,255,.18)" stroke="var(--acc2)" stroke-width="${2 * px}"/><text x="${(a[0] + b[0]) / 2}" y="${(a[1] + b[1]) / 2}" font-size="${13 * px}" font-weight="600" text-anchor="middle" fill="var(--text)">${round(Math.abs(b[0] - a[0]), 2)} × ${round(Math.abs(b[1] - a[1]), 2)} m</text>`; }
     // stairs coming up from the level below: their opening in this floor
     for (const it of stairsArriving(this.plan, this.fi)) {
@@ -751,6 +754,11 @@ export class AtelierEditor {
     // placing stairs: show where they would go as the pointer moves
     el.addEventListener("pointermove", (e) => {
       this._mouse = [e.clientX, e.clientY];
+      if (this.tool === "room" && this.roomMode === "line" && this.line?.length && !this.drag) {
+        this.lineHover = this.linePoint(this.toPlan(e.clientX, e.clientY), e.altKey).p;
+        if (!this._hovRaf) this._hovRaf = requestAnimationFrame(() => { this._hovRaf = 0; this.draw(); });
+        return;
+      }
       if (this.tool !== "stairs" || !this.stairPick?.step || this.drag) return;
       this.stairHover = this.snapPt(this.toPlan(e.clientX, e.clientY));
       if (!this._hovRaf) this._hovRaf = requestAnimationFrame(() => { this._hovRaf = 0; this.draw(); });
@@ -780,6 +788,8 @@ export class AtelierEditor {
     if (e.pointerType === "mouse" && (e.button === 1 || e.button === 2 || (this._space && e.button === 0))) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py }; return; }
     if (this.testing) { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, testDev: ds?.dataset.dev }; return; }
     if (this.tool === "stairs") { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, stairTap: this.stairPick?.step > 0 }; return; }
+    // drawing with lines: a tap adds a corner (a drag still moves the plan)
+    if (this.tool === "room" && this.roomMode === "line") { this.drag = { ...start, kind: "pan", px0: this.px, py0: this.py, linePt: true }; return; }
     if (this.tool === "room") { this.drag = { ...start, kind: "draw" }; this.drawRect = [this.snapPt(P), this.snapPt(P)]; return; }
     // the tape measure: drag from one point to another (it snaps to walls and corners)
     if (this.tool === "measure") { const a = this.snapPt(P); this.measure = { a, b: [...a] }; this.drag = { ...start, kind: "measure" }; return; }
@@ -937,6 +947,7 @@ export class AtelierEditor {
       const eng = this.view?.engine, P = this.toPlan(e.clientX, e.clientY);
       if (eng?.view === "walk" && (d.tapRoom || d.tapEmpty) && eng.walkToPoint(P[0], P[1])) return;
       if (d.testDev) { this.view.toggle(d.testDev); setTimeout(() => this.draw(), 60); return; }
+      if (d.linePt) return this.addLinePoint(d.P, e.altKey);
       if (this.testing) return;
       if (d.stairTap) return this.pickStair(this.snapPt(d.P));
       if (d.tapRoom) return this.select({ t: "room", id: d.tapRoom.id });
@@ -999,7 +1010,7 @@ export class AtelierEditor {
     if (this.tool === "stairs") return this.stairPanel(a);
     if (this.tool === "measure") return this.measurePanel(a);
     if (this.tool === "note") { a.innerHTML = `<h2><ra-icon icon="mdi:note-text-outline"></ra-icon>${t("Note")}</h2><p class="tip">${t("Tap the plan where the note goes. Notes print with the plan.")}</p>`; return; }
-    if (this.tool === "room") { a.innerHTML = `<h2><ra-icon icon="mdi:vector-square-plus"></ra-icon>${t("Rooms")}</h2><p class="tip">${t("Tap and drag on the plan to draw a room.")}</p>`; return; }
+    if (this.tool === "room") return this.roomToolPanel(a);
     if (["door", "window", "slider", "arch"].includes(this.tool)) { a.innerHTML = `<h2>${t(TOOLS.find((x) => x[0] === this.tool)[2])}</h2><p class="tip">${t("Tap a wall to add it.")}</p>`; return; }
     if (!obj) return this.homePanel(mode === "settings");
     if (s.t === "multi") return this.multiPanel();
@@ -1313,12 +1324,14 @@ export class AtelierEditor {
       <div class="field"><h3>${t("Language")}</h3><select data-lang>${LANGS.map(([k, l]) => `<option value="${k}" ${savedLang() === k ? "selected" : ""}>${k === "auto" ? t("Auto") : l}</option>`).join("")}</select></div>
       <div class="field"><h3>${t("Level")}</h3><input type="text" data-fname value="${esc(f.name)}">${p.floors.length > 1 ? `<div class="row"><button class="danger" data-delfloor><ra-icon icon="mdi:delete-outline"></ra-icon>${t("Delete")}</button></div>` : ""}</div>
       <div class="field"><h3>${t("Devices from Home Assistant")}</h3><p class="tip">${t("Each device goes into the room with the same name as its area in Home Assistant. New ones are placed by themselves.")}</p><div class="row"><button class="primary" data-ha-place><ra-icon icon="mdi:home-import-outline"></ra-icon>${t("Place them now")}</button></div><div data-ha-areas></div></div>
+      <div class="field"><h3>${t("Outside the windows")}</h3><div data-outside></div></div>
       <div class="field"><h3>${t("Your materials")}</h3><div data-own></div></div>
       <div class="field"><h3>${t("Room photos")}</h3><div class="shots" data-shots><span class="tip">${t("Made when you press Make dashboard pictures")}</span></div></div>
       <div class="field"><h3>${t("Dashboard pictures")}</h3><p class="tip">${t("Pictures of the whole floor and every room in 360°, for the Roost Home Tour card in Roost Cards. Make them again after changing the home. Made on this computer; it takes a few minutes per room.")}</p><div class="row"><button class="primary" data-publish ${this.view.engine.baked ? "" : "disabled"}><ra-icon icon="mdi:image-multiple-outline"></ra-icon>${t("Make dashboard pictures")}</button><button data-preview><ra-icon icon="mdi:eye-outline"></ra-icon>${t("Preview")}</button></div>${this.view.engine.baked ? "" : `<span class="tip">${t("Waiting for the light to be ready")}</span>`}<div class="shots" data-panos></div></div>
       <p class="tip">${t("Drag to move. Pull a corner or a wall to resize.")}</p>`;
     this.drawShots(a.querySelector("[data-shots]"));
     this.ownPanel(a.querySelector("[data-own]"));
+    this.outsidePanel(a.querySelector("[data-outside]"));
     this.drawAreas(a.querySelector("[data-ha-areas]"));
     a.querySelector("[data-ha-place]")?.addEventListener("click", () => { this.placeFromHA(false); this.drawAreas(a.querySelector("[data-ha-areas]")); });
     this.drawPanos(a.querySelector("[data-panos]"));
@@ -1470,6 +1483,9 @@ export class AtelierEditor {
   key(e) {
     if (e.target.closest?.("input,select,textarea") || e.composedPath()[0]?.matches?.("input,select,textarea")) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); }
+    else if (this.line && e.key === "Escape") { this.line = null; this.lineHover = null; this.draw(); this.inspector(); }
+    else if (this.line && e.key === "Enter") { e.preventDefault(); this.finishLine(false); }
+    else if (this.line && e.key === "Backspace") { e.preventDefault(); this.undoLinePoint(); }
     else if ((e.key === "Delete" || e.key === "Backspace") && this.sel) this.remove(this.sel);
     else if (e.key === "Escape") { this.picking = false; this.measure = null; this.edgePick = null; this.select(null); }
     // Ctrl+A: every device on this level; Ctrl+Shift+A: every device and piece of furniture
@@ -1479,6 +1495,74 @@ export class AtelierEditor {
     else if ((e.ctrlKey || e.metaKey) && /^[xX]$/.test(e.key) && !this.testing) { if (this.copySel()) { e.preventDefault(); this.remove(this.sel); this.toast(t("Cut")); } }
     else if ((e.ctrlKey || e.metaKey) && /^[vV]$/.test(e.key) && !this.testing) { if (this.clip?.length) { e.preventDefault(); this.paste(); } }
     else if (e.key === " " && !e.repeat) this._space = true;
+  }
+  // ------------------------------------------------------------ drawing with lines
+  // two ways to draw: a rectangle (drag), or a line of walls (tap corner by corner). Every space a line closes
+  // becomes an area that can be named: a line across a room cuts it in two, a line from a wall out and back closes
+  // a new area, a line back to its start is an area of its own.
+  roomToolPanel(a) {
+    const mode = this.roomMode || "rect", n = this.line?.length || 0;
+    a.innerHTML = `<h2><ra-icon icon="mdi:vector-square-plus"></ra-icon>${t("Rooms")}</h2>
+      <div class="chips">${[["rect", "mdi:vector-square", "Rectangle"], ["line", "mdi:vector-polyline", "Line"]].map(([k, i, l]) => `<button data-rmode="${k}" class="${mode === k ? "on" : ""}"><ra-icon icon="${i}"></ra-icon>${t(l)}</button>`).join("")}</div>
+      <p class="tip">${t(mode === "rect" ? "Tap and drag on the plan to draw a room." : "Tap the plan corner by corner to draw walls. Every space the line closes becomes an area: a line across a room cuts it in two. It snaps to walls and straight angles; hold Alt for any angle.")}</p>
+      ${mode === "line" && n ? `<div class="row"><button class="primary" data-lfin ${n < 2 ? "disabled" : ""}><ra-icon icon="mdi:check"></ra-icon>${t("Finish")}</button><button data-lback><ra-icon icon="mdi:undo"></ra-icon>${t("Remove last corner")}</button><button data-lcancel><ra-icon icon="mdi:close"></ra-icon>${t("Cancel")}</button></div>` : ""}`;
+    a.querySelectorAll("[data-rmode]").forEach((b) => (b.onclick = () => { this.roomMode = b.dataset.rmode; try { localStorage.setItem("roost-atelier-room-mode", this.roomMode); } catch {} this.line = null; this.lineHover = null; this.draw(); this.inspector(); }));
+    a.querySelector("[data-lfin]")?.addEventListener("click", () => this.finishLine(false));
+    a.querySelector("[data-lback]")?.addEventListener("click", () => this.undoLinePoint());
+    a.querySelector("[data-lcancel]")?.addEventListener("click", () => { this.line = null; this.lineHover = null; this.draw(); this.inspector(); });
+  }
+  // where a tap lands: on the grid and corners, along straight angles from the last corner, and right onto a wall
+  linePoint(P, free) {
+    const f = this.floor, reach = 14 / this.z, line = this.line || [], prev = line[line.length - 1];
+    let c = this.snapPt(P), straight = false;
+    if (prev && !free) {
+      const dx = c[0] - prev[0], dy = c[1] - prev[1], L = Math.hypot(dx, dy);
+      if (L > 1e-6) {
+        const ang = Math.atan2(dy, dx), step = Math.PI / 4, k = Math.round(ang / step) * step;
+        if (Math.abs(ang - k) < 0.14) { c = [round(prev[0] + Math.cos(k) * L, 3), round(prev[1] + Math.sin(k) * L, 3)]; straight = true; }
+      }
+    }
+    // back to the first corner: the line closes
+    if (line.length >= 3 && Math.hypot(c[0] - line[0][0], c[1] - line[0][1]) < reach) return { p: [...line[0]], close: true };
+    const w = onWall(f.rooms, c, reach);
+    if (w) {
+      const m = straight && prev ? meet(prev, c, w.a, w.b) : null;
+      c = m && Math.hypot(m[0] - c[0], m[1] - c[1]) < reach * 2 ? m : w.p;
+      return { p: [round(c[0], 4), round(c[1], 4)], wall: true };
+    }
+    return { p: c };
+  }
+  addLinePoint(P, free) {
+    const pt = this.linePoint(P, free), line = (this.line ||= []);
+    if (pt.close) return this.finishLine(true);
+    const last = line[line.length - 1];
+    // tapping the last corner again finishes the line
+    if (last && Math.hypot(pt.p[0] - last[0], pt.p[1] - last[1]) < 0.02) { if (line.length >= 2) this.finishLine(false); return; }
+    line.push(pt.p); this.lineHover = null;
+    // landing on a wall closes a space: done
+    if (pt.wall && line.length >= 2 && drawLine(this.floor.rooms, line, false, () => "x").made.length) return this.finishLine(false);
+    this.draw(); this.inspector();
+  }
+  undoLinePoint() { if (!this.line) return; this.line.pop(); if (!this.line.length) this.line = null; this.lineHover = null; this.draw(); this.inspector(); }
+  finishLine(closed) {
+    const line = this.line; this.line = null; this.lineHover = null;
+    if (!line || line.length < 2) { this.draw(); this.inspector(); return; }
+    const res = drawLine(this.floor.rooms, line, closed, () => uid("r"));
+    if (!res.made.length) { this.toast(t("The line does not close a space: end it on a wall or back at its start")); this.draw(); this.inspector(); return; }
+    this.snapshot(); this.floor.rooms = res.rooms;
+    this.tool = "select"; this.drawNav();
+    this.sel = { t: "room", id: res.made[0] }; this.changed(); this.inspector();
+    this.toast(`${res.made.length + res.split.length} ${t(res.made.length + res.split.length === 1 ? "area" : "areas")}: ${t("tap one to give it a name")}`);
+  }
+  lineSvg(px) {
+    const L = this.line, pts = [...L, ...(this.lineHover ? [this.lineHover] : [])];
+    let o = `<polyline points="${pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--acc2)" stroke-width="${3 * px}" stroke-linejoin="round" stroke-linecap="round" pointer-events="none"/>`;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < 0.3) continue;
+      o += `<text x="${(a[0] + b[0]) / 2}" y="${(a[1] + b[1]) / 2 - 6 * px}" font-size="${12 * px}" font-weight="600" text-anchor="middle" fill="var(--text)" pointer-events="none">${len.toFixed(2)} m</text>`;
+    }
+    L.forEach((p, i) => (o += `<circle cx="${p[0]}" cy="${p[1]}" r="${(i === 0 ? 6 : 4) * px}" fill="${i === 0 ? "var(--acc2)" : "var(--surface, #fff)"}" stroke="var(--acc2)" stroke-width="${2 * px}" pointer-events="none"/>`));
+    return o;
   }
   // ------------------------------------------------------------ measuring
   measureOut() { const o = this.aside.querySelector("[data-mlen]"), m = this.measure; if (o && m) o.textContent = `${Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]).toFixed(2)} m`; }
@@ -1506,6 +1590,33 @@ export class AtelierEditor {
     const off = th / 2 + d.d / 2 + (LIBRARY[it.kind]?.[6] === "wall" ? 0 : 0.005);
     it.x = round(mx + nx * off, 3); it.y = round(my + ny * off, 3);
     return true;
+  }
+  // ------------------------------------------------------------ outside the windows: trees, or a picture on each side
+  outsidePanel(el) {
+    const st = (this.plan.settings ||= {}), out = st.outside || {}, mode = out.mode === "pictures" ? "pictures" : "trees", views = out.views || {};
+    const SIDES = [["top", "Top of the plan", "mdi:arrow-up"], ["right", "Right of the plan", "mdi:arrow-right"], ["bottom", "Bottom of the plan", "mdi:arrow-down"], ["left", "Left of the plan", "mdi:arrow-left"]];
+    el.innerHTML = `<div class="seg"><button data-omode="trees" class="${mode === "trees" ? "on" : ""}">${t("Garden trees")}</button><button data-omode="pictures" class="${mode === "pictures" ? "on" : ""}">${t("Pictures")}</button></div>
+      ${mode === "pictures" ? `<p class="tip">${t("A photo of the view for each side of the home: it is seen through the windows on that side, in 3D and in the dashboard pictures. A wide photo taken from a window works best.")}</p>
+      ${SIDES.map(([k, l, i]) => { const v = views[k]; return `<div class="row between"><span class="row"><ra-icon icon="${i}"></ra-icon>${v?.thumb ? `<i style="width:44px;height:28px;border-radius:6px;background:url(${v.thumb}) center/cover;display:inline-block"></i>` : ""}${t(l)}</span><span class="row"><label><button data-vpick="${k}"><ra-icon icon="mdi:image-plus-outline"></ra-icon>${t(v ? "Change" : "Choose picture")}</button><input type="file" data-vfile="${k}" accept="image/*" hidden></label>${v ? `<button data-vdel="${k}" title="${t("Delete")}"><ra-icon icon="mdi:delete-outline"></ra-icon></button>` : ""}</span></div>`; }).join("")}` : ""}`;
+    const save = (fn) => { this.snapshot(); fn(); this.changed(true); this.outsidePanel(el); };
+    el.querySelectorAll("[data-omode]").forEach((b) => (b.onclick = () => save(() => { st.outside = { ...out, mode: b.dataset.omode }; if (b.dataset.omode === "trees" && !Object.keys(views).length) delete st.outside; })));
+    el.querySelectorAll("[data-vpick]").forEach((b) => (b.onclick = () => el.querySelector(`[data-vfile="${b.dataset.vpick}"]`).click()));
+    el.querySelectorAll("[data-vfile]").forEach((inp) => (inp.onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return; this.toast(t("Saving"));
+      try { const v = await this.uploadPicture(f, 2560); save(() => { st.outside = { mode: "pictures", views: { ...views, [inp.dataset.vfile]: v } }; }); this.toast(t("Added")); }
+      catch { this.toast(t("Not saved")); }
+    }));
+    el.querySelectorAll("[data-vdel]").forEach((b) => (b.onclick = () => save(() => { const v = { ...views }; delete v[b.dataset.vdel]; st.outside = { mode: "pictures", views: v }; })));
+  }
+  // a photo sent to Home Assistant (made smaller first): its file name, a small preview and its shape
+  async uploadPicture(file, max) {
+    const img = await createImageBitmap(file), k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88)), th = document.createElement("canvas"); th.width = 66; th.height = 42; th.getContext("2d").drawImage(img, 0, 0, 66, 42);
+    const fd = new FormData(); fd.append("file", blob, "view.jpg");
+    const r = await this._hass.fetchWithAuth("/api/roost_atelier/upload", { method: "POST", body: fd }); if (!r.ok) throw new Error(await r.text());
+    const { file: name } = await r.json();
+    return { file: name, thumb: th.toDataURL("image/jpeg", 0.7), aspect: round(img.width / img.height, 3) };
   }
   // ------------------------------------------------------------ your own materials (photos of tiles, wood, fabric)
   async addOwnMaterial(file) {

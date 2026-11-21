@@ -155,6 +155,7 @@ export class Studio {
         if (real) { scene.background = real.tex; scene.backgroundIntensity = real.intensity; }
         else scene.background = shot.view !== "3d" ? null : new THREE.Color("#0B0D17");
         let gaveUp = this.traceBroken || lost;
+        e.tuneOutside(exposure);
         if (!gaveUp) { pt.setScene(scene, cam); pt.reset(); }
         // trace, a little at a time so the page stays smooth; pause while you move the view
         let lastS = -1, lastT = performance.now(), first = true;

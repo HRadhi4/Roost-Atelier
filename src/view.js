@@ -72,7 +72,7 @@ export class AtelierView {
   }
   set hass(h) {
     // real textures come from Home Assistant (downloaded there once)
-    if (h && !this._texSet) { this._texSet = true; setOwnMaterials([], (file) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/file/${file}`).then((r) => (r.ok ? r.blob() : null))); setTextureSource((id, kind) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/texture/${id}/${kind}`).then((r) => (r.ok ? r.blob() : null))); this.engine.skySource = (name) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/sky/${name}`).then((r) => (r.ok ? r.arrayBuffer() : null)); }
+    if (h && !this._texSet) { this._texSet = true; setOwnMaterials([], (file) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/file/${file}`).then((r) => (r.ok ? r.blob() : null))); setTextureSource((id, kind) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/texture/${id}/${kind}`).then((r) => (r.ok ? r.blob() : null))); this.engine.fileSource = (file) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/file/${file}`).then((r) => (r.ok ? r.blob() : null)); this.engine.skySource = (name) => (this._hass || h).fetchWithAuth(`/api/roost_atelier/sky/${name}`).then((r) => (r.ok ? r.arrayBuffer() : null)); }
     this._hass = h;
     if (!this.plan) return;
     const ids = this.entities, states = {}; let changed = false;

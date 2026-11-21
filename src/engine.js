@@ -602,6 +602,11 @@ export class AtelierEngine {
     const T = 1.4, shape = new THREE.Shape([[b.x0 - T, b.y0 - T], [b.x1 + T, b.y0 - T], [b.x1 + T, b.y1 + T], [b.x0 - T, b.y1 + T]].map(([x, z]) => new THREE.Vector2(x, -z)));
     const terrM = terraceMaterial(); if (!terrM.userData.garden) { gardenLit(terrM); terrM.userData.garden = true; }
     const terr = new THREE.Mesh(new THREE.ShapeGeometry(shape), terrM); terr.geometry.rotateX(-Math.PI / 2); terr.position.y = y - 0.012; terr.receiveShadow = true; g.add(terr);
+    g.traverse((o) => { o.userData.noBake = true; o.userData.exterior = true; });
+    this.root.add(g);
+    // "Pictures": a photo of the view on each side instead of trees (seen through the windows and in the pictures)
+    const out = this.plan?.settings?.outside;
+    if (out?.mode === "pictures") { this.addViews(b, y, out.views || {}); return; }
     // trees: always in the same places for the same home, never on the terrace
     let seed = Math.round((b.x1 - b.x0) * 97 + (b.y1 - b.y0) * 61) || 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const bark = gardenLit(solid("#6B5440", { rough: 0.95 }).clone()), leaves = gardenLit(solid("#6E7F4A", { rough: 0.85 }).clone()), dark = gardenLit(solid("#3F5233", { rough: 0.9 }).clone()), shade = new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: 0.22, depthWrite: false });
@@ -624,7 +629,44 @@ export class AtelierEngine {
       const sh = new THREE.Mesh(new THREE.CircleGeometry(placed.length % 3 === 0 ? 0.8 : 1.6, 24), shade); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.01; sh.castShadow = false; t.add(sh); g.add(t);
     }
     g.traverse((o) => { o.userData.noBake = true; o.userData.exterior = true; });
-    this.root.add(g);
+  }
+  // a big picture standing some way off each side of the house (top, right, bottom and left of the plan), facing in,
+  // with its horizon at eye height: from inside, the windows look out onto it. It glows by itself (no lamp or sun
+  // shades it) as bright as daylight outside, so it looks right at any time of day and in every photo.
+  addViews(b, y, views) {
+    const g = new THREE.Group(); g.name = "views";
+    const D = 14, eye = y + 1.6, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2;
+    const sides = { top: [cx, b.y0 - D, 0, b.x1 - b.x0], bottom: [cx, b.y1 + D, Math.PI, b.x1 - b.x0], left: [b.x0 - D, cz, Math.PI / 2, b.y1 - b.y0], right: [b.x1 + D, cz, -Math.PI / 2, b.y1 - b.y0] };
+    for (const [side, [x, z, rot, span]] of Object.entries(sides)) {
+      const v = views[side]; if (!v?.file) continue;
+      const W = span + 2 * D * 1.15, H = W / (v.aspect || 1.5);
+      const m = new THREE.MeshStandardMaterial({ color: "#000000", emissive: "#ffffff", roughness: 1, metalness: 0, side: THREE.FrontSide });
+      m.userData.view = true; m.userData.shared = true;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), m);
+      mesh.position.set(x, eye, z); mesh.rotation.y = rot; mesh.castShadow = false; mesh.receiveShadow = false;
+      mesh.userData.noBake = true; mesh.userData.exterior = true;
+      mesh.onBeforeRender = (r) => this.tuneOutside(r.toneMappingExposure);
+      g.add(mesh);
+      this.loadView(v.file).then((tex) => { if (!tex) return; m.emissiveMap = tex; m.needsUpdate = true; this.request(true); });
+    }
+    this.root.add(g); this.tuneOutside(this.renderer?.toneMappingExposure || 1);
+  }
+  loadView(file) {
+    const cache = (this._viewTex ||= new Map());
+    if (!cache.has(file)) cache.set(file, (async () => {
+      try {
+        const blob = await this.fileSource?.(file); if (!blob) return null;
+        const bmp = await createImageBitmap(blob, { imageOrientation: "flipY" });
+        const tex = new THREE.Texture(bmp); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.needsUpdate = true;
+        return tex;
+      } catch { return null; }
+    })());
+    return cache.get(file);
+  }
+  // how bright the pictures outside are: daylight by day, dusk at sunset, dark at night (the same at any exposure)
+  tuneOutside(ex) {
+    const el = this.skyNow?.el ?? 30, day = Math.max(0, Math.min(1, (el + 4) / 18)), k = (0.04 + 0.8 * day) / Math.max(1e-6, ex || 1);
+    this.root?.getObjectByName("views")?.traverse((o) => { if (o.isMesh && Math.abs(o.material.emissiveIntensity - k) > k * 1e-3) o.material.emissiveIntensity = k; });
   }
   applyWalls() {
     const mode = this.view === "walk" ? "full" : (this._wallsOverride || this.plan?.settings?.walls || this.opts.walls);

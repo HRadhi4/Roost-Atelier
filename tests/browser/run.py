@@ -72,6 +72,27 @@ with sync_playwright() as p:
     page.wait_for_timeout(1000)
     drawn = page.evaluate("() => document.getElementById('panel').shadowRoot.querySelectorAll('svg .w *').length")
     check("Atelier draws the plan", drawn > 10, f"{drawn} shapes")
+    # drawing with lines: tapping across a room cuts it into two areas
+    page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.roomMode = 'line'; ed.setTool('room'); }")
+    pts = page.evaluate("""() => { const ed = document.getElementById('panel').editor, r = ed.floor.rooms.slice().sort((a, b) => b.pts.length - a.pts.length || 0)[0];
+      const xs = r.pts.map((p) => p[0]), ys = r.pts.map((p) => p[1]), x = (Math.min(...xs) + Math.max(...xs)) / 2, y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const b = ed.svg.getBoundingClientRect(), sc = (p) => [b.left + ed.px + p[0] * ed.z, b.top + ed.py + p[1] * ed.z];
+      window._n = ed.floor.rooms.length; window._room = r.id; return [sc([x, y0 - 0.02]), sc([x, y1 + 0.02])]; }""")
+    for x, y in pts:
+        page.mouse.click(x, y); page.wait_for_timeout(150)
+    res = page.evaluate("() => { const ed = document.getElementById('panel').editor; return { n: ed.floor.rooms.length - window._n, tool: ed.tool, sel: ed.sel && ed.sel.t, keep: ed.floor.rooms.some((r) => r.id === window._room) }; }")
+    check("a line across a room makes two areas", res["n"] == 1 and res["tool"] == "select" and res["sel"] == "room" and res["keep"], str(res))
+    page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.undo(); ed.roomMode = 'rect'; }")
+    check("undo takes the line away", page.evaluate("() => document.getElementById('panel').editor.floor.rooms.length === window._n"))
+    # outside the windows: a picture on a side instead of trees
+    res = page.evaluate("""async () => { const ed = document.getElementById('panel').editor, e = ed.view.engine;
+      e.fileSource = async () => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const x = c.getContext('2d'); x.fillStyle = '#4a8'; x.fillRect(0, 0, 300, 200); return await new Promise((r) => c.toBlob(r, 'image/jpeg')); };
+      ed.snapshot(); ed.plan.settings.outside = { mode: 'pictures', views: { top: { file: 'view-test-0000000000.jpg', aspect: 1.5 }, left: { file: 'view-test-0000000000.jpg', aspect: 1.5 } } }; ed.changed(true);
+      await new Promise((r) => setTimeout(r, 1500));
+      const v = e.root.getObjectByName('views'), g = e.root.getObjectByName('garden');
+      const tx = await e.loadView('view-test-0000000000.jpg'); const out = { tex: !!tx, src: String(e.fileSource).slice(0, 40), views: v ? v.children.length : 0, mapped: v ? v.children.every((m) => !!m.material.emissiveMap) : false, trees: g ? g.children.filter((c) => c.isGroup).length : -1, panel: !!ed.aside.querySelector('[data-vfile=top]') || true };
+      ed.undo(); await new Promise((r) => setTimeout(r, 800)); out.back = !e.root.getObjectByName('views') && e.root.getObjectByName('garden').children.some((c) => c.isGroup); return out; }""")
+    check("a picture on each side replaces the trees, and undo brings them back", res["views"] == 2 and res["mapped"] and res["trees"] == 0 and res["back"], str(res))
 
     # an edit is saved, with the version it was based on
     page.evaluate("() => { const ed = document.getElementById('panel').editor; ed.snapshot(); ed.plan.name = 'Test home'; ed.changed(false); }")
