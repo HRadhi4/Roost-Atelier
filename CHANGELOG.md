@@ -2,6 +2,10 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.21.0 — 2026-11-21
+- **See-through pictures from above.** The whole-floor dashboard picture is now taken with the walls cut low, like the Atelier's own 3D, so you can see into every room.
+- **Each room close up from above.** Make dashboard pictures now also makes a close-up of each room from the same angle. Roost Cards 1.28 zooms in to it when you tap a room (choose this in the Home Tour card's settings).
+
 ## 0.20.0 — 2026-11-21
 - **Draw rooms with lines.** In Rooms, pick Line and tap the plan corner by corner to draw walls. Every space the line closes becomes an area you can name: a line across a room cuts it in two, a line from a wall out and back closes a new area, and a line back to its start is an area of its own. It snaps to walls, corners and straight angles (hold Alt for any angle). Rectangle still works as before.
 - **Trace over a drawing.** When a CAD drawing, PDF or picture is not read well, put it under the plan as a guide (Import → Trace over a drawing, or Trace over it instead after reading a plan). Set its size by tapping the two ends of a length you know and typing the real length, move it into place, set how see-through it is, draw the walls over it with Line, then remove it.

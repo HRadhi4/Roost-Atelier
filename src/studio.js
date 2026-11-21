@@ -85,7 +85,7 @@ export class Studio {
       const rasterShot = (shot, cam, W, H, exposure, toneMapping) => {
         try {
           return plain((r) => {
-            e.view = shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun(); if (!realBack(exposure) && shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
+            e.view = shot.view; e._wallsOverride = shot.view === "3d" ? "cut" : "full"; e.applyWalls(); e.fitSun(); if (!realBack(exposure) && shot.view === "3d") e.scene.background = new THREE.Color("#0B0D17");
             const k = bigger(r, W, H), bi = e.scene.backgroundIntensity;
             r.setPixelRatio(1); r.setSize(W * k, H * k, false); const tm = r.toneMapping, ex = r.toneMappingExposure; r.toneMapping = toneMapping; r.toneMappingExposure = exposure;
             e.scene.updateMatrixWorld(true); r.setRenderTarget(null); r.render(e.scene, cam); const out = grab(r, W, H, k); e.scene.backgroundIntensity = bi;
@@ -132,7 +132,8 @@ export class Studio {
         this.onProgress({ state: "working", done: i, total: shots.length, f: i / shots.length, name: shot.name });
         // the home as it looks from this spot: full walls; ceilings only inside a room
         const prevView = e.view;
-        e.view = shot.view === "pano" ? "walk" : shot.view; e._wallsOverride = "full"; e.applyWalls(); e.fitSun();
+        // seen from above at an angle, the walls are cut low so every room can be seen into (like the Atelier's own 3D)
+        e.view = shot.view === "pano" ? "walk" : shot.view; e._wallsOverride = shot.view === "3d" ? "cut" : "full"; e.applyWalls(); e.fitSun();
         e.scene.userData.baked = !!e.baked;
         const scene = photoScene(e.scene, { sun: shot.view !== "3d", lampCap: e.baked ? e.bakeMgr.U.bakeLampCap.value : 0, lamps: e.photoLamps() });
         const exposure = e.renderer.toneMappingExposure, toneMapping = e.renderer.toneMapping;
@@ -142,7 +143,7 @@ export class Studio {
         let cam, camInfo;
         if (shot.view === "pano") { const p = panoSpot(shot.room); cam = new EquirectCamera(); cam.position.set(p[0], p[1], p[2]); cam.updateMatrixWorld(); camInfo = { pos: p, boxes: e.deviceBoxes() }; }
         else {
-          const pose = e.pose(shot.view, shot.room, W / H); cam = new THREE.PerspectiveCamera(pose.fov, W / H, 0.05, 400); cam.position.copy(pose.pos); cam.lookAt(pose.target); cam.updateMatrixWorld();
+          const pose = e.pose(shot.view, shot.room, W / H, shot.view === "3d"); cam = new THREE.PerspectiveCamera(pose.fov, W / H, 0.05, 400); cam.position.copy(pose.pos); cam.lookAt(pose.target); cam.updateMatrixWorld();
           camInfo = { pos: pose.pos.toArray(), target: pose.target.toArray(), fov: pose.fov, aspect: W / H, boxes: e.deviceBoxes() };
         }
         renderer.toneMapping = toneMapping; renderer.toneMappingExposure = exposure;
@@ -225,7 +226,9 @@ export class Studio {
 // which photos a floor needs: the whole floor first, then each indoor room
 export function shotsFor(floor, t) {
   const rooms = floor.rooms.filter((r) => !ROOM_TYPES[r.type]?.outdoor);
-  return [{ key: "all", name: t("Whole floor"), view: "3d" }, ...rooms.map((r) => ({ key: r.id, name: r.name || t(ROOM_TYPES[r.type]?.name || "Room"), view: "walk", room: r }))];
+  const name = (r) => r.name || t(ROOM_TYPES[r.type]?.name || "Room");
+  // the whole floor from above at an angle, each room close up from the same angle (for zooming in), each room inside
+  return [{ key: "all", name: t("Whole floor"), view: "3d" }, ...rooms.map((r) => ({ key: `top_${r.id}`, name: `${name(r)} · ${t("from above")}`, view: "3d", room: r })), ...rooms.map((r) => ({ key: r.id, name: name(r), view: "walk", room: r }))];
 }
 
 // the 360° views a floor needs: one per indoor room

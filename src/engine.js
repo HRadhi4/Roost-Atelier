@@ -30,7 +30,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
-import { walls, openingsOn, centroid, inside, planBounds, ROOM_TYPES, nearestWall } from "./model.js";
+import { walls, openingsOn, centroid, inside, planBounds, bounds, ROOM_TYPES, nearestWall } from "./model.js";
 import { floorMaterial, wallMaterial, featureMaterial, solid, wood, glass, metal, fabric, onTextures, terraceMaterial } from "./materials.js";
 import { build as buildItem, dims, DEVICE_LOOKS } from "./furniture.js";
 import { deviceKind, lightLook, stateOf, kelvinToHex, pretendNext } from "./devices.js";
@@ -1113,7 +1113,7 @@ export class AtelierEngine {
   // ---------------------------------------------------------------- views
   center() { const b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 }; return new THREE.Vector3((b.x0 + b.x1) / 2, 0, (b.y0 + b.y1) / 2); }
   // where the camera stands for a view (also used by the background photo studio, with its own camera)
-  pose(view, walkRoom, aspect = this.camera.aspect) {
+  pose(view, walkRoom, aspect = this.camera.aspect, close = false) {
     const c = this.center(), b = this.bounds || { x0: 0, y0: 0, x1: 10, y1: 8 };
     let pos, target = c.clone(), fov = 32, room = null;
     if (view === "top") { const half = Math.tan((30 * Math.PI) / 360); pos = new THREE.Vector3(c.x, Math.max((b.x1 - b.x0) / aspect, b.y1 - b.y0) * 1.12 / (2 * half), c.z + 0.01); fov = 30; }
@@ -1123,6 +1123,13 @@ export class AtelierEngine {
       const far = bb.reduce((m, p) => (Math.hypot(p[0] - x, p[1] - y) > Math.hypot(m[0] - x, m[1] - y) ? p : m), bb[0]);
       // eye level, looking straight ahead so walls stay upright like in a professional interior photo
       pos = new THREE.Vector3(x + (far[0] - x) * 0.72, 1.35, y + (far[1] - y) * 0.72); target = new THREE.Vector3(x - (far[0] - x) * 0.4, 1.35, y - (far[1] - y) * 0.4); fov = 60;
+    } else if (close && walkRoom && view === "3d") {
+      // one room close up, seen from the same angle as the whole home (so the dashboard can zoom from one to the other)
+      const rb = bounds(walkRoom.pts), [rx, ry] = [(rb.x0 + rb.x1) / 2, (rb.y0 + rb.y1) / 2];
+      const R = 0.5 * Math.hypot(rb.x1 - rb.x0, rb.y1 - rb.y0) + 0.4, v = (fov * Math.PI) / 360, hh = Math.atan(Math.tan(v) * aspect);
+      const dist = (R / Math.sin(Math.min(v, hh))) * (aspect < 1 ? 0.95 : 0.8);
+      target = new THREE.Vector3(rx, 0.6, ry); room = walkRoom;
+      pos = new THREE.Vector3(rx + dist * 0.38, 0.6 + dist * 0.72, ry + dist * 0.62);
     } else {
       // far enough that the whole home fits, seen from the south-east at about 45°
       const R = 0.5 * Math.hypot(b.x1 - b.x0, b.y1 - b.y0) + 0.5, v = (fov * Math.PI) / 360, hh = Math.atan(Math.tan(v) * aspect);
