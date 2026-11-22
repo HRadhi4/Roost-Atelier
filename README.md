@@ -99,13 +99,14 @@ English, Arabic, Spanish, Russian and Simplified Chinese. Pick one in Settings (
 ## Install
 
 ### With HACS (recommended)
-1. Open **HACS**, then the menu in the top corner, then **Custom repositories**.
-2. Add `https://github.com/HRadhi4/Roost-Atelier`, with type **Integration**.
-3. Search for **Roost Atelier**, install it, and restart Home Assistant.
-4. Go to **Settings → Devices & services → Add integration**, and add **Roost Atelier**.
+1. Open **HACS** and search for **Roost Atelier**.
+2. Install it, and restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration**, and add **Roost Atelier**.
+
+If HACS does not find it yet, add it by hand first: open the menu in the top corner of HACS, choose **Custom repositories**, add `https://github.com/HRadhi4/Roost-Atelier` with type **Integration**, then carry on from step 1.
 
 ### By hand
-Copy `custom_components/roost_atelier` into your `config/custom_components` folder, restart, and add the integration as in step 4.
+Copy `custom_components/roost_atelier` into your `config/custom_components` folder, restart, and add the integration as in step 3.
 
 **Atelier** now appears in the sidebar (administrators only). You don't need to add any dashboard resource: the card is available on every dashboard right away.
 

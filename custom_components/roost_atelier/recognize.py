@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 
-from .uploads import folder
+from .uploads import NAME, folder
 
 # what the AI may answer (the same list as CATALOG in src/fromphoto.js, checked by the tests)
 KINDS = [
@@ -162,14 +162,25 @@ INSTRUCTIONS = (
 async def async_recognize(hass: HomeAssistant, file: str, entity_id: str | None) -> dict[str, Any]:
     if "ai_task" not in hass.config.components:
         raise ValueError("Set up an AI Task first (Settings → Devices & services → add an AI provider), then try again")
-    src = folder(hass) / file
-    if not src.is_file():
+    # only a photo the Atelier uploaded itself (same name pattern as the upload folder's own files)
+    if not isinstance(file, str) or not NAME.match(file):
         raise ValueError("The photo was not found")
     media_dir = hass.config.media_dirs.get("local")
     if not media_dir:
         raise ValueError("Home Assistant has no media folder to show the photo to the AI")
+    src = folder(hass) / file
     dest_dir = Path(media_dir) / "roost_atelier"
-    await hass.async_add_executor_job(lambda: (dest_dir.mkdir(parents=True, exist_ok=True), shutil.copy(src, dest_dir / file)))
+
+    def _copy() -> bool:
+        # disk work stays off the event loop
+        if not src.is_file():
+            return False
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(src, dest_dir / file)
+        return True
+
+    if not await hass.async_add_executor_job(_copy):
+        raise ValueError("The photo was not found")
     data: dict[str, Any] = {
         "task_name": "Roost Atelier furniture",
         "instructions": INSTRUCTIONS,
