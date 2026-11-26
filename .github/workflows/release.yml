@@ -28,6 +28,15 @@ jobs:
           npm ci --legacy-peer-deps
           npm test
 
+      - name: The release holds the whole build
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain -- custom_components)" ]; then
+            echo "The committed panel files differ from a fresh build. Run npm run build and commit everything under custom_components/roost_atelier/frontend."
+            git status --porcelain -- custom_components
+            exit 1
+          fi
+
       - name: Version
         id: v
         run: |

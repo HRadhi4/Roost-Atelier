@@ -29,6 +29,7 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm test
       - run: npm run build
+      - run: test -z "$(git status --porcelain -- custom_components)" || { echo "Commit the whole build output"; git status --porcelain -- custom_components; exit 1; }
       # open the card and the Atelier page in a real browser and check they work
       - uses: actions/setup-python@v5
         with:

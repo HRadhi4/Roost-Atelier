@@ -2,6 +2,10 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.21.2 — 2026-11-26
+- **The Atelier page and the dashboard card load again.** 0.21.1 was released without five of its built files, so both failed to open after installing it. Every file is now included.
+- **A release can no longer miss files.** The tests now follow every file the panel loads and stop if one is missing or not committed, and the release checks that what is published matches a fresh build.
+
 ## 0.21.1 — 2026-11-23
 - **Furniture from a photo is safer and never slows Home Assistant.** The photo check and copy now run off Home Assistant's main loop, and only photos the Atelier uploaded itself can be used.
 - **Install steps** now lead with searching for Roost Atelier in HACS.
