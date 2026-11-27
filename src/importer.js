@@ -94,7 +94,7 @@ async function photoFile(ed, out, file, entity, q = {}) {
       const found = await readPhotoLocally(small, (p) => {
         const tipEl = out.querySelector(".tip"); if (!tipEl) return;
         tipEl.textContent = p.reading ? t("Looking at the photo…") : `${t("Getting the reading model ready (once)")} · ${Math.round((100 * p.loaded) / p.total)}%`;
-      });
+      }, ed._hass);
       reviewFound(ed, out, found, URL.createObjectURL(small), q);
       return;
     }

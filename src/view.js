@@ -111,7 +111,10 @@ export class AtelierView {
   }
   async saveBake(key, buf) {
     if (!this._hass?.user?.is_admin) return;
-    await this._hass.fetchWithAuth(`/api/roost_atelier/bake/${key}`, { method: "POST", body: buf, headers: { "Content-Type": "application/octet-stream" } });
+    // squeezed before it leaves this computer (a few MB less over a remote link)
+    let body = buf;
+    try { if (typeof CompressionStream === "function") body = await new Response(new Blob([buf]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer(); } catch { body = buf; }
+    await this._hass.fetchWithAuth(`/api/roost_atelier/bake/${key}`, { method: "POST", body, headers: { "Content-Type": "application/octet-stream" } });
   }
   drawBake(state, p) {
     const el = this.root.querySelector(".prog");

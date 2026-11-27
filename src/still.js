@@ -31,7 +31,7 @@ export const STILL_CSS = `
 .st .msg{position:absolute;inset:0;display:grid;place-items:center;color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;text-align:center;padding:24px;line-height:1.5}
 .st .bar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:6px;z-index:5;pointer-events:none}
 .st .bar button{all:unset;pointer-events:auto;cursor:pointer;height:38px;min-width:38px;padding:0 12px;box-sizing:border-box;border-radius:19px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#fff;font:600 13px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:rgba(11,13,23,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14)}
-.st .bar button.name{flex:1;max-width:240px;margin:0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st .bar button.name{flex:1;max-width:240px;margin:0 auto;white-space:normal;overflow-wrap:anywhere}
 .st .bar button ra-icon{--mdc-icon-size:18px}
 .st .bar .sp{flex:1}
 .st .menu{position:absolute;left:50%;bottom:56px;transform:translateX(-50%);z-index:7;max-height:60%;overflow:auto;padding:6px;border-radius:18px;background:rgba(20,24,49,.94);border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;min-width:180px}

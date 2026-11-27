@@ -73,24 +73,43 @@ varying vec3 vBaked;`).replace("#include <begin_vertex>", `#include <begin_verte
 }
 
 // ---------------------------------------------------------------- file format
+// The stored light, made small for the trip to every screen ("RAB2"): per pixel one byte of
+// brightness on a log scale (2^-22 … 2^8: within about 4% at worst, 1% on average) and two
+// bytes of colour share (6 bits each). Kept as three separate planes so gzip finds the repeats.
+// About a third of the old size; the screen turns it back into the same RGBE texture as before.
+const LOG_LO = -22, LOG_HI = 8, CM = 63;
 function encode(meta, data /* Float32 n*L*3 */) {
-  const { n, L } = meta, R = Math.ceil(n / TEXW), bytes = new Uint8Array(TEXW * R * L * 4);
+  const { n, L } = meta, R = Math.ceil(n / TEXW), P = TEXW * R * L, planes = new Uint8Array(P * 3);
   for (let l = 0; l < L; l++) for (let k = 0; k < n; k++) {
-    const i = (k * L + l) * 3, r = data[i], g = data[i + 1], b = data[i + 2], m = Math.max(r, g, b);
-    const o = ((Math.floor(k / TEXW) + l * R) * TEXW + (k % TEXW)) * 4;
-    if (!(m > 1e-12)) continue;
-    const e = Math.ceil(Math.log2(m)), s = 255 / 2 ** e;
-    bytes[o] = Math.round(r * s); bytes[o + 1] = Math.round(g * s); bytes[o + 2] = Math.round(b * s); bytes[o + 3] = Math.max(1, Math.min(255, e + 136));
+    const i = (k * L + l) * 3, r = Math.max(0, data[i]), g = Math.max(0, data[i + 1]), b = Math.max(0, data[i + 2]), S = r + g + b;
+    if (!(S > 2 ** LOG_LO)) continue;
+    const o = (Math.floor(k / TEXW) + l * R) * TEXW + (k % TEXW);
+    planes[o] = Math.max(1, Math.min(255, Math.round(((Math.log2(S) - LOG_LO) / (LOG_HI - LOG_LO)) * 255)));
+    planes[P + o] = Math.round((r / S) * CM); planes[2 * P + o] = Math.round((g / S) * CM);
   }
-  const head = new TextEncoder().encode(JSON.stringify({ ...meta, W: TEXW, R })), out = new Uint8Array(8 + head.length + bytes.length);
-  out.set([82, 65, 66, 49]); new DataView(out.buffer).setUint32(4, head.length, true); out.set(head, 8); out.set(bytes, 8 + head.length);
+  const head = new TextEncoder().encode(JSON.stringify({ ...meta, W: TEXW, R })), out = new Uint8Array(8 + head.length + planes.length);
+  out.set([82, 65, 66, 50]); new DataView(out.buffer).setUint32(4, head.length, true); out.set(head, 8); out.set(planes, 8 + head.length);
   return out.buffer;
 }
-function decode(buf) {
-  const u = new Uint8Array(buf); if (u[0] !== 82 || u[1] !== 65 || u[2] !== 66 || u[3] !== 49) return null;
+// both the old (RAB1, RGBE bytes as stored) and the small (RAB2) light files open
+export function decode(buf) {
+  const u = new Uint8Array(buf); if (u[0] !== 82 || u[1] !== 65 || u[2] !== 66 || (u[3] !== 49 && u[3] !== 50)) return null;
   const hl = new DataView(buf).getUint32(4, true), meta = JSON.parse(new TextDecoder().decode(u.subarray(8, 8 + hl)));
-  return { meta, bytes: u.subarray(8 + hl) };
+  if (u[3] === 49) return { meta, bytes: u.subarray(8 + hl) };
+  const P = meta.W * meta.R * meta.L, pl = u.subarray(8 + hl);
+  if (pl.length < P * 3) return null;
+  const bytes = new Uint8Array(P * 4), lut = new Float64Array(256);
+  for (let y = 1; y < 256; y++) lut[y] = 2 ** (LOG_LO + (y / 255) * (LOG_HI - LOG_LO));
+  for (let o = 0; o < P; o++) {
+    const y = pl[o]; if (!y) continue;
+    const S = lut[y], fr = pl[P + o] / CM, fg = pl[2 * P + o] / CM, r = fr * S, g = fg * S, b = Math.max(0, 1 - fr - fg) * S, m = Math.max(r, g, b);
+    if (!(m > 1e-12)) continue;
+    const e = Math.ceil(Math.log2(m)), sc = 255 / 2 ** e, q = o * 4;
+    bytes[q] = Math.min(255, Math.round(r * sc)); bytes[q + 1] = Math.min(255, Math.round(g * sc)); bytes[q + 2] = Math.min(255, Math.round(b * sc)); bytes[q + 3] = Math.max(1, Math.min(255, e + 136));
+  }
+  return { meta, bytes };
 }
+export { encode };
 
 // ---------------------------------------------------------------- running the bake
 function workerUrl() { return new URL(`./bake-worker.js?v=${__VERSION__}`, import.meta.url); }

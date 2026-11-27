@@ -82,7 +82,7 @@ main{grid-row:2;display:grid;grid-template-columns:1.2fr 1fr;min-width:0;min-hei
 .plan .dv.sel{border-color:#fff;box-shadow:0 0 0 3px var(--acc1)}
 .plan .dv ra-icon{--mdc-icon-size:16px}
 .plan .dv.off{background:#3A3F63;box-shadow:none;color:#9AA3D9}
-.plan .hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:12px;pointer-events:none;white-space:nowrap}
+.plan .hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 24px);box-sizing:border-box;padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:12px;pointer-events:none;white-space:normal;overflow-wrap:anywhere;text-align:center}
 .plan .ceil{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;cursor:pointer;z-index:2}
 .plan .ceil.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;border-color:transparent}
 .ceilmode .plan .dv:not(.lamp){opacity:.18;pointer-events:none}
@@ -120,6 +120,10 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .lib .tile svg{width:56px;height:40px}
 /* icons instead of names: the name shows on hover (and on a long press on a phone) */
 .lib.icons{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px}
+.find{position:relative;display:block;margin-bottom:10px}
+.find ra-icon{position:absolute;inset-inline-start:12px;top:11px;--mdc-icon-size:18px;color:var(--muted);pointer-events:none}
+.find input[type=search]{width:100%;padding-inline-start:38px}
+.lib.recent{margin-bottom:12px}
 .lib.icons .tile{position:relative;aspect-ratio:1;justify-content:center;padding:8px;--mdc-icon-size:30px;color:var(--text)}
 .lib.icons .tile.on{background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff}
 .lib.icons .tile:hover{outline:2px solid var(--acc2)}
@@ -136,7 +140,7 @@ input[type=range]{width:100%;accent-color:var(--acc1);height:28px}
 .pv3{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
 .studio{position:absolute;bottom:16px;inset-inline-start:80px;z-index:6;display:flex;align-items:center;gap:8px;max-width:min(460px,70%);height:40px;padding:0 14px;border-radius:14px;background:rgba(20,24,49,.92);border:1px solid var(--border);color:var(--text);font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);cursor:pointer}
 .studio.hide{display:none}
-.studio span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.studio span{white-space:normal;overflow-wrap:anywhere;flex:1;min-width:0}
 .studio i{flex:0 0 90px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
 .studio b{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc1),var(--acc2));transition:width .4s}
 .studio.ok b{background:#2EC4B6}
@@ -152,12 +156,25 @@ h3.sub{margin:8px 0 0;font-size:12px;color:var(--muted);text-transform:uppercase
 .toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;padding:10px 16px;border-radius:14px;background:var(--panel);border:1px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;max-width:80%}
 .ed.unsaved .homes::after{content:"";width:8px;height:8px;border-radius:50%;background:#F5B041;margin-inline-start:4px}
 .menu .muted{color:var(--muted);font-size:13px;margin:0}
+/* sizes like "3.50 m" keep their order in Arabic; Arabic names still read right to left */
+.plan svg text,aside b,.lib .tile,.guide small{unicode-bidi:plaintext}
+.guide{position:absolute;z-index:25;inset-inline-start:50%;bottom:20px;transform:translateX(-50%);width:min(440px,calc(100% - 24px));display:flex;gap:14px;padding:16px;border-radius:20px;background:var(--panel);border:1px solid var(--border);box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.ed[dir=rtl] .guide{transform:translateX(50%)}
+.guide .gi{flex:none;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,var(--acc1),var(--acc2));color:#fff;--mdc-icon-size:24px}
+.guide .gt{display:flex;flex-direction:column;gap:6px;min-width:0}
+.guide small{color:var(--muted)}
+.guide b{font-size:15px}
+.guide p{margin:0;color:var(--muted);overflow-wrap:anywhere}
+.guide .row{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:4px}
+.pulse{outline:2px solid var(--acc2);outline-offset:2px;border-radius:12px;box-shadow:0 0 0 6px rgba(139,108,255,.25)}
 .dialog{position:fixed;inset:0;background:rgba(5,6,14,.55);display:grid;place-items:center;z-index:30}
 .dialog>div{width:min(360px,90vw);padding:18px;border-radius:20px;background:var(--panel);border:1px solid var(--border);display:flex;flex-direction:column;gap:12px}
 @media (max-width:900px){
  .ed{grid-template-columns:minmax(0,1fr);grid-template-rows:56px minmax(0,1fr) auto 64px}
  header{gap:4px;padding:0 6px;overflow-x:auto;scrollbar-width:none}
- header h1{max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+ header h1{white-space:nowrap;font-size:14px}
+ header .title{flex:none}
+ .guide{bottom:76px}
  header .status{display:none}
  main{min-width:0}
  .ed:not(.sheet) aside{display:none}
@@ -170,6 +187,8 @@ h3.sub{margin:8px 0 0;font-size:12px;color:var(--muted);text-transform:uppercase
  aside:empty{display:none}
  .studio{bottom:76px;inset-inline-start:10px;max-width:calc(100% - 20px)}
 }
+/* small phones: the home's name is shown in the Homes menu instead of squeezed into the bar */
+@media (max-width:600px){header h1{display:none}header .title{flex:none}}
 ${VIEW_CSS}
 `;
 
@@ -185,6 +204,7 @@ export class AtelierEditor {
         <div class="seg floors"></div><span class="status"></span>
         <div class="seg layout"><button data-l="plan" title="Plan"><ra-icon icon="mdi:floor-plan"></ra-icon></button><button data-l="split" title="Split"><ra-icon icon="mdi:view-split-vertical"></ra-icon></button><button data-l="three" title="${t("3D")}"><ra-icon icon="mdi:cube-outline"></ra-icon></button></div>
         <button data-a="test" class="test" title="${t("Try it: tap devices to switch them, without editing")}"><ra-icon icon="mdi:gesture-tap-button"></ra-icon><span>${t("Try it")}</span></button>
+        <button data-a="help" title="${t("How it works")}"><ra-icon icon="mdi:help-circle-outline"></ra-icon></button>
         <button data-a="settings" title="${t("Settings")}"><ra-icon icon="mdi:tune-variant"></ra-icon></button></header>
       <nav></nav><main><div class="plan"><svg xmlns="http://www.w3.org/2000/svg"><defs></defs><g class="w"></g></svg><div class="devs"></div><div class="hint"></div>
         <button class="ceil" data-ceiling title="Ceiling"><ra-icon icon="mdi:ceiling-light-outline"></ra-icon><span></span></button><div class="zoom"><button data-sizes title="Sizes"><ra-icon icon="mdi:ruler"></ra-icon></button><button data-print title="Print"><ra-icon icon="mdi:printer-outline"></ra-icon></button><button data-z="in"><ra-icon icon="mdi:plus"></ra-icon></button><button data-z="fit"><ra-icon icon="mdi:fit-to-screen-outline"></ra-icon></button><button data-z="out"><ra-icon icon="mdi:minus"></ra-icon></button></div></div>
@@ -197,6 +217,7 @@ export class AtelierEditor {
     root.querySelector('[data-a="undo"]').onclick = () => this.undo();
     root.querySelector('[data-a="redo"]').onclick = () => this.redo();
     root.querySelector('[data-a="test"]').onclick = () => this.setTesting(!this.testing);
+    root.querySelector('[data-a="help"]').onclick = () => this.tour(0);
     root.querySelector('[data-a="settings"]').onclick = () => { this.sel = null; this.tool = "select"; this.drawNav(); this.inspector("settings"); this.draw(); };
     // ceiling mode: furniture fades, only the lights stay, ready to place and line up
     const cb = root.querySelector("[data-ceiling]"); cb.querySelector("span").textContent = t("Ceiling");
@@ -270,11 +291,46 @@ export class AtelierEditor {
     this.root.querySelector("h1").textContent = plan.name;
     if (plan.id) localStorage.setItem("roost-atelier-last", plan.id);
     this.drawFloors(); this.view.setPlan(plan, 0); this.view.engine._framed = false; this.view.engine.frame("3d", true);
+    // the first time on this device: the short guide
+    let guided = false; try { guided = !!localStorage.getItem("roost-atelier-guided"); } catch { guided = true; }
+    if (!guided && !this._guideShown) { this._guideShown = true; setTimeout(() => this.tour(0), 700); }
     this.fit(); this.draw(); this.inspector(); this.setStatus(unsaved ? "" : t("Saved"));
     if (unsaved) this.save();
   }
 
   // ------------------------------------------------------------ changes, undo and saving
+  // the first-time guide: six short steps from an empty plan to the dashboard pictures, each pointing at its button
+  tour(i) {
+    const steps = [
+      ["[data-t=room]", "mdi:vector-square-plus", "Draw your rooms", "Pick Rooms, then drag on the plan. Type the width and length to make a room exact."],
+      ["[data-t=door]", "mdi:door", "Add doors and windows", "Pick Door, Window or Slider and tap a wall where it goes."],
+      ["[data-t=furniture]", "mdi:sofa-outline", "Furnish it", "Find a piece by name or open a group, then drag it in. Arrow keys move what you picked a little (Shift for 1 cm)."],
+      ["[data-t=devices]", "mdi:lightbulb-group-outline", "Put in your devices", "Drag lights, AC, curtains and more to where they really are, then pick their Home Assistant device."],
+      ['[data-a="test"]', "mdi:gesture-tap-button", "Try it", "Tap Try it, then tap your devices to switch them and see the light change."],
+      ['[data-a="settings"]', "mdi:tune-variant", "Make the dashboard pictures", "Open Settings and make the dashboard pictures for the Roost Home Tour card."],
+    ];
+    this.root.querySelector(".guide")?.remove(); this.root.querySelectorAll(".pulse").forEach((b) => b.classList.remove("pulse"));
+    if (i < 0 || i >= steps.length) { try { localStorage.setItem("roost-atelier-guided", "1"); } catch { /* fine */ } return; }
+    const [sel, icon, title, text] = steps[i], target = this.root.querySelector(sel);
+    target?.classList.add("pulse");
+    const d = document.createElement("div"); d.className = "guide"; d.setAttribute("role", "dialog");
+    d.innerHTML = `<div class="gi"><ra-icon icon="${icon}"></ra-icon></div><div class="gt"><small><bdi dir="ltr">${i + 1} / ${steps.length}</bdi></small><b>${esc(t(title))}</b><p>${esc(t(text))}</p>
+      <div class="row"><button data-skip>${t(i === steps.length - 1 ? "Close" : "Skip")}</button>${i ? `<button data-back>${t("Back")}</button>` : ""}<button class="primary" data-next>${t(i === steps.length - 1 ? "Done" : "Next")}</button></div></div>`;
+    this.ed.appendChild(d);
+    d.querySelector("[data-skip]").onclick = () => this.tour(-1);
+    d.querySelector("[data-back]")?.addEventListener("click", () => this.tour(i - 1));
+    d.querySelector("[data-next]").onclick = () => this.tour(i + 1);
+  }
+  nudge(dx, dy) {
+    const s = this.sel, list = s?.t === "multi" ? s.list : s ? [s] : [];
+    const things = list.filter((x) => x.t === "item" || x.t === "dev").map((x) => this.find(x)).filter(Boolean);
+    if (!things.length) return false;
+    // one undo step for a run of taps
+    const now = performance.now(); if (now - (this._nudgeT || 0) > 900) this.snapshot(); this._nudgeT = now;
+    for (const o of things) { o.x = round(o.x + dx, 3); o.y = round(o.y + dy, 3); }
+    this.changed(true, s.t === "item"); this.inspector();
+    return true;
+  }
   snapshot() { this.undoStack.push(JSON.stringify(this.plan)); if (this.undoStack.length > 80) this.undoStack.shift(); this.redoStack = []; }
   undo() { if (!this.undoStack.length) return; this.redoStack.push(JSON.stringify(this.plan)); this.restore(this.undoStack.pop()); }
   redo() { if (!this.redoStack.length) return; this.undoStack.push(JSON.stringify(this.plan)); this.restore(this.redoStack.pop()); }
@@ -285,7 +341,7 @@ export class AtelierEditor {
     // a change to one piece of furniture only redraws that piece, not the whole home
     if (rebuild && item && this.sel?.t === "item") { const it = this.find(this.sel); if (it && this.view.engine.replaceItem(it)) rebuild = false; }
     if (this.sel?.t === "item") this.preview?.set(this.find(this.sel));
-    if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan, this.fi); }; if (this._dragging && now - (this._lastRb || 0) < 450) this._rb = setTimeout(go, 450); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
+    if (rebuild) { clearTimeout(this._rb); const now = performance.now(); const go = () => { this._lastRb = performance.now(); this.view.setPlan(this.plan, this.fi); }; if (this._dragging && now - (this._lastRb || 0) < 120) this._rb = setTimeout(go, 120); else if (this._dragging) go(); else this._rb = setTimeout(go, 60); }
     this.markUnsaved(); this.setStatus(t("Saving")); clearTimeout(this._sv); this._sv = setTimeout(() => this.save(), 1200);
     // once rooms are drawn and named, Home Assistant's devices go into the rooms with the same names, by themselves
     clearTimeout(this._ap); this._ap = setTimeout(() => { if (!this.drag) this.placeFromHA(true); }, 2500);
@@ -979,6 +1035,7 @@ export class AtelierEditor {
   }
   addThing(kind, P, isDevice) {
     this.snapshot();
+    this.remember(isDevice ? "dev" : "item", kind);
     if (isDevice) {
       const sub = kind.startsWith("light:") ? kind.slice(6) : null; if (sub) kind = "light";
       const d = { id: uid("d"), kind, entity: "", x: round(snap(P[0]), 3), y: round(snap(P[1]), 3), name: t(KINDS[kind].name) };
@@ -1258,21 +1315,53 @@ export class AtelierEditor {
   }
   aimAtWall(obj) { const nw = nearestWall(this.floor, [obj.x, obj.y], 4); if (nw) { obj.tx = round(nw.q[0], 3); obj.ty = round(nw.q[1], 3); obj.tz = obj.tz ?? 1.4; } }
   libSvg(kind) { const L = LIBRARY[kind], k = 50 / Math.max(L[3], L[4] * 1.4), w = L[3] * k, d = L[4] * k; return `<svg viewBox="-30 -22 60 44"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`; }
+  // the pieces used lately (newest first), kept on this device
+  recent(kind) {
+    const key = `roost-atelier-recent-${kind}`;
+    try { return JSON.parse(localStorage.getItem(key) || "[]").filter((k) => (kind === "item" ? LIBRARY[k] && k !== "stairs" : true)); } catch { return []; }
+  }
+  remember(kind, k) {
+    const key = `roost-atelier-recent-${kind}`;
+    try { localStorage.setItem(key, JSON.stringify([k, ...this.recent(kind).filter((x) => x !== k)].slice(0, 8))); } catch { /* no storage */ }
+  }
+  itemTile(k) { const L = LIBRARY[k]; return `<div class="tile" data-kind="${k}" data-tip="${esc(t(L[0]))} · ${L[3]} × ${L[4]} m" aria-label="${esc(t(L[0]))}" role="button"><ra-icon icon="item:${k}"></ra-icon></div>`; }
   library() {
-    const a = this.aside, items = Object.entries(LIBRARY).filter(([k, L]) => L[1] === this.cat && k !== "stairs");
-    a.innerHTML = `<h2><ra-icon icon="mdi:sofa-outline"></ra-icon>${t("Furniture")}</h2><div class="tabs">${CATEGORIES.map((c) => `<button data-cat="${c}" class="${this.cat === c ? "on" : ""}">${t(c)}</button>`).join("")}</div>
-      <p class="tip">${t("Drag a piece onto the plan.")}</p><div class="lib icons">${items.map(([k, L]) => `<div class="tile" data-kind="${k}" data-tip="${esc(t(L[0]))} · ${L[3]} × ${L[4]} m" aria-label="${esc(t(L[0]))}" role="button"><ra-icon icon="item:${k}"></ra-icon></div>`).join("")}</div>`;
-    a.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { this.cat = b.dataset.cat; this.library(); }));
-    a.querySelectorAll(".tile[data-kind]").forEach((el) => this.dragNew(el, el.dataset.kind, false, LIBRARY[el.dataset.kind][0]));
-    if (this.cat === "Building") {
-      const lib = a.querySelector(".lib"); lib.insertAdjacentHTML("afterbegin", Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile" data-stair="${k}" data-tip="${esc(t(S[0]))} · ${esc(t("Joins two levels"))}" aria-label="${esc(t(S[0]))}" role="button"><ra-icon icon="stair:${k}"></ra-icon></div>`).join(""));
-      lib.querySelectorAll("[data-stair]").forEach((el) => (el.onclick = () => this.startStairs(el.dataset.stair)));
+    const a = this.aside;
+    a.innerHTML = `<h2><ra-icon icon="mdi:sofa-outline"></ra-icon>${t("Furniture")}</h2>
+      <label class="find"><ra-icon icon="mdi:magnify"></ra-icon><input type="search" data-find placeholder="${esc(t("Find a piece"))}" value="${esc(this.libFind || "")}" aria-label="${esc(t("Find a piece"))}"></label>
+      <div class="libres"></div>`;
+    const inp = a.querySelector("[data-find]");
+    inp.oninput = () => { this.libFind = inp.value; this.libraryList(); };
+    inp.onkeydown = (e) => { if (e.key === "Escape") { inp.value = ""; this.libFind = ""; this.libraryList(); } };
+    this.libraryList();
+  }
+  libraryList() {
+    const box = this.aside.querySelector(".libres"); if (!box) return;
+    const q = (this.libFind || "").trim().toLowerCase();
+    if (q) {
+      // every piece whose name (in this language or in English) or group has the words typed
+      const words = q.split(/\s+/);
+      const hits = Object.entries(LIBRARY).filter(([k, L]) => k !== "stairs" && words.every((w) => [t(L[0]), L[0], t(L[1]), L[1]].some((x) => String(x).toLowerCase().includes(w))));
+      box.innerHTML = hits.length ? `<p class="tip">${hits.length} · ${t("Drag a piece onto the plan.")}</p><div class="lib icons">${hits.map(([k]) => this.itemTile(k)).join("")}</div>` : `<p class="tip">${t("Nothing found. Try another word.")}</p>`;
+    } else {
+      const items = Object.entries(LIBRARY).filter(([k, L]) => L[1] === this.cat && k !== "stairs"), recent = this.recent("item");
+      box.innerHTML = `${recent.length ? `<h3 class="sub">${t("Recently used")}</h3><div class="lib icons recent">${recent.map((k) => this.itemTile(k)).join("")}</div>` : ""}
+        <div class="tabs">${CATEGORIES.map((c) => `<button data-cat="${c}" class="${this.cat === c ? "on" : ""}">${t(c)}</button>`).join("")}</div>
+        <p class="tip">${t("Drag a piece onto the plan.")}</p><div class="lib icons main">${items.map(([k]) => this.itemTile(k)).join("")}</div>`;
+      box.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { this.cat = b.dataset.cat; this.libraryList(); }));
+      if (this.cat === "Building") {
+        const lib = box.querySelector(".lib.main"); lib.insertAdjacentHTML("afterbegin", Object.entries(STAIR_STYLES).map(([k, S]) => `<div class="tile" data-stair="${k}" data-tip="${esc(t(S[0]))} · ${esc(t("Joins two levels"))}" aria-label="${esc(t(S[0]))}" role="button"><ra-icon icon="stair:${k}"></ra-icon></div>`).join(""));
+        lib.querySelectorAll("[data-stair]").forEach((el) => (el.onclick = () => this.startStairs(el.dataset.stair)));
+      }
     }
+    box.querySelectorAll(".tile[data-kind]").forEach((el) => this.dragNew(el, el.dataset.kind, false, LIBRARY[el.dataset.kind][0]));
   }
   deviceLibrary() {
     const a = this.aside;
     const tiles = (list) => `<div class="lib icons">${list.map((k) => `<div class="tile" data-kind="light:${k}" data-name="${LIGHT_SUBS[k][2]}" data-tip="${esc(t(LIGHT_SUBS[k][2]))}" aria-label="${esc(t(LIGHT_SUBS[k][2]))}" role="button"><ra-icon icon="light:${k}" style="color:#F5B041"></ra-icon></div>`).join("")}</div>`;
-    a.innerHTML = `<h2><ra-icon icon="mdi:lightbulb-group-outline"></ra-icon>${t("Devices")}</h2><p class="tip">${t("Drag a piece onto the plan.")}</p>${LIGHT_GROUPS.map(([title, list]) => `<h3 class="sub">${t(title)}</h3>${tiles(list)}`).join("")}<h3 class="sub">${t("Devices")}</h3><div class="lib icons">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}" data-tip="${esc(t(K.name))}" aria-label="${esc(t(K.name))}" role="button"><ra-icon icon="dev:${k}" style="color:${DEV_COL[k]}"></ra-icon></div>`).join("")}</div>`;
+    const recent = this.recent("dev").filter((k) => (k.startsWith("light:") ? LIGHT_SUBS[k.slice(6)] : KINDS[k] && k !== "lock"));
+    const recentTile = (k) => (k.startsWith("light:") ? `<div class="tile" data-kind="${k}" data-name="${LIGHT_SUBS[k.slice(6)][2]}" data-tip="${esc(t(LIGHT_SUBS[k.slice(6)][2]))}" aria-label="${esc(t(LIGHT_SUBS[k.slice(6)][2]))}" role="button"><ra-icon icon="light:${k.slice(6)}" style="color:#F5B041"></ra-icon></div>` : `<div class="tile" data-kind="${k}" data-tip="${esc(t(KINDS[k].name))}" aria-label="${esc(t(KINDS[k].name))}" role="button"><ra-icon icon="dev:${k}" style="color:${DEV_COL[k]}"></ra-icon></div>`);
+    a.innerHTML = `<h2><ra-icon icon="mdi:lightbulb-group-outline"></ra-icon>${t("Devices")}</h2>${recent.length ? `<h3 class="sub">${t("Recently used")}</h3><div class="lib icons recent">${recent.map(recentTile).join("")}</div>` : ""}<p class="tip">${t("Drag a piece onto the plan.")}</p>${LIGHT_GROUPS.map(([title, list]) => `<h3 class="sub">${t(title)}</h3>${tiles(list)}`).join("")}<h3 class="sub">${t("Devices")}</h3><div class="lib icons">${Object.entries(KINDS).filter(([k]) => k !== "lock").map(([k, K]) => `<div class="tile" data-kind="${k}" data-tip="${esc(t(K.name))}" aria-label="${esc(t(K.name))}" role="button"><ra-icon icon="dev:${k}" style="color:${DEV_COL[k]}"></ra-icon></div>`).join("")}</div>`;
     a.querySelectorAll(".tile").forEach((el) => this.dragNew(el, el.dataset.kind, true, el.dataset.name || KINDS[el.dataset.kind].name));
   }
   dragNew(el, kind, isDevice, label) {
@@ -1497,6 +1586,11 @@ export class AtelierEditor {
     else if (this.line && e.key === "Enter") { e.preventDefault(); this.finishLine(false); }
     else if (this.line && e.key === "Backspace") { e.preventDefault(); this.undoLinePoint(); }
     else if ((e.key === "Delete" || e.key === "Backspace") && this.sel) this.remove(this.sel);
+    // arrow keys move what is selected a little: 5 cm, or 1 cm with Shift
+    else if (/^Arrow(Left|Right|Up|Down)$/.test(e.key) && this.sel && !this.testing && !this.line && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const st = e.shiftKey ? 0.01 : 0.05, d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
+      if (this.nudge(d[0], d[1])) e.preventDefault();
+    }
     else if (e.key === "Escape") { this.picking = false; this.measure = null; this.edgePick = null; this.select(null); }
     // Ctrl+A: every device on this level; Ctrl+Shift+A: every device and piece of furniture
     else if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A") && !this.testing) { e.preventDefault(); this.selectMany((x) => x.t === "dev" || (e.shiftKey && x.t === "item")); }

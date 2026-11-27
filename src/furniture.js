@@ -385,6 +385,151 @@ function toyStorage(o) { const g = new THREE.Group(), m = wood("white"); B(g, o.
 function kidsTable(o) { const g = new THREE.Group(); B(g, o.w, 0.03, o.d, 0.01, white(), 0, o.h - 0.03, 0); legs(g, o.w, o.d, o.h - 0.03, 0.04, wood("oak"), 0.02); return g; }
 function stool(o) { const g = new THREE.Group(); C(g, o.w / 2, o.w / 2, 0.03, wood(o.wood || "oak"), 0, o.h - 0.03, 0, 28); for (let k = 0; k < 3; k++) { const a = (k * Math.PI * 2) / 3, l = mesh(new THREE.CylinderGeometry(0.014, 0.012, o.h, 8), wood(o.wood || "oak"), Math.cos(a) * o.w * 0.3, (o.h - 0.03) / 2, Math.sin(a) * o.w * 0.3); l.rotation.z = Math.cos(a) * 0.08; l.rotation.x = -Math.sin(a) * 0.08; g.add(l); } return g; }
 
+// ---------------------------------------------------------------- more everyday pieces (the range of a big Bahrain furniture store)
+const black = () => metal("#1B1B1F");
+function sofaBed(o) { const g = sofa({ ...o, color: o.color || "#7E8A94" }); B(g, o.w - 0.3, 0.03, 0.02, 0.008, fabric("#5F6A73"), 0, 0.42, o.d / 2 - 0.01); return g; }
+function recliner(o) {
+  const g = new THREE.Group(), f = fabric(o.color || "#6B5A4E");
+  B(g, o.w, 0.42, o.d * 0.8, 0.06, f, 0, 0.08, -o.d * 0.1);
+  const back = B(g, o.w - 0.16, 0.6, 0.18, 0.07, f, 0, 0.42, -o.d / 2 + 0.12); back.rotation.x = -0.18;
+  for (const s of [-1, 1]) B(g, 0.14, 0.62, o.d * 0.8, 0.05, f, s * (o.w / 2 - 0.07), 0.08, -o.d * 0.1);
+  const rest = B(g, o.w - 0.2, 0.08, 0.32, 0.03, f, 0, 0.3, o.d / 2 - 0.16); rest.rotation.x = 0.15;
+  B(g, o.w - 0.06, 0.08, o.d * 0.75, 0.01, black(), 0, 0, -o.d * 0.1);
+  return g;
+}
+function nestingTables(o) {
+  const g = new THREE.Group(), top = wood(o.wood || "walnut"), m = black();
+  for (const [r, h, x, z] of [[o.w * 0.3, o.h, -o.w * 0.18, 0], [o.w * 0.22, o.h - 0.08, o.w * 0.25, o.d * 0.12]]) {
+    C(g, r, r, 0.025, top, x, h - 0.025, z, 32);
+    for (let k = 0; k < 3; k++) { const a = (k * Math.PI * 2) / 3; C(g, 0.008, 0.008, h - 0.025, m, x + Math.cos(a) * r * 0.8, 0, z + Math.sin(a) * r * 0.8, 6); }
+  }
+  return g;
+}
+function floorCushion(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.05, fabric(o.color || "#B8674A"), 0, 0, 0); B(g, o.w * 0.5, 0.012, 0.012, 0.004, fabric("#8C4A33"), 0, o.h, 0); return g; }
+function prayerMat(o) {
+  const g = new THREE.Group(), m = B(g, o.w, 0.01, o.d, 0.003, fabric(o.color || "#2F5A4A"), 0, 0, 0); m.castShadow = false;
+  const edge = B(g, o.w - 0.06, 0.003, o.d - 0.06, 0.002, fabric("#C9A040"), 0, 0.01, 0); edge.castShadow = false;
+  const inner = B(g, o.w - 0.1, 0.004, o.d - 0.1, 0.002, fabric(o.color || "#2F5A4A"), 0, 0.011, 0); inner.castShadow = false;
+  const arch = mesh(new THREE.CircleGeometry(o.w * 0.28, 24, 0, Math.PI), fabric("#C9A040"), 0, 0.017, -o.d / 2 + 0.2); arch.rotation.x = -Math.PI / 2; arch.castShadow = false; g.add(arch);
+  return g;
+}
+function petBed(o) {
+  const g = new THREE.Group(), f = fabric(o.color || "#9A8F84");
+  const ring = mesh(new THREE.TorusGeometry(o.w / 2 - 0.07, 0.07, 12, 32), f, 0, 0.08, 0); ring.rotation.x = Math.PI / 2; g.add(ring);
+  C(g, o.w / 2 - 0.06, o.w / 2 - 0.06, 0.06, fabric("#D9D2C8"), 0, 0, 0, 32);
+  return g;
+}
+function tableLamp(o) {
+  const g = new THREE.Group();
+  C(g, 0.08, 0.1, 0.2, solid(o.color || "#C6B79F", { rough: 0.35, clear: 0.4 }), 0, 0, 0, 24); C(g, 0.006, 0.006, 0.12, brass(), 0, 0.2, 0, 8);
+  const shade = C(g, 0.11, 0.15, 0.2, solid("#F3EBDD", { rough: 0.9, emissive: "#FFD9A0", emissiveIntensity: 0, side: THREE.DoubleSide }), 0, 0.3, 0, 32);
+  shade.material = shade.material.clone(); shade.name = "glow";
+  return g;
+}
+function wallLamp(o) {
+  const g = new THREE.Group();
+  B(g, 0.1, 0.16, 0.02, 0.005, brass(), 0, 0, -o.d / 2 + 0.01);
+  const arm = mesh(new THREE.CylinderGeometry(0.006, 0.006, o.d - 0.08, 8), brass(), 0, 0.08, -0.02); arm.rotation.x = Math.PI / 2; g.add(arm);
+  const shade = C(g, 0.07, 0.1, 0.15, solid("#F3EBDD", { rough: 0.9, emissive: "#FFD9A0", emissiveIntensity: 0, side: THREE.DoubleSide }), 0, 0.02, o.d / 2 - 0.1, 24);
+  shade.material = shade.material.clone(); shade.name = "glow";
+  return g;
+}
+function diningBench(o) { const g = new THREE.Group(), wd = wood(o.wood || "oak"); B(g, o.w, 0.04, o.d, 0.008, wd, 0, o.h - 0.04, 0); for (const s of [-1, 1]) B(g, 0.04, o.h - 0.04, o.d - 0.06, 0.005, wd, s * (o.w / 2 - 0.1), 0, 0); B(g, o.w - 0.24, 0.04, 0.03, 0.004, wd, 0, 0.12, 0); return g; }
+function highChair(o) {
+  const g = new THREE.Group(), wd = wood(o.wood || "white"), m = black();
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) C(g, 0.014, 0.014, 0.72, m, sx * 0.16, 0, sz * 0.15, 8);
+  B(g, 0.38, 0.03, 0.36, 0.01, wd, 0, 0.72, 0); B(g, 0.38, 0.32, 0.03, 0.01, wd, 0, 0.75, -0.165);
+  for (const s of [-1, 1]) B(g, 0.03, 0.16, 0.34, 0.01, wd, s * 0.175, 0.75, 0);
+  B(g, 0.46, 0.02, 0.2, 0.01, solid("#F2F0EC", { rough: 0.4 }), 0, 0.9, 0.17);
+  return g;
+}
+function openShelves(o) { const g = new THREE.Group(), wd = wood(o.wood || "oak"); for (let i = 0; i < 2; i++) { B(g, o.w, 0.025, o.d, 0.004, wd, 0, i * 0.35, 0); for (let k = 0; k < 4; k++) C(g, 0.045, 0.04, 0.1, solid(["#F2F0EC", "#3E5A7A", "#C6B79F", "#F2F0EC"][k], { rough: 0.4 }), -o.w / 2.6 + k * (o.w / 4.2), i * 0.35 + 0.025, 0, 16); } for (const s of [-1, 1]) B(g, 0.02, 0.06, o.d - 0.02, 0.004, black(), s * (o.w / 2 - 0.08), -0.06, 0); return g; }
+function waterDispenser(o) {
+  const g = new THREE.Group();
+  B(g, o.w, 0.95, o.d, 0.03, white(), 0, 0, 0);
+  B(g, o.w - 0.1, 0.18, 0.02, 0.01, solid("#2B2D33", { rough: 0.4 }), 0, 0.55, o.d / 2);
+  for (const s of [-1, 1]) B(g, 0.03, 0.04, 0.03, 0.006, solid(s < 0 ? "#3B82F6" : "#E5484D", { rough: 0.4 }), s * 0.07, 0.7, o.d / 2 + 0.01);
+  C(g, 0.13, 0.13, 0.36, solid("#BFDFF5", { rough: 0.05, transmission: 0.6, opacity: 0.85 }), 0, 0.95, 0, 28);
+  return g;
+}
+function coffeeMachine(o) {
+  const g = new THREE.Group(), body = solid(o.color || "#2B2D33", { rough: 0.35, metal: 0.3 });
+  B(g, o.w, o.h, o.d, 0.02, body, 0, 0, 0);
+  B(g, o.w - 0.06, 0.04, o.d * 0.5, 0.006, metal("#A9A9AE", 0.3), 0, 0.02, o.d * 0.2);
+  C(g, 0.035, 0.03, 0.08, white(), 0, 0.06, o.d * 0.25, 16);
+  B(g, o.w * 0.5, 0.04, 0.01, 0.005, solid("#9fdcff", { emissive: "#38BDF8", emissiveIntensity: 0.4 }), 0, o.h - 0.08, o.d / 2);
+  return g;
+}
+function filingCabinet(o) { const g = new THREE.Group(), m = solid(o.color || "#D9D6D0", { rough: 0.5, metal: 0.3 }); B(g, o.w, o.h, o.d, 0.01, m, 0, 0, 0); const n = 3; for (let i = 0; i < n; i++) { B(g, o.w - 0.04, o.h / n - 0.03, 0.01, 0.004, m, 0, 0.02 + i * (o.h / n), o.d / 2); B(g, 0.12, 0.015, 0.02, 0.004, black(), 0, (i + 0.65) * (o.h / n), o.d / 2 + 0.01); } return g; }
+function cornerDesk(o) {
+  const g = new THREE.Group(), top = wood(o.wood || "oak"), m = black();
+  B(g, o.w, 0.035, 0.65, 0.008, top, 0, 0.72, -o.d / 2 + 0.325);
+  B(g, 0.65, 0.035, o.d - 0.65, 0.008, top, -o.w / 2 + 0.325, 0.72, 0.325);
+  for (const [x, z] of [[o.w / 2 - 0.05, -o.d / 2 + 0.05], [o.w / 2 - 0.05, -o.d / 2 + 0.6], [-o.w / 2 + 0.05, o.d / 2 - 0.05], [-o.w / 2 + 0.6, o.d / 2 - 0.05], [-o.w / 2 + 0.05, -o.d / 2 + 0.05]]) B(g, 0.04, 0.72, 0.04, 0.005, m, x, 0, z);
+  return g;
+}
+function monitor(o) {
+  const g = new THREE.Group(), m = black();
+  B(g, 0.22, 0.015, 0.16, 0.005, m, 0, 0, 0); B(g, 0.04, 0.16, 0.025, 0.005, m, 0, 0.015, -0.03);
+  B(g, o.w, o.h - 0.15, 0.025, 0.006, m, 0, 0.14, -0.02);
+  const scr = mesh(new THREE.PlaneGeometry(o.w - 0.02, o.h - 0.17), solid("#0E1424", { rough: 0.2 }), 0, 0.14 + (o.h - 0.15) / 2, -0.007); g.add(scr);
+  return g;
+}
+function storageBench(o) { const g = new THREE.Group(), wd = wood(o.wood || "white"); B(g, o.w, o.h - 0.05, o.d, 0.01, wd, 0, 0, 0); B(g, o.w, 0.06, o.d, 0.025, fabric(o.color || "#8E8C92"), 0, o.h - 0.06, 0); const n = Math.max(2, Math.round(o.w / 0.4)); for (let i = 0; i < n; i++) B(g, o.w / n - 0.04, o.h - 0.17, 0.01, 0.004, wood(o.wood || "white", "#d9d2c8"), -o.w / 2 + (i + 0.5) * (o.w / n), 0.05, o.d / 2); return g; }
+function wallHooks(o) { const g = new THREE.Group(), wd = wood(o.wood || "oak"); B(g, o.w, o.h, 0.02, 0.005, wd, 0, 0, -o.d / 2 + 0.01); const n = Math.max(3, Math.round(o.w / 0.15)); for (let i = 0; i < n; i++) { const h = mesh(new THREE.CylinderGeometry(0.008, 0.008, o.d - 0.02, 8), black(), -o.w / 2 + (i + 0.5) * (o.w / n), o.h / 2, 0.01); h.rotation.x = Math.PI / 2 - 0.3; g.add(h); } return g; }
+function ironingBoard(o) {
+  const g = new THREE.Group(), m = metal("#A9A9AE", 0.3);
+  const shape = new THREE.Shape(); shape.moveTo(-o.w / 2, -o.d / 2); shape.lineTo(o.w / 2 - 0.25, -o.d / 2); shape.quadraticCurveTo(o.w / 2, 0, o.w / 2 - 0.25, o.d / 2); shape.lineTo(-o.w / 2, o.d / 2); shape.lineTo(-o.w / 2, -o.d / 2);
+  const top = mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.025, bevelEnabled: false }), fabric(o.color || "#7FA7C9"), 0, o.h, 0); top.rotation.x = Math.PI / 2; g.add(top);
+  for (const s of [-1, 1]) { const l = B(g, 0.02, o.h * 1.15, 0.02, 0.004, m, 0, 0, 0); l.rotation.z = s * 0.45; l.position.set(s * 0.05, o.h / 2, 0); }
+  return g;
+}
+function mirrorCabinet(o) { const g = new THREE.Group(); B(g, o.w, o.h, o.d, 0.01, white(), 0, 0, 0); for (const s of [-1, 1]) B(g, o.w / 2 - 0.015, o.h - 0.03, 0.006, 0.003, solid("#D8E4EA", { rough: 0.02, metal: 1 }), s * (o.w / 4), 0.015, o.d / 2 + 0.001); return g; }
+function treadmill(o) {
+  const g = new THREE.Group(), m = solid("#2B2D33", { rough: 0.5 }), belt = solid("#1B1B1F", { rough: 0.9 });
+  B(g, o.w, 0.16, o.d, 0.04, m, 0, 0, 0); B(g, o.w - 0.14, 0.012, o.d - 0.3, 0.004, belt, 0, 0.16, 0.05);
+  for (const s of [-1, 1]) { const p = B(g, 0.05, 1.15, 0.05, 0.01, m, s * (o.w / 2 - 0.04), 0.1, -o.d / 2 + 0.12); p.rotation.x = -0.12; }
+  B(g, o.w, 0.12, 0.25, 0.03, m, 0, 1.2, -o.d / 2 + 0.05);
+  B(g, 0.3, 0.12, 0.01, 0.005, solid("#0E1424", { rough: 0.2, emissive: "#38BDF8", emissiveIntensity: 0.25 }), 0, 1.22, -o.d / 2 + 0.18);
+  return g;
+}
+function exerciseBike(o) {
+  const g = new THREE.Group(), m = solid("#2B2D33", { rough: 0.5 }), zb = -o.d / 2 + 0.12, zf = o.d / 2 - 0.12;
+  // two feet on the floor, a low spine joining them, the seat post at the back and the handlebar column at the front
+  B(g, 0.5, 0.05, 0.08, 0.02, m, 0, 0, zb); B(g, 0.5, 0.05, 0.08, 0.02, m, 0, 0, zf);
+  B(g, 0.07, 0.07, o.d - 0.24, 0.02, m, 0, 0.05, 0);
+  B(g, 0.06, 0.8, 0.06, 0.02, m, 0, 0.1, zb + 0.18);
+  B(g, 0.06, 1.0, 0.06, 0.02, m, 0, 0.1, zf - 0.12);
+  const wheel = mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 28), metal("#A9A9AE", 0.3), 0, 0.34, zf - 0.32); wheel.rotation.z = Math.PI / 2; g.add(wheel);
+  B(g, 0.22, 0.06, 0.3, 0.03, fabric("#1B1B1F"), 0, 0.9, zb + 0.18);
+  B(g, 0.42, 0.04, 0.04, 0.02, m, 0, 1.1, zf - 0.12);
+  return g;
+}
+function weightBench(o) {
+  const g = new THREE.Group(), m = black(), f = fabric(o.color || "#1B1B1F");
+  B(g, o.w, 0.08, o.d, 0.02, f, 0, 0.42, 0);
+  for (const z of [-o.d / 2 + 0.12, o.d / 2 - 0.12]) { B(g, 0.05, 0.42, 0.05, 0.01, m, 0, 0, z); B(g, o.w + 0.16, 0.04, 0.05, 0.01, m, 0, 0, z); }
+  return g;
+}
+function gardenSwing(o) {
+  const g = new THREE.Group(), fr = solid("#45464C", { rough: 0.8 }), f = fabric(o.color || "#E9E4DA");
+  for (const s of [-1, 1]) for (const z of [-1, 1]) { const l = B(g, 0.05, o.h, 0.05, 0.01, fr, s * (o.w / 2 - 0.05), 0, z * 0.45); l.rotation.x = -z * 0.2; l.position.z = z * 0.3; }
+  B(g, o.w, 0.05, 0.05, 0.01, fr, 0, o.h - 0.05, 0);
+  B(g, o.w - 0.4, 0.12, 0.55, 0.03, f, 0, 0.45, 0); B(g, o.w - 0.4, 0.5, 0.1, 0.03, f, 0, 0.55, -0.25);
+  for (const s of [-1, 1]) C(g, 0.006, 0.006, o.h - 0.6, black(), s * (o.w / 2 - 0.25), 0.55, 0, 6);
+  return g;
+}
+function outdoorDining(o) {
+  const g = new THREE.Group(), fr = solid("#5A5550", { rough: 0.85 }), top = wood("ash");
+  B(g, o.w * 0.55, 0.03, o.d * 0.5, 0.008, top, 0, 0.72, 0); legs(g, o.w * 0.55, o.d * 0.5, 0.72, 0.04, fr, 0.02);
+  for (const sz of [-1, 1]) for (const sx of [-1, 1]) {
+    const x = sx * o.w * 0.14, z = sz * (o.d / 2 - 0.22);
+    B(g, 0.42, 0.05, 0.42, 0.01, fr, x, 0.42, z); B(g, 0.42, 0.42, 0.04, 0.01, fr, x, 0.47, z + sz * 0.19);
+    for (const lx of [-1, 1]) for (const lz of [-1, 1]) C(g, 0.014, 0.012, 0.42, fr, x + lx * 0.18, 0, z + lz * 0.18, 8);
+  }
+  return g;
+}
+
 // kind: [name, category, builder, default w, d, h, mount ("floor" | "wall" | "ceiling"), default elevation]
 // ---------------------------------------------------------------- the building itself, and joinery made to fit a wall
 // a structural column, floor to ceiling (o.h is set to the room's height when placed), square or round
@@ -514,13 +659,38 @@ export const LIBRARY = {
   floor_lamp: ["Floor lamp", "Lights", floorLamp, 0.4, 0.4, 1.6, "floor"],
   pendant_lamp: ["Pendant lamp", "Lights", pendant, 0.45, 0.45, 0.8, "ceiling"],
   chandelier: ["Chandelier", "Lights", chandelier, 1.0, 1.0, 0.9, "ceiling"],
+  sofa_bed: ["Sofa bed", "Living", sofaBed, 2.0, 0.95, 0.85, "floor"],
+  recliner: ["Recliner", "Living", recliner, 0.85, 0.95, 1.0, "floor"],
+  nesting_tables: ["Nesting tables", "Living", nestingTables, 0.9, 0.55, 0.5, "floor"],
+  floor_cushion: ["Floor cushion", "Living", floorCushion, 0.6, 0.6, 0.12, "floor"],
+  prayer_mat: ["Prayer mat", "Living", prayerMat, 0.7, 1.15, 0.01, "floor"],
+  pet_bed: ["Pet bed", "Living", petBed, 0.7, 0.7, 0.2, "floor"],
+  table_lamp: ["Table lamp", "Lights", tableLamp, 0.3, 0.3, 0.5, "floor"],
+  wall_lamp: ["Wall lamp", "Lights", wallLamp, 0.2, 0.25, 0.25, "wall", 1.7],
+  dining_bench: ["Dining bench", "Dining", diningBench, 1.4, 0.38, 0.46, "floor"],
+  high_chair: ["High chair", "Dining", highChair, 0.55, 0.6, 1.0, "floor"],
+  open_shelves: ["Open kitchen shelves", "Kitchen", openShelves, 1.2, 0.25, 0.5, "wall", 1.45],
+  water_dispenser: ["Water dispenser", "Kitchen", waterDispenser, 0.32, 0.32, 1.3, "floor"],
+  coffee_machine: ["Coffee machine", "Kitchen", coffeeMachine, 0.25, 0.4, 0.36, "wall", 0.91],
+  filing_cabinet: ["Filing cabinet", "Office", filingCabinet, 0.45, 0.6, 1.0, "floor"],
+  corner_desk: ["Corner desk", "Office", cornerDesk, 1.6, 1.6, 0.76, "floor"],
+  monitor: ["Computer screen", "Office", monitor, 0.62, 0.22, 0.5, "wall", 0.76],
+  storage_bench: ["Storage bench", "Hall", storageBench, 0.9, 0.4, 0.5, "floor"],
+  wall_hooks: ["Wall hooks", "Hall", wallHooks, 0.6, 0.12, 0.1, "wall", 1.6],
+  ironing_board: ["Ironing board", "Laundry", ironingBoard, 1.25, 0.38, 0.85, "floor"],
+  mirror_cabinet: ["Mirror cabinet", "Bathroom", mirrorCabinet, 0.6, 0.15, 0.7, "wall", 1.2],
+  treadmill: ["Treadmill", "Fitness", treadmill, 0.8, 1.8, 1.35, "floor"],
+  exercise_bike: ["Exercise bike", "Fitness", exerciseBike, 0.55, 1.0, 1.25, "floor"],
+  weight_bench: ["Weight bench", "Fitness", weightBench, 0.3, 1.2, 0.5, "floor"],
+  garden_swing: ["Garden swing", "Outdoor", gardenSwing, 1.8, 1.3, 1.9, "floor"],
+  outdoor_dining: ["Outdoor table set", "Outdoor", outdoorDining, 1.6, 1.6, 0.9, "floor"],
 };
 // what devices look like
 export const DEVICE_LOOKS = {
   pendant: pendant, chandelier: chandelier, spots: spots, flush: flush, floor: floorLamp,
   ac: (o) => acSplit({ w: 0.95, d: 0.24, h: 0.3, ...o }), fan: ceilingFan, speaker, vacuum, person,
 };
-export const CATEGORIES = ["Building", "Living", "Dining", "Bedroom", "Office", "Hall", "Kitchen", "Laundry", "Bathroom", "Decor", "Lights", "Outdoor"];
+export const CATEGORIES = ["Building", "Living", "Dining", "Bedroom", "Office", "Hall", "Kitchen", "Laundry", "Bathroom", "Fitness", "Decor", "Lights", "Outdoor"];
 
 export function dims(it) {
   const L = LIBRARY[it.kind]; if (!L) return { w: 0.5, d: 0.5, h: 0.5 };

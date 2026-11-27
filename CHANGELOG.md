@@ -2,6 +2,20 @@
 
 Every version of Roost Atelier, newest first. Update from HACS, then restart Home Assistant.
 
+## 0.22.0 — 2026-11-27
+- **Editing feels instant.** Moving, adding, removing or recolouring furniture and devices now changes only those pieces instead of rebuilding the whole home (about 10 times quicker per change), and dragging updates the 3D view more often.
+- **The 3D view draws faster.** Inside each piece of furniture, the parts made of the same material are joined, so the graphics chip draws about a quarter as many shapes. This helps most on laptops without a separate graphics card.
+- **Opens faster on every screen.** The saved light of a home is now stored about 3 times smaller (a small flat went from 5.7 MB to 2 MB) and squeezed before it is uploaded, so phones and tablets get it much sooner, especially through a remote link. Lights worked out before still open. The Atelier page also starts loading its editor while Home Assistant is still starting.
+- **The photo reader is kept by Home Assistant.** The reading model for "Read a photo" is fetched once by Home Assistant and kept there for every screen in the home (it used to be downloaded by each browser). On a computer whose graphics chip can run it, it now runs there, which is quicker.
+- **Find a piece by name.** The furniture library has a search box: type "bed", "lamp" or "سرير" to see every match across all groups.
+- **Recently used.** The pieces and devices you placed lately are at the top of the library, so placing ten of the same spotlight takes ten drags.
+- **Move with the arrow keys.** Arrow keys move what is selected by 5 cm, or 1 cm with Shift. A run of taps is one undo step.
+- **25 new pieces and a Fitness group:** sofa bed, recliner, nesting tables, floor cushion, prayer mat, pet bed, table lamp, wall lamp, dining bench, high chair, open kitchen shelves, water dispenser, coffee machine, filing cabinet, corner desk, computer screen, storage bench, wall hooks, ironing board, mirror cabinet, treadmill, exercise bike, weight bench, garden swing and outdoor table set, each with its own icon and in all five languages.
+- **A short guide the first time.** Six steps from an empty plan to the dashboard pictures, each pointing at its button. Open it again any time with the new ? button.
+- **Better on phones.** The guide sits above the tools, the home's name no longer squeezes into the top bar on small phones, and the Homes button no longer sits on top of Undo.
+- **Text is never cut off.** The hint at the top of the plan, device names in their pop-ups and picture names now wrap instead of ending in "…". A test keeps it that way.
+- **Sizes read correctly in Arabic.** Lengths on the plan and in the side panel show as "3.50 m" instead of "m 3.50".
+
 ## 0.21.2 — 2026-11-26
 - **The Atelier page and the dashboard card load again.** 0.21.1 was released without five of its built files, so both failed to open after installing it. Every file is now included.
 - **A release can no longer miss files.** The tests now follow every file the panel loads and stop if one is missing or not committed, and the release checks that what is published matches a fresh build.

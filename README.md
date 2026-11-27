@@ -22,7 +22,7 @@ It is part of the **Roost** family, alongside [Roost Cards](https://github.com/H
 ### Design
 - **Draw rooms** by dragging a rectangle. Pull a corner or a wall to resize it, and the rooms next to it follow, so walls stay joined.
 - **Add doors, windows, sliding doors and arches** by tapping a wall. Slide them along the wall, change the width with a slider, and flip which way the door opens.
-- **Furnish** from a library of about 40 pieces: sofas, beds, dining sets, majlis seating, kitchens, bathrooms, plants and lamps. Drag a piece near a wall and it turns to face the room and sits flat against the wall, the way a designer would place it.
+- **Furnish** from a library of about 120 pieces, with a search box: sofas, beds, dining sets, majlis seating, kitchens, bathrooms, home office, fitness, plants and lamps. Drag a piece near a wall and it turns to face the room and sits flat against the wall, the way a designer would place it.
 - **Pick finishes** with one tap: wood, herringbone, porcelain, marble, terrazzo and carpet floors, nine wall paints, and fabric colours.
 - **Feature walls:** give one wall of a room its own paint, wallpaper (stripes, trellis, classic, grasscloth), stone, marble slabs, wood slats or classic moulded panels.
 - **Ceilings:** set a lower ceiling height for any room, add a gypsum border (with or without a hidden light) and a cornice. Add **skirting** in white, black, wood or the floor's own finish, and pick the colour of door and window **frames** and of each door.
@@ -116,7 +116,7 @@ Copy `custom_components/roost_atelier` into your `config/custom_components` fold
 
 <p align="center"><img src="docs/media/build.gif" width="720" alt="Selecting the kitchen in the Atelier and pulling its wall wider, with the 3D model following"></p>
 
-**1. Start.** Open **Atelier** in the sidebar. Tap the home name at the top and choose where to start: a ready-made home (apartment, villa with majlis, or studio), a blank page, or **From CAD or PDF**.
+**1. Start.** Open **Atelier** in the sidebar. The first time, a short guide walks you through the six steps below, pointing at each button (open it again with the **?** button at the top). Tap the home name at the top and choose where to start: a ready-made home (apartment, villa with majlis, or studio), a blank page, or **From CAD or PDF**.
 
 **2. Shape the rooms.** Tap a room once to select it. Then:
 - drag the white squares in the middle of each wall to move that wall;
@@ -128,7 +128,7 @@ Walls snap to their neighbours, and the length of every wall is shown as you go.
 
 **4. Doors and windows.** Pick **Door**, **Window**, **Slider** or **Arch** on the left, then tap a wall. Drag it along the wall, and use the sliders to change its size. **Flip** changes the way a door opens; **Main** marks the front door.
 
-**5. Furniture.** Open **Furniture**, choose a category and drag a piece onto the plan (or tap it to drop it in the selected room). Near a wall, a piece turns and sits against the wall by itself. Drag the round handle to turn it; use the sliders for its size and the swatches for its colour.
+**5. Furniture.** Open **Furniture**, type what you want in the search box (*bed*, *lamp*, *treadmill*) or choose a category, and drag a piece onto the plan (or tap it to drop it in the selected room). The pieces you used lately wait at the top. Near a wall, a piece turns and sits against the wall by itself. Drag the round handle to turn it; use the sliders for its size and the swatches for its colour. The arrow keys move what is selected by 5 cm (1 cm with Shift).
 
 **6. Devices.** Open **Devices** and drag in lights, ACs, curtains, TVs, doors and people. Tap one and choose its entity from the list. Until it's linked it shows a demo state, so you can see how it will look.
 
@@ -142,7 +142,7 @@ The first time, the computer you are using bakes the light (a progress bar shows
 
 **7. Check.** Tap **Check the home** (the badge at the bottom of the left rail). Fix anything it finds, many with one tap.
 
-**8. Put it on a dashboard.** Edit a dashboard, add a card, and search for **Roost Atelier**.
+**8. Put it on a dashboard.** Open the home settings, make the **Dashboard pictures**, then add **Roost Home Tour** from [Roost Cards](https://github.com/HRadhi4/Roost-card) to a dashboard.
 
 ### Importing a drawing
 Open **Import**, choose a DXF, PDF, JPG or PNG, and wait a moment. Check the number of rooms found:
@@ -151,7 +151,9 @@ Open **Import**, choose a DXF, PDF, JPG or PNG, and wait a moment. Check the num
 Tap **Use this plan**, then name the rooms and run **Check the home**.
 
 ### Furniture from a photo
-You need an AI Task set up in Home Assistant. Select a room, open **Import**, choose **From a photo**, and pick or take a photo of the room. Untick anything you don't want, then tap **Add**.
+Select a room, open **Import**, choose **From a photo**, and pick or take a photo of the room. Untick anything you don't want, then tap **Add**.
+- **This device (free, private)** reads the photo on the screen you are using; the photo never leaves it. The reading model (about 150 MB) is fetched once by Home Assistant and kept there for every screen in the home.
+- If you have an AI Task set up in Home Assistant, you can pick it instead.
 
 ## On your dashboard
 

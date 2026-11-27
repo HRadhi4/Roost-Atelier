@@ -48,7 +48,7 @@ import { BakeManager, refreshBaked } from "./bake/index.js";
 import { emittersFor, lampModel, aimModel, anchorOf } from "./lights.js";
 import { stairHole, stairsArriving, holeRails, clipTo, riseTo, elevOf } from "./stairs.js";
 import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
-import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+import { mergeVertices, mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const seg = (a) => Math.max(1, Math.ceil(a / 0.3));
 // a room's outline moved inwards by d (for a gypsum border round the ceiling)
@@ -63,6 +63,45 @@ function alongEdge(o, p, q) { const ex = q[0] - p[0], ey = q[1] - p[1], L2 = ex 
 // the pieces that are built in front of a wall (not just a material on it)
 const BUILT_WALLS = new Set(["slats", "panels"]);
 const FULL_HEIGHT = new Set(["column", "round_column"]);
+// Inside one piece of furniture, the parts made of the same material become one shape: the graphics chip
+// draws one thing instead of dozens (a kitchen run of 90 parts becomes a handful). Parts that move or are
+// looked up by name (doors, screens, glass, fan blades) stay as they are; picking still finds the piece.
+const _inv = new THREE.Matrix4(), _rel = new THREE.Matrix4();
+export function mergeParts(g) { if (globalThis.__noMerge) return g;
+  g.updateMatrixWorld(true); _inv.copy(g.matrixWorld).invert();
+  const groups = new Map(), loose = (o) => {
+    if (!o.isMesh || !o.visible || o.name || o.isSkinnedMesh || o.isInstancedMesh || Array.isArray(o.material) || o.morphTargetInfluences || o.children.length) return false;
+    if (Object.keys(o.userData).some((k) => k !== "item")) return false;
+    for (let p = o.parent; p && p !== g; p = p.parent) if (!p.visible || p.name || Object.keys(p.userData).length) return false;
+    return true;
+  };
+  g.traverse((o) => {
+    if (!loose(o)) return;
+    const geo = o.geometry, attrs = Object.keys(geo.attributes).sort().join(",");
+    if (!geo.attributes.position || Object.keys(geo.morphAttributes || {}).length) return;
+    const key = `${o.material.uuid}|${attrs}|${geo.index ? 1 : 0}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${o.renderOrder}`;
+    (groups.get(key) || groups.set(key, []).get(key)).push(o);
+  });
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((o) => { _rel.multiplyMatrices(_inv, o.matrixWorld); const c = o.geometry.clone(); c.applyMatrix4(_rel); c.clearGroups(); return c; });
+    const merged = mergeGeometries(geos, false); geos.forEach((c) => c.dispose()); if (!merged) continue;
+    const first = list[0], m = new THREE.Mesh(merged, first.material);
+    m.castShadow = first.castShadow; m.receiveShadow = first.receiveShadow; m.renderOrder = first.renderOrder; m.userData = { ...first.userData };
+    for (const o of list) { o.parent.remove(o); if (!o.geometry.parameters?.shared && !o.geometry.userData?.kept) o.geometry.dispose(); }
+    g.add(m);
+  }
+  return g;
+}
+// pieces that change the walls, ceilings or other levels: a change to these rebuilds the whole home
+const shellItem = (i) => i.kind === "stairs" || i.kind === "beam" || FULL_HEIGHT.has(i.kind);
+// devices that live inside a window or door (curtains, doors, locks, a TV in its unit): also rebuilt with the home
+const shellDevice = (d) => ["curtain", "door", "lock", "tv"].includes(d.kind || deviceKind(d.entity));
+function shellSig(plan, fi, looks) {
+  const f = plan.floors[fi] || plan.floors[0];
+  const others = plan.settings?.levels ? plan.floors.map((x, j) => (j === fi ? null : x)) : null;
+  return JSON.stringify([plan.id, fi, others, { ...f, items: f.items.filter(shellItem), devices: f.devices.filter(shellDevice) }, looks, plan.north, plan.materials]);
+}
 // texture coordinates in metres, so a real plaster grain is the same size on every wall
 function metreUV(g) {
   const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
@@ -289,6 +328,10 @@ export class AtelierEngine {
     void _time;
     if (sig === this._sig && this.floor) { this.plan = plan; this.floor = plan.floors[floorIndex] || plan.floors[0]; this.fitSun(); this.request(true); return; }
     this._sig = sig;
+    // only furniture or devices changed (moved, added, removed, recoloured): change just those, not the whole home
+    const shell = shellSig(plan, floorIndex, looks);
+    if (shell === this._shell && this.floor && this.items && this.devG && this.patch(plan, floorIndex)) return;
+    this._shell = shell;
     this.plan = plan; this.floorIndex = floorIndex; this.version = (this.version || 0) + 1;
     // after a change the light is worked out again; meanwhile the same real-world units and exposure are kept,
     // so the picture doesn't jump to a brighter, flatter look
@@ -335,9 +378,62 @@ export class AtelierEngine {
     this.fitSun();
     if (!this._framed) { this.frame(this.opts.view || "3d", true); this._framed = true; }
     this.updateDevices(true);
+    this._itemSig = new Map(floor.items.map((i) => [i.id, JSON.stringify(i)])); this._devSig = new Map(floor.devices.map((d) => [d.id, JSON.stringify(d)]));
     this.shadowsDirty = true; this.request(true);
     this.emit("built");
     this.bakeMgr.onBuilt();
+  }
+  // the quick way: the rooms, walls and openings are the same, so only the pieces that changed are rebuilt
+  patch(plan, floorIndex) {
+    const floor = plan.floors[floorIndex] || plan.floors[0];
+    if (!this._itemSig || !this._devSig) return false;
+    this.plan = plan; this.floor = floor;
+    const H = this.H, have = new Map(), itemSig = new Map(), devSig = new Map();
+    for (const c of this.items.children) if (c.userData.item) have.set(c.userData.item, c);
+    let changed = false;
+    for (const it of floor.items) {
+      if (shellItem(it)) { itemSig.set(it.id, this._itemSig.get(it.id)); have.delete(it.id); continue; }
+      const sig = JSON.stringify(it), old = have.get(it.id); have.delete(it.id); itemSig.set(it.id, sig);
+      if (old && this._itemSig.get(it.id) === sig) continue;
+      changed = true;
+      if (old && this.moveItem(it)) continue;
+      if (old) { this.items.remove(old); this.free(this.collect(old, new Set())); }
+      this.addItem(it, H);
+    }
+    for (const [, g] of have) { this.items.remove(g); this.free(this.collect(g, new Set())); changed = true; }
+    // a TV device shows its picture on the screen of the TV piece: find the screen again if that piece was rebuilt
+    if (changed) for (const rec of this.devices.values()) if (rec.kind === "tv" && (!rec.screen || !this.items.getObjectById(rec.screen.id))) rec.screen = this.findScreen(rec.dv);
+    const gone = new Set(this.devices.keys());
+    for (const dv of floor.devices) {
+      gone.delete(dv.id);
+      const sig = JSON.stringify(dv); devSig.set(dv.id, sig);
+      if (shellDevice(dv)) continue;
+      const rec = this.devices.get(dv.id);
+      if (rec && this._devSig.get(dv.id) === sig) { rec.dv = dv; continue; }
+      changed = true;
+      if (rec) this.removeDevice(rec);
+      this.addDevice(dv, this.hAt(dv.x, dv.y));
+    }
+    for (const id of gone) { const rec = this.devices.get(id); if (rec && !shellDevice(rec.dv)) { this.removeDevice(rec); changed = true; } }
+    this._itemSig = itemSig; this._devSig = devSig;
+    if (changed) {
+      this.version = (this.version || 0) + 1;
+      this.updateDevices(true); this.updateHot();
+      // the light is worked out again once you stop changing things; until then it stays as it was
+      clearTimeout(this._rebake); this._rebake = setTimeout(() => this.bakeMgr.onBuilt(), 1500);
+      this.shadowsDirty = true; this.emit("built");
+    }
+    this.fitSun(); this.request(true);
+    return true;
+  }
+  removeDevice(rec) {
+    const id = rec.dv.id;
+    if (rec.obj) { this.devG.remove(rec.obj); this.free(this.collect(rec.obj, new Set())); }
+    for (const p of rec.people || []) { this.devG.remove(p); this.free(this.collect(p, new Set())); }
+    if (rec.lip) { this.ceilings.remove(rec.lip); this.free(this.collect(rec.lip, new Set())); }
+    if (rec.light) { this.scene.remove(rec.light); if (rec.light.target) this.scene.remove(rec.light.target); rec.light.dispose?.(); }
+    for (const k of ["r", "a", "f", "l", "t"]) { const fn = this._anim?.[k + id]; if (fn) { this.anims.delete(fn); delete this._anim[k + id]; } }
+    this.devices.delete(id); this.pretends?.delete(id);
   }
   clear() {
     // shapes and the materials made only for this build are freed; shared materials stay for the next build
@@ -563,6 +659,7 @@ export class AtelierEngine {
     // columns are cut at waist height with the walls in the overview; beams overhead are hidden there like ceilings
     if (FULL_HEIGHT.has(it.kind)) g.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.userData.cuttable = true; } });
     if (it.kind === "beam") g.userData.overhead = true;
+    mergeParts(g);
     Object.assign(g.userData, { item: it.id, w: d.w, d: d.d, h: d.h, color: it.color, look: [it.wood, it.metal, it.mat, it.toCeiling].join("|"), H });
     this.items.add(g);
   }
@@ -712,7 +809,7 @@ export class AtelierEngine {
         // recessed spots, track lights, linear and cove lights, focus lights: exact emitters
         const model = lampModel(dv, look), an = anchorOf(dv, look, H); g.add(model); g.position.set(dv.x, an.y, dv.y); rec.mount = an.mount;
         const lip = model.getObjectByName("lip");
-        if (lip) { model.remove(lip); lip.material = solid("#F7F5F1", { rough: 0.95 }); lip.position.set(dv.x, H - 0.125, dv.y); lip.rotation.y = ((dv.rot || 0) * Math.PI) / 180; this.ceilings.add(lip); }
+        if (lip) { model.remove(lip); lip.material = solid("#F7F5F1", { rough: 0.95 }); lip.position.set(dv.x, H - 0.125, dv.y); lip.rotation.y = ((dv.rot || 0) * Math.PI) / 180; this.ceilings.add(lip); rec.lip = lip; }
         if (an.turn) g.rotation.y = ((dv.rot || 0) * Math.PI) / 180;
         aimModel(g, dv, look, em);
         rec.emitters = em; rec.lmScale = em.reduce((a, e) => a + (e.w ?? 1), 0);

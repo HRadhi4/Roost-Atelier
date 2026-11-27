@@ -4,6 +4,9 @@ import "./icons.js";
 
 const VERSION = __VERSION__;
 const loadView = () => import("./view.js");
+// on the Atelier's own page, start fetching the editor right away, while Home Assistant is still starting up
+const loadEditor = () => (loadEditor.p ||= import("./editor.js"));
+try { if (location.pathname.split("/")[1] === "roost-atelier") loadEditor().catch(() => { loadEditor.p = null; }); } catch (e) { /* not in a page */ }
 const fire = (el, type, detail) => el.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
 
 export async function listPlans(hass) { return hass.connection.sendMessagePromise({ type: "roost_atelier/plans" }); }
@@ -103,7 +106,7 @@ class RoostAtelierPanel extends HTMLElement {
     langFor(this._hass);
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `<div style="display:grid;place-items:center;height:100vh;color:#9AA3D9;font:500 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0B0D17">Atelier…</div>`;
-    const { AtelierEditor } = await import("./editor.js");
+    const { AtelierEditor } = await loadEditor().catch(() => { loadEditor.p = null; return loadEditor(); });
     this.editor = new AtelierEditor(this.shadowRoot, this, { rtl: isRtl() });
     this.editor.narrow = this._narrow; this.editor.hass = this._hass;
   }

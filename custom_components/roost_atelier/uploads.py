@@ -100,20 +100,45 @@ class BakeView(HomeAssistantView):
         if not BAKE_KEY.match(key):
             return web.Response(status=400)
         body = await request.read()
-        if not body or len(body) > MAX_BAKE or body[:4] != b"RAB1":
+        if not body or len(body) > MAX_BAKE:
             return web.Response(status=400, text="Not a light file")
         path = self._path(hass, key)
 
-        def write() -> int:
+        def write() -> int | None:
             import gzip
+            import zlib
+
+            if body[:2] == b"\x1f\x8b":
+                # sent already squeezed: check what is inside (and how big it gets) before keeping it
+                d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                data, head, size = body, b"", 0
+                try:
+                    while data:
+                        chunk = d.decompress(data, 1 << 20)
+                        data = d.unconsumed_tail
+                        head = head or chunk[:4]
+                        size += len(chunk)
+                        if size > MAX_BAKE:
+                            return None
+                    size += len(d.flush())
+                except zlib.error:
+                    return None
+                if head not in (b"RAB1", b"RAB2") or not d.eof or size > MAX_BAKE:
+                    return None
+                packed = body
+            else:
+                if body[:4] not in (b"RAB1", b"RAB2"):
+                    return None
+                packed = gzip.compress(body, compresslevel=9)
             path.parent.mkdir(parents=True, exist_ok=True)
-            packed = gzip.compress(body, compresslevel=6)
             tmp = path.with_suffix(".tmp")
             tmp.write_bytes(packed)
             tmp.replace(path)
             return len(packed)
 
         size = await hass.async_add_executor_job(write)
+        if size is None:
+            return web.Response(status=400, text="Not a light file")
         return web.json_response({"stored": size})
 
 

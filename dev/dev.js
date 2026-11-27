@@ -1,6 +1,7 @@
 import { prepare } from "../src/bake/prepare.js"; window.prepare = prepare;
 import { AtelierView, VIEW_CSS } from "../src/view.js";
 import { SAMPLES } from "../src/samples.js";
+globalThis.__noMerge = new URLSearchParams(location.search).has("nm");
 const st = document.createElement("style"); st.textContent = VIEW_CSS; document.head.appendChild(st);
 const q = new URLSearchParams(location.search);
 const host = document.getElementById("app");

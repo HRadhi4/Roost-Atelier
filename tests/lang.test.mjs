@@ -31,7 +31,7 @@ const LL = (() => { const s = readFileSync(dir + "devices.js", "utf8"); const i 
 for (const x of LL) extra.add(x);
 const all = new Set([...keys, ...extra, "Language"]);
 const W = allWords(); let bad = 0;
-for (const [l, d] of Object.entries(W)) { const miss = [...all].filter((k) => !d[k]); if (miss.length) { bad++; console.error(`${l} is missing ${miss.length}:`, miss.slice(0, 20)); } }
+for (const [l, d] of Object.entries(W)) { const miss = [...all].filter((k) => !d[k]); if (miss.length) { bad++; console.error(`${l} is missing ${miss.length}:`, miss); } }
 for (const [l, d] of Object.entries(W)) for (const [k, v] of Object.entries(d)) { const n = (x) => (x.replace(/3D/g, "").match(/\d+/g) || []).join(","); if (n(k) !== n(v) && l !== "zh") { bad++; console.error(`${l}: numbers differ in "${k}" -> "${v}"`); } }
 setLang("es-ES"); if (t("Save") !== "Guardar" || isRtl()) bad++;
 setLang("zh-Hans"); if (t("Save") !== "保存") bad++;

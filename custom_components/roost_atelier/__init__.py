@@ -15,7 +15,7 @@ from datetime import timedelta
 from .const import DOMAIN, PANEL_URL, URL_BASE
 from .storage import PlanStore
 from .uploads import BakeView, FileView, PhotoView, UploadView, cleanup
-from .textures import SkyView, TextureView
+from .textures import ModelView, SkyView, TextureView
 from . import websocket as ws
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(PhotoView())
         hass.http.register_view(TextureView())
         hass.http.register_view(SkyView())
+        hass.http.register_view(ModelView())
         ws.async_register(hass)
         hass.data[f"{DOMAIN}_static"] = True
 

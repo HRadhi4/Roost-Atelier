@@ -107,6 +107,32 @@ const ITEMS = {
   floor_lamp: P("M8 3h8l2 6H6zM12 9v11M8 21h8"),
   pendant_lamp: P("M12 2v7M6 15a6 6 0 0 1 12 0zM10.5 18a1.5 1.5 0 0 0 3 0"),
   chandelier: P("M12 2v5M5 10c0 3 3 4 7 4s7-1 7-4M5 10V8M19 10V8M12 14v3M9 13.5l-1 3M15 13.5l1 3") + O(5, 7, 1) + O(19, 7, 1) + O(12, 18, 1),
+  // everyday pieces added later: living, lights, dining, kitchen, office, hall, laundry, bathroom, fitness, outdoor
+  sofa_bed: R(3, 8, 18, 6, 2) + P("M3 11h18M5 14v2h14v-2M6 16v2M18 16v2") + P("M7 17.5h10", ) + P("M5 8V6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5V8"),
+  recliner: P("M6 4h7a2 2 0 0 1 2 2v7H6z") + P("M4 10v6h12v-3") + P("M16 13l4 2v2h-4") + P("M5 16v3M15 16v3"),
+  nesting_tables: E(9, 8, 6, 2) + P("M5 8.5v11M13 8.5v11") + E(16, 13, 4.5, 1.5) + P("M13.5 14v6M19 14v6"),
+  floor_cushion: R(3, 11, 18, 7, 3) + P("M8 14.5h8") + P("M6 11c2-1.5 10-1.5 12 0"),
+  prayer_mat: R(6, 2, 12, 20, 0.6) + R(8, 4, 8, 16, 0.4) + P("M9.5 9c0-2.5 5-2.5 5 0") + P("M10 15h4"),
+  pet_bed: E(12, 14, 9, 5) + E(12, 14, 5.5, 2.6) + P("M3 14v2c0 2.5 4 4 9 4s9-1.5 9-4v-2"),
+  table_lamp: P("M8 3h8l2 6H6z") + P("M12 9v3") + P("M9 12h6l1 8H8z"),
+  wall_lamp: P("M4 6v12M4 9h3a3 3 0 0 1 3 3v1") + P("M8 13h8l1 5H7z") + P("M12 18v2"),
+  dining_bench: R(3, 9, 18, 3, 0.6) + P("M6 12v8M18 12v8M6 17h12"),
+  high_chair: P("M8 3v8h8V3M8 7h8M6 11h12v2H6M8 13l-2 8M16 13l2 8M9 13v8M15 13v8") ,
+  open_shelves: P("M3 8h18M3 16h18M6 8v2M18 8v2M6 16v2M18 16v2") + R(5, 4, 2.5, 4, 0.6) + R(9.5, 5, 2.5, 3, 0.6) + R(14, 12, 2.5, 4, 0.6) + R(7, 13, 2.5, 3, 0.6),
+  water_dispenser: P("M9 3h6v6H9z") + R(7, 9, 10, 12, 1) + P("M10 13v2M14 13v2M9 18h6"),
+  coffee_machine: R(6, 3, 12, 18, 1.5) + P("M6 7h12M9 11h6v3H9z") + P("M10 17h4v2h-4z"),
+  filing_cabinet: R(6, 2, 12, 20, 0.8) + P("M6 8.7h12M6 15.3h12M10 5.5h4M10 12h4M10 18.5h4"),
+  corner_desk: P("M3 4h18v5H9v11H3z") + P("M3 20v1M9 9v11M21 9v3"),
+  monitor: R(3, 4, 18, 11, 1) + P("M12 15v4M8 20h8"),
+  storage_bench: R(3, 8, 18, 4, 1.5) + R(3, 12, 18, 7, 0.6) + P("M9 12v7M15 12v7M5.5 15.5h1.5M11.5 15.5h1M17 15.5h1.5"),
+  wall_hooks: R(2, 7, 20, 4, 0.6) + P("M6 11v3a2 2 0 0 0 2 2M12 11v3a2 2 0 0 0 2 2M18 11v3a2 2 0 0 0 2 2"),
+  ironing_board: P("M2 8h14c3 0 5 1 6 2-1 1-3 2-6 2H2z") + P("M7 12l6 9M13 12l-6 9"),
+  mirror_cabinet: R(4, 3, 16, 18, 1) + P("M12 3v18M10 11v2M14 11v2") + P("M6.5 6l2.5-2M15 6l2.5-2"),
+  treadmill: P("M3 18l15-2 3 1-1 2-17 1z") + P("M16 16L14 5h5M14 5l-1-1") + P("M15.5 9h3"),
+  exercise_bike: O(8, 16, 4) + P("M8 16l6-9h4M14 7l1 12M11 19h8M12 12h4") + P("M6 6h4"),
+  weight_bench: R(3, 9, 18, 3, 1) + P("M7 12v8M17 12v8M4 20h6M14 20h6"),
+  garden_swing: P("M3 21L7 3h10l4 18M7 3h10") + P("M9 3v9M15 3v9") + R(8, 12, 8, 2, 0.6) + P("M8 12V9h8v3"),
+  outdoor_dining: E(12, 10, 6, 2.5) + P("M12 12.5V20M9 20h6") + P("M3 14v6M3 17h3v3M21 14v6M21 17h-3v3"),
 };
 
 // ---------------------------------------------------------------- light fittings (light:…)
@@ -171,6 +197,8 @@ const STAIRS = {
 
 // ---------------------------------------------------------------- the app's own buttons (mdi:… names kept)
 const UI = {
+  magnify: O(10, 10, 6) + P("M14.5 14.5L21 21"),
+  "help-circle-outline": O(12, 12, 9.5) + P("M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.6v.6") + D(12, 17, 1),
   "tape-measure": O(9, 12, 6) + O(9, 12, 2) + P("M9 18h12v-3h-2M17 18v-1.5M14 18v-1.5"),
   "note-text-outline": P("M5 3h11l4 4v14H5z") + P("M15 3v5h5M8 11h8M8 14.5h8M8 18h5"),
   "lock-open-variant-outline": R(5, 11, 14, 10, 2) + P("M8 11V7a4 4 0 0 1 7.5-2M12 15v2"),

@@ -10,7 +10,7 @@ export const CONTROLS_CSS = `
 .ctl .hd{display:flex;align-items:center;gap:10px}
 .ctl .hd .ic{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--c) 22%,transparent);color:var(--c);flex:none}
 .ctl .hd .ic ra-icon{--mdc-icon-size:20px}
-.ctl .hd b{display:block;font:600 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctl .hd b{display:block;font:600 14px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;white-space:normal;overflow-wrap:anywhere}
 .ctl .hd small{display:block;color:#9AA3D9;font-size:12px;margin-top:1px}
 .ctl .hd .tx{min-width:0;flex:1}
 .ctl button{all:unset;box-sizing:border-box;cursor:pointer;height:40px;min-width:40px;padding:0 12px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,255,255,.08);color:#EEF0FF;font:600 12px Inter,-apple-system,'Segoe UI',Roboto,sans-serif;transition:background .12s,transform .12s;-webkit-tap-highlight-color:transparent}
